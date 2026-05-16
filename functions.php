@@ -1307,8 +1307,8 @@ function fb_customer_guide_feed_buttons(SQLite3 $db): array
 function fb_bot_menu_text(): string
 {
     return implode("\n", [
-        'Limitless Sports Bot',
-        'Choose what you want to view or subscribe to.',
+        '<b>Sports Hub</b>',
+        'Choose what you want to view or subscribe to. Use the buttons below to explore live scores, fixtures, TV listings and your followed teams.',
     ]);
 }
 
@@ -1365,16 +1365,24 @@ function fb_bot_menu_reply_markup(array $config, SQLite3 $db, ?string $chatId = 
 {
     $rows = [
         [
-            fb_bot_menu_callback_button('Live Scores', 'live'),
-            fb_bot_menu_callback_button('Fixtures Today', 'fixtures'),
+            fb_bot_menu_callback_button('Live — All', 'live_all'),
+            fb_bot_menu_callback_button('Live — Football', 'live_football'),
         ],
         [
-            fb_bot_menu_callback_button('TV Guide', 'tv'),
-            fb_bot_menu_callback_button('League Tables', 'tables'),
+            fb_bot_menu_callback_button('Fixtures — All', 'fixtures_all'),
+            fb_bot_menu_callback_button('Fixtures — Football', 'fixtures_football'),
         ],
         [
-            fb_bot_menu_callback_button('My Favourites', 'favourites'),
-            fb_bot_menu_callback_button('Top Scorers', 'scorers'),
+            fb_bot_menu_callback_button('Fixtures — Basketball', 'fixtures_basketball'),
+            fb_bot_menu_callback_button('TV — Now', 'tv_now'),
+        ],
+        [
+            fb_bot_menu_callback_button('TV — Today', 'tv_today'),
+            fb_bot_menu_callback_button('Tables — Football', 'tables_football'),
+        ],
+        [
+            fb_bot_menu_callback_button('My Teams', 'my_teams'),
+            fb_bot_menu_callback_button('Premium', 'premium'),
         ],
     ];
 
@@ -1394,15 +1402,50 @@ function fb_bot_menu_reply_markup(array $config, SQLite3 $db, ?string $chatId = 
     return ['inline_keyboard' => $rows];
 }
 
+function fb_bot_submenu_reply_markup(array $config, SQLite3 $db, ?string $chatId = null, string $backAction = 'home'): array
+{
+    $rows = [
+        [
+            fb_bot_menu_callback_button('⬅️ Back', $backAction),
+        ],
+    ];
+
+    // include follow buttons for submenu where applicable
+    $followRows = fb_customer_guide_reply_markup($config, $db, [])['inline_keyboard'] ?? [];
+
+    foreach ($followRows as $r) {
+        $rows[] = $r;
+    }
+
+    return ['inline_keyboard' => $rows];
+}
+
+function fb_text_to_html(string $text): string
+{
+    $escaped = htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE);
+    return str_replace("\n", '<br>', $escaped);
+}
+
 function fb_bot_menu_action_label(string $action): string
 {
     return match ($action) {
+        'home' => 'Sports Hub',
         'live' => 'Live scores',
+        'live_all' => 'Live — all sports',
+        'live_football' => 'Live — football',
         'fixtures' => 'Fixtures today',
+        'fixtures_all' => 'Fixtures — all sports',
+        'fixtures_football' => 'Fixtures — football',
+        'fixtures_basketball' => 'Fixtures — basketball',
         'tv' => 'TV guide',
+        'tv_now' => 'TV — now',
+        'tv_today' => 'TV — today',
         'tables' => 'League tables',
+        'tables_football' => 'League tables — football',
         'scorers' => 'Top scorers',
         'favourites' => 'My favourites',
+        'my_teams' => 'My teams',
+        'premium' => 'Premium',
         default => 'Bot menu',
     };
 }
@@ -1516,6 +1559,79 @@ function fb_format_bot_action_message(array $config, SQLite3 $db, string $action
         'scorers' => "Top scorers\nUse this as a text/table topic, not a match card. The bot menu is ready for it; scorer data can be wired to the provider endpoint you want to use.",
         default => fb_bot_menu_text(),
     };
+}
+
+function fb_format_bot_submenu_message(array $config, SQLite3 $db, string $action): string
+{
+    // map action to plain text then convert to HTML-aware output
+    switch ($action) {
+        case 'live':
+        case 'live_all':
+            $title = '<b>Live — All sports</b>';
+            $body = fb_format_bot_live_scores_message($config, $db);
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'live_football':
+            $title = '<b>Live — Football</b>';
+            // Mock: reuse live scores output with a note about filtering to football
+            $body = fb_format_bot_live_scores_message($config, $db) . "\n\n(Filtered to Football — sample data)";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'fixtures':
+        case 'fixtures_all':
+            $title = '<b>Fixtures — All sports</b>';
+            $body = fb_format_bot_fixtures_message($config, $db);
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'fixtures_football':
+            $title = '<b>Fixtures — Football</b>';
+            $body = fb_format_bot_fixtures_message($config, $db) . "\n\n(Filtered to Football — sample)";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'fixtures_basketball':
+            $title = '<b>Fixtures — Basketball</b>';
+            $body = "No tracked basketball fixtures in the next 24 hours.\nSample upcoming:\n- Hawks vs Tigers — 19:30\n- City Ballers vs Downtown — 21:00";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'tv':
+        case 'tv_now':
+            $title = '<b>TV — Now</b>';
+            $body = fb_format_bot_tv_message($config, $db);
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'tv_today':
+            $title = '<b>TV — Today</b>';
+            $body = fb_format_bot_tv_message($config, $db);
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'tables':
+        case 'tables_football':
+            $title = '<b>League tables — Football</b>';
+            $body = "Sample table:\n1. Red FC  38 pts\n2. Blue United 36 pts\n3. Town FC  34 pts\n\n(Real table data can be wired to your provider later.)";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'scorers':
+            $title = '<b>Top scorers</b>';
+            $body = "1. A. Striker — 18\n2. B. Forward — 15\n3. C. Ace — 14\n\n(Scorers are sample/mock data.)";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'favourites':
+        case 'my_teams':
+            $title = '<b>My Teams & Favourites</b>';
+            $body = fb_format_bot_favourites_message($db);
+            return $title . '<br>' . fb_text_to_html($body);
+
+        case 'premium':
+            $title = '<b>Premium</b>';
+            $body = "Premium features are coming soon.\nYou can follow teams and feeds today; premium content and payments are not configured yet.";
+            return $title . '<br>' . fb_text_to_html($body);
+
+        default:
+            // fallback to the legacy formatter and convert
+            $title = '<b>Sports Hub</b>';
+            $body = fb_format_bot_action_message($config, $db, $action);
+            return $title . '<br>' . fb_text_to_html($body);
+    }
 }
 
 function fb_customer_guide_reply_markup(array $config, SQLite3 $db, array $matches): array
@@ -5767,6 +5883,45 @@ function fb_card_caption_tv_names(array $item): array
 
         if ($name !== '') {
             $names[] = $name;
+        }
+    }
+
+    // Also accept common single-field channel labels from provider data
+    $possibleFields = [
+        'channel',
+        'configured_channel_label',
+        'tv_channel',
+        'tv_channel_name',
+    ];
+
+    foreach ($possibleFields as $field) {
+        if (!empty($item[$field]) && !is_array($item[$field])) {
+            $name = trim((string) $item[$field]);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        if (!empty($item[$field]) && is_array($item[$field])) {
+            foreach ($item[$field] as $c) {
+                $n = trim((string) $c);
+                if ($n !== '') {
+                    $names[] = $n;
+                }
+            }
+        }
+    }
+
+    // If there's a meta block with tv_channels, prefer those too
+    if (!empty($item['meta']) && is_array($item['meta'])) {
+        $meta = $item['meta'];
+        if (!empty($meta['tv_channels']) && is_array($meta['tv_channels'])) {
+            foreach ($meta['tv_channels'] as $c) {
+                $n = trim((string) $c);
+                if ($n !== '') {
+                    $names[] = $n;
+                }
+            }
         }
     }
 

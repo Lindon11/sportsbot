@@ -656,7 +656,7 @@ function fb_telegram_process_message_update(array $config, SQLite3 $db, array $m
         fb_bot_menu_text(),
         $chatId,
         $threadId,
-        ['reply_markup' => fb_bot_menu_reply_markup($config, $db, $chatId)]
+        ['reply_markup' => fb_bot_menu_reply_markup($config, $db, $chatId), 'parse_mode' => 'HTML']
     );
     $summary['menu_sent'] = true;
 
@@ -673,7 +673,14 @@ function fb_telegram_menu_callback_action(string $callbackData): ?string
 
     $action = preg_replace('/[^a-z0-9_]/', '', strtolower($parts[1]));
 
-    return in_array($action, ['live', 'fixtures', 'tv', 'tables', 'scorers', 'favourites'], true) ? $action : null;
+    $allowed = [
+        'home', 'live_all', 'live_football', 'fixtures_all', 'fixtures_football', 'fixtures_basketball',
+        'tv_now', 'tv_today', 'tables_football', 'my_teams', 'premium',
+        // keep older aliases
+        'live', 'fixtures', 'tv', 'tables', 'scorers', 'favourites'
+    ];
+
+    return in_array($action, $allowed, true) ? $action : null;
 }
 
 function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $callback, string $action): bool
@@ -691,12 +698,33 @@ function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $ca
     }
 
     fb_telegram_save_topic_from_message($db, $message);
+
+    // Home/main menu
+    if ($action === 'home') {
+        fb_telegram_send_message(
+            $config,
+            fb_bot_menu_text(),
+            $chatId,
+            $threadId,
+            ['reply_markup' => fb_bot_menu_reply_markup($config, $db, $chatId), 'parse_mode' => 'HTML']
+        );
+
+        return true;
+    }
+
+    // Prepare HTML-formatted submenu content
+    try {
+        $html = fb_format_bot_submenu_message($config, $db, $action);
+    } catch (Throwable $e) {
+        $html = fb_text_to_html('That submenu is unavailable right now: ' . $e->getMessage());
+    }
+
     fb_telegram_send_message(
         $config,
-        fb_format_bot_action_message($config, $db, $action),
+        $html,
         $chatId,
         $threadId,
-        ['reply_markup' => fb_bot_menu_reply_markup($config, $db, $chatId)]
+        ['reply_markup' => fb_bot_submenu_reply_markup($config, $db, $chatId, 'home'), 'parse_mode' => 'HTML']
     );
 
     return true;
