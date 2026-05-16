@@ -4906,6 +4906,16 @@ function fb_prepare_card_matches(array $config, SQLite3 $db, array $events, bool
     $tvByEventId = $includeTv ? fb_tv_channels_for_event_ids($config, $db, $eventIds) : [];
     $tvRegistry = $includeTv ? fb_card_tv_channel_registry($db) : [];
 
+    // Pre-fetch global TV events cache once for fallbacks to avoid repeated API calls
+    $cachedTvEvents = [];
+    if ($includeTv) {
+        try {
+            $cachedTvEvents = fb_fetch_tv_events($config, $db);
+        } catch (Throwable $e) {
+            $cachedTvEvents = [];
+        }
+    }
+
     foreach ($matches as &$match) {
         try {
             $match = fb_enrich_match_team_badges($config, $db, $match);
@@ -4924,12 +4934,101 @@ function fb_prepare_card_matches(array $config, SQLite3 $db, array $events, bool
         }
 
         $eventId = (string) ($match['event_id'] ?? '');
-        $channels = $match['tv_channels'] ?? ($tvByEventId[$eventId] ?? []);
-        $channels = is_array($channels) ? $channels : [];
-        $channels = array_values(array_unique(array_filter(array_map('strval', $channels))));
+
+        // 1) Attempt explicit TheSportsDB lookup and log raw response
+        $lookupRows = [];
+        if ($includeTv && $eventId !== '') {
+            try {
+                $payload = fb_thesportsdb_get(
+                    $config,
+                    $db,
+                    '/lookup/event_tv/' . rawurlencode($eventId),
+                    (int) $config['thesportsdb']['tv_cache_ttl']
+                );
+
+                fb_log('info', 'event_tv_lookup', [
+                    'event_id' => $eventId,
+                    'event_name' => $match['event_name'] ?? ($match['event'] ?? ''),
+                    'sport' => $match['sport'] ?? '',
+                    'league' => $match['league_name'] ?? '',
+                    'payload' => $payload,
+                ]);
+
+                $lookupRows = fb_extract_list($payload, ['lookup', 'tv', 'tvevents', 'events']);
+            } catch (Throwable $e) {
+                fb_log('warning', 'Event TV lookup failed in card prep', ['event_id' => $eventId, 'error' => $e->getMessage()]);
+                $lookupRows = [];
+            }
+        }
+
+        $channels = [];
+        $channelDetails = [];
+
+        if ($lookupRows !== []) {
+            foreach ($lookupRows as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $name = trim((string) ($row['strChannel'] ?? $row['strChannelName'] ?? ''));
+                $id = trim((string) ($row['idChannel'] ?? ''));
+
+                if ($name === '' && $id !== '') {
+                    $name = fb_tv_channel_label('channel_' . $id);
+                }
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $channels[] = $name;
+                $channelDetails[] = [
+                    'name' => $name,
+                    'id' => $id,
+                    'country' => trim((string) ($row['strCountry'] ?? '')),
+                    'event_country' => trim((string) ($row['strEventCountry'] ?? '')),
+                    'logo' => trim((string) ($row['strLogo'] ?? '')),
+                    'raw' => is_array($row) ? $row : [],
+                ];
+
+                // Save discovered channel to registry
+                $channelObj = fb_tv_channel_from_event($row);
+                if ($channelObj !== null) {
+                    try {
+                        fb_save_tv_channel($db, $channelObj);
+                    } catch (Throwable $e) {
+                        // ignore save errors
+                    }
+                }
+            }
+
+            $channels = array_values(array_unique($channels));
+        } else {
+            // 2) Fallback: use aggregated tvByEventId map (from configured channels and event lookup)
+            $tvFallback = $tvByEventId[$eventId] ?? [];
+            if (!empty($tvFallback)) {
+                $channels = is_array($tvFallback) ? $tvFallback : [$tvFallback];
+            } else {
+                // 3) Final fallback: scan cached channel listings (/filter/tv/channel) for matching event id
+                foreach ($cachedTvEvents as $tev) {
+                    if (!empty($tev['event_id']) && (string) $tev['event_id'] === $eventId) {
+                        $channels[] = trim((string) ($tev['configured_channel_label'] ?? $tev['channel'] ?? ''));
+                        $channelDetails[] = $tev;
+                    }
+                }
+
+                $channels = array_values(array_unique(array_filter($channels, static fn($v) => $v !== '')));
+            }
+        }
 
         $match['tv_channels'] = $channels;
-        $match['tv_channel_details'] = fb_card_tv_channel_details($channels, $tvRegistry);
+
+        // Prefer explicit lookup channel details, otherwise map via registry
+        if ($channelDetails !== []) {
+            $match['tv_channel_details'] = $channelDetails;
+        } else {
+            $match['tv_channel_details'] = fb_card_tv_channel_details($channels, $tvRegistry);
+        }
     }
     unset($match);
 
@@ -5991,7 +6090,18 @@ function fb_card_match_caption(array $page): string
 
     $meta = [
         '⏰ ' . fb_card_caption_match_status($page, $match),
-        '📺 ' . $tv,
+    ];
+
+    // Only include TV meta when we have a real channel or when not a final result without channel
+    $tvFallback = 'TV channel TBC';
+    if ($tv !== $tvFallback) {
+        $meta[] = '📺 ' . $tv;
+    } else {
+        // If it's not a full-time result, still show the fallback TV label
+        if (!$isResult) {
+            $meta[] = '📺 ' . $tv;
+        }
+    }
     ];
 
     if ($venue !== '') {

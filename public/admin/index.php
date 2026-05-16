@@ -1542,6 +1542,39 @@ try {
             admin_redirect('data');
         }
 
+        if ($action === 'debug_tv_for_event') {
+            fb_require_env($config, false);
+            $db = fb_open_db($config);
+            $eventId = trim((string) ($_POST['DEBUG_TV_EVENT_ID'] ?? ''));
+
+            if ($eventId === '') {
+                admin_flash('error', 'Provide an event id to debug.');
+                admin_redirect('data');
+            }
+
+            try {
+                $payload = fb_thesportsdb_get($config, $db, '/lookup/event_tv/' . rawurlencode($eventId), (int) $config['thesportsdb']['tv_cache_ttl']);
+                $rows = fb_extract_list($payload, ['lookup', 'tv', 'tvevents', 'events']);
+                $channels = fb_fetch_event_tv_channels($config, $db, $eventId);
+                $cachedEvents = fb_fetch_tv_events($config, $db);
+
+                admin_flash('success', sprintf('Found %d lookup row(s) and %d configured channel(s).', count($rows), count($channels)));
+                admin_flash('success', 'Channels: ' . (count($channels) > 0 ? implode(', ', $channels) : 'none'));
+                $snippet = substr(json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 3000);
+                admin_flash('info', nl2br(htmlspecialchars($snippet)));
+
+                // Show any cached TV events matching this event id
+                $matches = array_values(array_filter($cachedEvents, static fn($e) => isset($e['event_id']) && (string)$e['event_id'] === $eventId));
+                if ($matches !== []) {
+                    admin_flash('success', 'Matched in cached channel listings: ' . implode(', ', array_map(static fn($m) => $m['configured_channel_label'] ?? $m['channel'] ?? 'unknown', $matches)));
+                }
+            } catch (Throwable $e) {
+                admin_flash('error', 'TV debug failed: ' . $e->getMessage());
+            }
+
+            admin_redirect('data');
+        }
+
         if ($action === 'clear_api_cache') {
             $db = fb_open_db($config);
             $db->exec('DELETE FROM api_cache');
@@ -3352,6 +3385,13 @@ $activeViewMeta = $adminViews[$activeView] ?? $adminViews['dashboard'];
                             <div>
                                 <label for="BOT_TV_MAX_EVENTS_PER_CHANNEL">Max Events Per Channel</label>
                                 <input id="BOT_TV_MAX_EVENTS_PER_CHANNEL" name="BOT_TV_MAX_EVENTS_PER_CHANNEL" value="<?= htmlspecialchars(admin_env_value($env, 'BOT_TV_MAX_EVENTS_PER_CHANNEL', '20')) ?>" inputmode="numeric">
+                            </div>
+                            <div class="field-full">
+                                <label for="DEBUG_TV_EVENT_ID">Debug TV for Event ID</label>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input id="DEBUG_TV_EVENT_ID" name="DEBUG_TV_EVENT_ID" placeholder="Enter TheSportsDB idEvent" style="flex:1">
+                                    <button class="secondary" name="action" value="debug_tv_for_event" type="submit">Debug TV for Event ID</button>
+                                </div>
                             </div>
                         </div>
                     </div>
