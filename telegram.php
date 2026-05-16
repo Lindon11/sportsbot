@@ -314,6 +314,66 @@ function fb_telegram_send_message(array $config, string $message, ?string $chatI
     return $decoded;
 }
 
+function fb_telegram_edit_message_text(array $config, string $chatId, int $messageId, string $text, ?int $messageThreadId = null, array $options = []): array
+{
+    fb_require_extensions(['curl']);
+
+    $token = (string) ($config['telegram']['bot_token'] ?? '');
+    if ($token === '') {
+        throw new RuntimeException('Telegram bot token is not configured.');
+    }
+
+    $url = rtrim((string) $config['telegram']['api_base'], '/') . '/bot' . $token . '/editMessageText';
+    $fields = [
+        'chat_id' => $chatId,
+        'message_id' => (string) $messageId,
+        'text' => $text,
+    ];
+
+    if ($messageThreadId !== null) {
+        $fields['message_thread_id'] = (string) $messageThreadId;
+    }
+
+    // copy options, encoding arrays as JSON where needed
+    foreach ($options as $key => $value) {
+        if ($value === null || $value === '') {
+            continue;
+        }
+
+        $fields[$key] = is_array($value) ? json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : (string) $value;
+    }
+
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL => $url,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $fields,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => (int) ($config['telegram']['timeout'] ?? 25),
+        CURLOPT_CONNECTTIMEOUT => (int) ($config['telegram']['connect_timeout'] ?? 10),
+        CURLOPT_USERAGENT => 'football-alert-bot/1.0',
+    ]);
+
+    $body = curl_exec($curl);
+
+    if ($body === false) {
+        $error = curl_error($curl);
+        curl_close($curl);
+        throw new RuntimeException('Telegram editMessageText failed: ' . $error);
+    }
+
+    $statusCode = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    curl_close($curl);
+
+    $decoded = json_decode((string) $body, true);
+
+    if ($statusCode < 200 || $statusCode >= 300 || !is_array($decoded) || ($decoded['ok'] ?? false) !== true) {
+        throw new RuntimeException(sprintf('Telegram editMessageText HTTP %d: %s', $statusCode, substr((string) $body, 0, 500)));
+    }
+
+    return $decoded;
+}
+
 function fb_telegram_send_message_to_targets(array $config, string $message, array $targets, array $options = []): array
 {
     $results = [];
@@ -701,12 +761,27 @@ function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $ca
 
     // Home/main menu
     if ($action === 'home') {
+        $text = fb_bot_menu_text();
+        $reply = fb_bot_menu_reply_markup($config, $db, $chatId);
+
+        // Try to edit the originating message when possible
+        $messageId = is_numeric((string) ($message['message_id'] ?? '')) ? (int) $message['message_id'] : null;
+
+        if ($messageId !== null) {
+            try {
+                fb_telegram_edit_message_text($config, $chatId, $messageId, $text, $threadId, ['reply_markup' => $reply, 'parse_mode' => 'HTML']);
+                return true;
+            } catch (Throwable $e) {
+                // fallback to sendMessage below
+            }
+        }
+
         fb_telegram_send_message(
             $config,
-            fb_bot_menu_text(),
+            $text,
             $chatId,
             $threadId,
-            ['reply_markup' => fb_bot_menu_reply_markup($config, $db, $chatId), 'parse_mode' => 'HTML']
+            ['reply_markup' => $reply, 'parse_mode' => 'HTML']
         );
 
         return true;
@@ -719,12 +794,25 @@ function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $ca
         $html = fb_text_to_html('That submenu is unavailable right now: ' . $e->getMessage());
     }
 
+    $replyMarkup = fb_bot_submenu_reply_markup($config, $db, $chatId, 'home');
+
+    $messageId = is_numeric((string) ($message['message_id'] ?? '')) ? (int) $message['message_id'] : null;
+
+    if ($messageId !== null) {
+        try {
+            fb_telegram_edit_message_text($config, $chatId, $messageId, $html, $threadId, ['reply_markup' => $replyMarkup, 'parse_mode' => 'HTML']);
+            return true;
+        } catch (Throwable $e) {
+            // fall through to sendMessage fallback
+        }
+    }
+
     fb_telegram_send_message(
         $config,
         $html,
         $chatId,
         $threadId,
-        ['reply_markup' => fb_bot_submenu_reply_markup($config, $db, $chatId, 'home'), 'parse_mode' => 'HTML']
+        ['reply_markup' => $replyMarkup, 'parse_mode' => 'HTML']
     );
 
     return true;
