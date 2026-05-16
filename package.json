@@ -1,0 +1,11 @@
+{
+  "name": "football-bot-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "render": "node render_html.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0"
+  }
+}

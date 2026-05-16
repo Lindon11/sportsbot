@@ -1,0 +1,32 @@
+name: PHP Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  php-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, gd, sqlite3
+
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y libpng-dev libjpeg-dev zlib1g-dev
+
+      - name: Validate PHP syntax
+        run: |
+          php -l functions.php
+
+      - name: Run tests
+        run: |
+          php tests/multisport_test.php
+          php tests/card_scheduler_test.php
+          php tests/v2_foundation_test.php

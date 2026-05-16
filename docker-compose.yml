@@ -1,0 +1,44 @@
+services:
+  bot:
+    build: .
+    container_name: footballbot-admin
+    ports:
+      - "8010:8010"
+    volumes:
+      - .:/app
+      - generated:/app/generated
+      - cache:/app/cache
+      - logs:/app/logs
+    environment:
+      - BOT_FONT_REGULAR=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      - BOT_FONT_BOLD=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+    restart: unless-stopped
+
+  cron:
+    build: .
+    container_name: footballbot-cron
+    depends_on:
+      - bot
+    volumes:
+      - .:/app
+      - generated:/app/generated
+      - cache:/app/cache
+      - logs:/app/logs
+    environment:
+      - BOT_FONT_REGULAR=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+      - BOT_FONT_BOLD=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        while true; do
+          date '+[%Y-%m-%d %H:%M:%S] cron tick' >> /app/logs/cron.log
+          /usr/local/bin/php /app/check_live.php >> /app/logs/cron.log 2>&1
+          sleep 120
+        done
+    restart: unless-stopped
+
+volumes:
+  generated:
+  cache:
+  logs:
