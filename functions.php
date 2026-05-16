@@ -4413,6 +4413,36 @@ function fb_fetch_event_tv_channels(array $config, SQLite3 $db, string $eventId)
     return $channels;
 }
 
+function fb_lookup_event_tv(array $config, SQLite3 $db, string $eventId): array
+{
+    // Returns raw rows from TheSportsDB /lookup/event_tv/{idEvent}
+    if ($eventId === '' || empty($config['tv']['include_in_match_previews'])) {
+        return [];
+    }
+
+    try {
+        $payload = fb_thesportsdb_get(
+            $config,
+            $db,
+            '/lookup/event_tv/' . rawurlencode($eventId),
+            (int) ($config['thesportsdb']['tv_cache_ttl'] ?? 900)
+        );
+
+        // Log raw payload for debugging
+        fb_log('info', 'lookup_event_tv.raw', [
+            'event_id' => $eventId,
+            'payload' => $payload,
+        ]);
+
+        $rows = fb_extract_list($payload, ['lookup', 'tv', 'tvevents', 'events']);
+
+        return is_array($rows) ? $rows : [];
+    } catch (Throwable $e) {
+        fb_log('warning', 'lookup_event_tv failed', ['event_id' => $eventId, 'error' => $e->getMessage()]);
+        return [];
+    }
+}
+
 function fb_tv_daily_alert_time(array $config): string
 {
     $time = trim((string) ($config['tv']['daily_alert_time'] ?? '08:00'));
@@ -4935,30 +4965,10 @@ function fb_prepare_card_matches(array $config, SQLite3 $db, array $events, bool
 
         $eventId = (string) ($match['event_id'] ?? '');
 
-        // 1) Attempt explicit TheSportsDB lookup and log raw response
+        // 1) Attempt explicit TheSportsDB lookup via helper and get raw rows
         $lookupRows = [];
         if ($includeTv && $eventId !== '') {
-            try {
-                $payload = fb_thesportsdb_get(
-                    $config,
-                    $db,
-                    '/lookup/event_tv/' . rawurlencode($eventId),
-                    (int) $config['thesportsdb']['tv_cache_ttl']
-                );
-
-                fb_log('info', 'event_tv_lookup', [
-                    'event_id' => $eventId,
-                    'event_name' => $match['event_name'] ?? ($match['event'] ?? ''),
-                    'sport' => $match['sport'] ?? '',
-                    'league' => $match['league_name'] ?? '',
-                    'payload' => $payload,
-                ]);
-
-                $lookupRows = fb_extract_list($payload, ['lookup', 'tv', 'tvevents', 'events']);
-            } catch (Throwable $e) {
-                fb_log('warning', 'Event TV lookup failed in card prep', ['event_id' => $eventId, 'error' => $e->getMessage()]);
-                $lookupRows = [];
-            }
+            $lookupRows = fb_lookup_event_tv($config, $db, $eventId);
         }
 
         $channels = [];

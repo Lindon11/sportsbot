@@ -1553,17 +1553,23 @@ try {
             }
 
             try {
-                $payload = fb_thesportsdb_get($config, $db, '/lookup/event_tv/' . rawurlencode($eventId), (int) $config['thesportsdb']['tv_cache_ttl']);
-                $rows = fb_extract_list($payload, ['lookup', 'tv', 'tvevents', 'events']);
-                $channels = fb_fetch_event_tv_channels($config, $db, $eventId);
-                $cachedEvents = fb_fetch_tv_events($config, $db);
+                $rows = fb_lookup_event_tv($config, $db, $eventId);
+                $channels = array_values(array_unique(array_filter(array_map(static fn($r) => trim((string) ($r['strChannel'] ?? $r['strChannelName'] ?? '')), $rows))));
+                $normalized = array_map(static fn($r) => [
+                    'name' => trim((string) ($r['strChannel'] ?? $r['strChannelName'] ?? '')),
+                    'id' => trim((string) ($r['idChannel'] ?? '')),
+                    'logo' => trim((string) ($r['strLogo'] ?? '')),
+                    'country' => trim((string) ($r['strCountry'] ?? '')),
+                    'raw' => is_array($r) ? $r : [],
+                ], $rows);
 
-                admin_flash('success', sprintf('Found %d lookup row(s) and %d configured channel(s).', count($rows), count($channels)));
+                admin_flash('success', sprintf('Found %d lookup row(s) and %d normalized channel(s).', count($rows), count($channels)));
                 admin_flash('success', 'Channels: ' . (count($channels) > 0 ? implode(', ', $channels) : 'none'));
-                $snippet = substr(json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 3000);
+                $snippet = substr(json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 3000);
                 admin_flash('info', nl2br(htmlspecialchars($snippet)));
 
                 // Show any cached TV events matching this event id
+                $cachedEvents = fb_fetch_tv_events($config, $db);
                 $matches = array_values(array_filter($cachedEvents, static fn($e) => isset($e['event_id']) && (string)$e['event_id'] === $eventId));
                 if ($matches !== []) {
                     admin_flash('success', 'Matched in cached channel listings: ' . implode(', ', array_map(static fn($m) => $m['configured_channel_label'] ?? $m['channel'] ?? 'unknown', $matches)));
