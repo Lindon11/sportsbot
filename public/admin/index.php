@@ -693,6 +693,7 @@ function admin_save_telegram_topic_labels(array $config, array $post): int
     $chatIds = $post['BOT_TELEGRAM_TOPIC_CHAT_ID'] ?? [];
     $topicIds = $post['BOT_TELEGRAM_TOPIC_ID'] ?? [];
     $names = $post['BOT_TELEGRAM_TOPIC_NAME'] ?? [];
+    $routes = $post['BOT_TELEGRAM_TOPIC_ROUTE'] ?? [];
 
     $chatIds = is_array($chatIds) ? array_values($chatIds) : [];
     $topicIds = is_array($topicIds) ? array_values($topicIds) : [];
@@ -710,6 +711,7 @@ function admin_save_telegram_topic_labels(array $config, array $post): int
         $chatId = trim((string) ($chatIds[$idx] ?? ''));
         $topicId = trim((string) ($topicIds[$idx] ?? ''));
         $name = trim((string) ($names[$idx] ?? ''));
+        $route = trim((string) ($routes[$idx] ?? ''));
 
         if ($chatId === '' || $topicId === '' || $name === '') {
             continue;
@@ -719,7 +721,7 @@ function admin_save_telegram_topic_labels(array $config, array $post): int
             throw new RuntimeException('Discovered topic IDs must be positive numbers.');
         }
 
-        if (fb_save_telegram_topic($db, $chatId, (int) $topicId, $name, [], 'admin_label')) {
+        if (fb_save_telegram_topic($db, $chatId, (int) $topicId, $name, ['route' => $route], 'admin_label')) {
             $saved++;
         }
     }
@@ -3134,9 +3136,9 @@ $activeViewMeta = $adminViews[$activeView] ?? $adminViews['dashboard'];
                         <div class="actions" style="margin-top:14px">
                             <button class="secondary" name="action" value="process_telegram_updates" type="submit">Sync Topic IDs</button>
                         </div>
-                        <?php if ($telegramTopics !== []): ?>
+                            <?php if ($telegramTopics !== []): ?>
                             <table class="table" style="margin-top:14px">
-                                <thead><tr><th>Topic Name</th><th>Full Target</th><th>Topic ID</th><th>Source</th><th>Link</th></tr></thead>
+                                <thead><tr><th>Topic Name</th><th>Assign Route</th><th>Full Target</th><th>Topic ID</th><th>Source</th><th>Link</th></tr></thead>
                                 <tbody>
                                 <?php foreach (array_slice($telegramTopics, 0, 24) as $topic): ?>
                                     <?php
@@ -3145,6 +3147,8 @@ $activeViewMeta = $adminViews[$activeView] ?? $adminViews['dashboard'];
                                         $topicUrl = fb_telegram_topic_url($topicChatId, $topicId);
                                         $topicName = trim((string) ($topic['name'] ?? ''));
                                         $topicFallback = 'Topic ' . $topicId;
+                                        $topicRoute = trim((string) ($topic['route'] ?? ''));
+                                        $routeOptions = ['' => '— None —', 'LIVE_NOW' => 'LIVE_NOW', 'FIXTURES_TODAY' => 'FIXTURES_TODAY', 'TV_GUIDE' => 'TV_GUIDE', 'LEAGUE_TABLES' => 'LEAGUE_TABLES', 'FOOTBALL' => 'FOOTBALL', 'BASKETBALL' => 'BASKETBALL', 'MMA' => 'MMA'];
                                     ?>
                                     <tr>
                                         <td>
@@ -3154,6 +3158,13 @@ $activeViewMeta = $adminViews[$activeView] ?? $adminViews['dashboard'];
                                             <?php if ($topicName === ''): ?>
                                                 <small class="muted">Name unknown; label it here or send /topic Name inside the topic.</small>
                                             <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <select name="BOT_TELEGRAM_TOPIC_ROUTE[]">
+                                                <?php foreach ($routeOptions as $val => $label): ?>
+                                                    <option value="<?= htmlspecialchars($val) ?>" <?= $topicRoute === $val ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
                                         </td>
                                         <td><code><?= htmlspecialchars($topicChatId . ':' . $topicId) ?></code></td>
                                         <td><?= $topicId ?></td>

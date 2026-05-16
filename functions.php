@@ -283,6 +283,7 @@ function fb_open_db(array $config): SQLite3
             chat_id TEXT NOT NULL,
             message_thread_id INTEGER NOT NULL,
             name TEXT,
+            route TEXT,
             icon_color INTEGER,
             icon_custom_emoji_id TEXT,
             source TEXT NOT NULL DEFAULT "update",
@@ -322,6 +323,7 @@ function fb_open_db(array $config): SQLite3
     fb_db_ensure_column($db, 'sent_alerts', 'sport', 'TEXT');
     fb_db_ensure_column($db, 'card_dispatches', 'page_no', 'INTEGER NOT NULL DEFAULT 1');
     fb_db_ensure_column($db, 'telegram_outbox', 'message_thread_id', 'INTEGER');
+    fb_db_ensure_column($db, 'telegram_topics', 'route', 'TEXT');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_event_state_sport ON event_state (sport)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_sent_alerts_sport ON sent_alerts (sport)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_coverage_leagues_sport ON coverage_leagues (sport, enabled)');
@@ -1167,11 +1169,12 @@ function fb_save_telegram_topic(SQLite3 $db, string $chatId, mixed $messageThrea
     fb_execute(
         $db,
         'INSERT INTO telegram_topics (
-            chat_id, message_thread_id, name, icon_color, icon_custom_emoji_id, source, first_seen_at, updated_at
+            chat_id, message_thread_id, name, route, icon_color, icon_custom_emoji_id, source, first_seen_at, updated_at
         ) VALUES (
-            :chat_id, :message_thread_id, :name, :icon_color, :icon_custom_emoji_id, :source, :first_seen_at, :updated_at
+            :chat_id, :message_thread_id, :name, :route, :icon_color, :icon_custom_emoji_id, :source, :first_seen_at, :updated_at
         ) ON CONFLICT(chat_id, message_thread_id) DO UPDATE SET
             name = CASE WHEN excluded.name != "" THEN excluded.name ELSE telegram_topics.name END,
+            route = CASE WHEN excluded.route != "" THEN excluded.route ELSE telegram_topics.route END,
             icon_color = CASE WHEN excluded.icon_color IS NOT NULL THEN excluded.icon_color ELSE telegram_topics.icon_color END,
             icon_custom_emoji_id = CASE WHEN excluded.icon_custom_emoji_id != "" THEN excluded.icon_custom_emoji_id ELSE telegram_topics.icon_custom_emoji_id END,
             source = excluded.source,
@@ -1183,6 +1186,7 @@ function fb_save_telegram_topic(SQLite3 $db, string $chatId, mixed $messageThrea
             ':icon_color' => isset($meta['icon_color']) && is_numeric((string) $meta['icon_color']) ? (int) $meta['icon_color'] : null,
             ':icon_custom_emoji_id' => trim((string) ($meta['icon_custom_emoji_id'] ?? '')),
             ':source' => $source,
+            ':route' => trim((string) ($meta['route'] ?? '')),
             ':first_seen_at' => fb_now(),
             ':updated_at' => fb_now(),
         ]
@@ -1203,7 +1207,7 @@ function fb_list_telegram_topics(SQLite3 $db, ?string $chatId = null, int $limit
     }
 
     $stmt = $db->prepare(
-        'SELECT chat_id, message_thread_id, name, icon_color, icon_custom_emoji_id, source, first_seen_at, updated_at
+        'SELECT chat_id, message_thread_id, name, route, icon_color, icon_custom_emoji_id, source, first_seen_at, updated_at
          FROM telegram_topics
          ' . $where . '
          ORDER BY updated_at DESC, message_thread_id ASC

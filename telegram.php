@@ -137,7 +137,8 @@ function fb_telegram_route_targets(array $config, ?string $sport = null): array
     $routes = $config['telegram']['routes'] ?? [];
     $defaultTargets = fb_telegram_default_targets($config);
 
-    if (!is_array($routes) || trim((string) $sport) === '') {
+    // If no specific routes configured or sport not provided, return defaults
+    if (!is_array($routes) && trim((string) $sport) === '') {
         return $defaultTargets;
     }
 
@@ -158,11 +159,71 @@ function fb_telegram_route_targets(array $config, ?string $sport = null): array
 
         if (array_intersect($wantedKeys, $routeKeys) !== []) {
             $routeTargets = fb_telegram_targets_from_value($routeValue);
-            return $routeTargets !== [] ? $routeTargets : $defaultTargets;
+            $selected = $routeTargets !== [] ? $routeTargets : $defaultTargets;
+
+            // Merge with discovered topics assigned to this route (backward-compatible)
+            $merged = [];
+            foreach ($selected as $t) {
+                $merged[fb_telegram_target_key($t)] = $t;
+            }
+
+            if (is_file($config['paths']['state_db'])) {
+                try {
+                    $db = fb_open_db($config);
+                    $topics = fb_list_telegram_topics($db, null, 500);
+                    $routeRequested = strtoupper(trim((string) $sport));
+                    $routeRequestedKey = strtoupper(fb_sport_key((string) $sport));
+
+                    foreach ($topics as $topic) {
+                        $topicRoute = strtoupper(trim((string) ($topic['route'] ?? '')));
+                        if ($topicRoute === '') {
+                            continue;
+                        }
+
+                        if ($topicRoute === $routeRequested || $topicRoute === $routeRequestedKey) {
+                            $t = ['chat_id' => (string) $topic['chat_id'], 'message_thread_id' => (int) $topic['message_thread_id']];
+                            $merged[fb_telegram_target_key($t)] = $t;
+                        }
+                    }
+                } catch (Throwable) {
+                    // ignore DB errors
+                }
+            }
+
+            return array_values($merged);
         }
     }
 
-    return $defaultTargets;
+    // If no explicit config route matched, still include any assigned topics for the route
+    $targets = [];
+    foreach ($defaultTargets as $t) {
+        $targets[fb_telegram_target_key($t)] = $t;
+    }
+
+    if (is_file($config['paths']['state_db']) && trim((string) $sport) !== '') {
+        try {
+            $db = fb_open_db($config);
+            $topics = fb_list_telegram_topics($db, null, 500);
+            $routeRequested = strtoupper(trim((string) $sport));
+            $routeRequestedKey = strtoupper(fb_sport_key((string) $sport));
+
+            foreach ($topics as $topic) {
+                $topicRoute = strtoupper(trim((string) ($topic['route'] ?? '')));
+                if ($topicRoute === '') {
+                    continue;
+                }
+
+                if ($topicRoute === $routeRequested || $topicRoute === $routeRequestedKey) {
+                    $t = ['chat_id' => (string) $topic['chat_id'], 'message_thread_id' => (int) $topic['message_thread_id']];
+                    $targets[fb_telegram_target_key($t)] = $t;
+                }
+            }
+        } catch (Throwable) {
+            // ignore
+        }
+    }
+
+    return array_values($targets);
 }
 
 function fb_telegram_route_chat_ids(array $config, ?string $sport = null): array
