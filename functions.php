@@ -6112,7 +6112,6 @@ function fb_card_match_caption(array $page): string
             $meta[] = '📺 ' . $tv;
         }
     }
-    ];
 
     if ($venue !== '') {
         $meta[] = '🏟 ' . $venue;
