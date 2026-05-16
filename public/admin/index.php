@@ -1565,15 +1565,38 @@ try {
 
                 admin_flash('success', sprintf('Found %d lookup row(s) and %d normalized channel(s).', count($rows), count($channels)));
                 admin_flash('success', 'Channels: ' . (count($channels) > 0 ? implode(', ', $channels) : 'none'));
-                $snippet = substr(json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 3000);
-                admin_flash('info', nl2br(htmlspecialchars($snippet)));
 
-                // Show any cached TV events matching this event id
+                // Pretty-print JSON payload inside a scrollable <pre> and add a copy button.
+                $json = json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $preId = 'debug-json-' . preg_replace('/[^a-z0-9_-]/i', '_', $eventId ?: bin2hex(random_bytes(4)));
+
+                // Try to find an event name from cached TV events as a best-effort
                 $cachedEvents = fb_fetch_tv_events($config, $db);
                 $matches = array_values(array_filter($cachedEvents, static fn($e) => isset($e['event_id']) && (string)$e['event_id'] === $eventId));
+                $eventName = '';
                 if ($matches !== []) {
-                    admin_flash('success', 'Matched in cached channel listings: ' . implode(', ', array_map(static fn($m) => $m['configured_channel_label'] ?? $m['channel'] ?? 'unknown', $matches)));
+                    $eventName = (string) ($matches[0]['event'] ?? $matches[0]['event_name'] ?? '');
+                } else {
+                    // Fallback: try to extract from the lookup rows themselves
+                    foreach ($rows as $r) {
+                        if (is_array($r) && !empty($r['strEvent'])) {
+                            $eventName = (string) $r['strEvent'];
+                            break;
+                        }
+                    }
                 }
+
+                $channelsList = count($channels) > 0 ? implode(', ', $channels) : 'none';
+
+                $html = '';
+                $html .= '<div class="admin-debug-tv">';
+                $html .= '<div style="margin-bottom:6px;"><strong>Event ID:</strong> ' . htmlspecialchars($eventId) . ' &nbsp; <strong>Event name:</strong> ' . htmlspecialchars($eventName) . '</div>';
+                $html .= '<div style="margin-bottom:8px;"><strong>Channel count:</strong> ' . count($rows) . ' &nbsp; <strong>Extracted channels:</strong> ' . htmlspecialchars($channelsList) . '</div>';
+                $html .= '<div style="margin-bottom:8px;"><button type="button" class="btn btn-sm btn-light" onclick="(function(){var t=document.getElementById(\'' . $preId . '\'); if(!t) return; navigator.clipboard.writeText(t.innerText).then(function(){alert(' . json_encode('JSON copied to clipboard') . ');}).catch(function(){alert(' . json_encode('Copy failed') . ');}); })()">Copy JSON</button></div>';
+                $html .= '<pre id="' . $preId . '" style="max-height:380px;overflow:auto;padding:12px;border-radius:6px;background:var(--surface-2);color:var(--text);">' . htmlspecialchars(substr($json, 0, 30000)) . '</pre>';
+                $html .= '</div>';
+
+                admin_flash('html', $html);
             } catch (Throwable $e) {
                 admin_flash('error', 'TV debug failed: ' . $e->getMessage());
             }
@@ -2727,8 +2750,13 @@ $activeViewMeta = $adminViews[$activeView] ?? $adminViews['dashboard'];
     <?php if ($flash !== []): ?>
         <div class="flash">
             <?php foreach ($flash as $message): ?>
-                <div class="notice <?= htmlspecialchars((string) $message['type']) ?>">
-                    <?= htmlspecialchars((string) $message['message']) ?>
+                <?php $type = htmlspecialchars((string) $message['type']); ?>
+                <div class="notice <?= $type ?>">
+                    <?php if (($message['type'] ?? '') === 'html'): ?>
+                        <?= $message['message'] ?>
+                    <?php else: ?>
+                        <?= htmlspecialchars((string) $message['message']) ?>
+                    <?php endif; ?>
                 </div>
             <?php endforeach; ?>
         </div>
