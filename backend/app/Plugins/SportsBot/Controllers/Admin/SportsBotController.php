@@ -2,6 +2,7 @@
 
 namespace App\Plugins\SportsBot\Controllers\Admin;
 
+use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
@@ -19,6 +20,7 @@ use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
+use App\Plugins\SportsBot\Services\FixtureQueueService;
 use App\Plugins\SportsBot\Services\SportsFixturePublisher;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
@@ -26,6 +28,7 @@ use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
+use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -434,6 +437,58 @@ class SportsBotController extends Controller
                 'sent' => false,
                 'error' => $error->getMessage(),
             ], 422);
+        }
+    }
+
+    public function fixtureQueue(FixtureQueueService $queue): JsonResponse
+    {
+        $today = Carbon::today()->toDateString();
+
+        return response()->json([
+            'sports' => SportsFixtureConfig::all(),
+            'queue_counts' => [
+                'total' => SportsBotFixtureQueue::count(),
+                'draft' => SportsBotFixtureQueue::where('status', SportsBotFixtureQueue::STATUS_DRAFT)->count(),
+                'ready' => SportsBotFixtureQueue::where('status', SportsBotFixtureQueue::STATUS_READY)->count(),
+                'sent' => SportsBotFixtureQueue::where('status', SportsBotFixtureQueue::STATUS_SENT)->count(),
+                'failed' => SportsBotFixtureQueue::where('status', SportsBotFixtureQueue::STATUS_FAILED)->count(),
+            ],
+            'publish_today' => SportsBotFixtureQueue::query()
+                ->where('publish_date', $today)
+                ->ready()
+                ->count(),
+            'recent_items' => SportsBotFixtureQueue::query()
+                ->latest('updated_at')
+                ->limit(20)
+                ->get()
+                ->toArray(),
+        ]);
+    }
+
+    public function fixtureQueuePrefetch(FixtureQueueService $queue): JsonResponse
+    {
+        try {
+            return response()->json($queue->prefetchAll());
+        } catch (Throwable $error) {
+            return response()->json(['error' => $error->getMessage()], 422);
+        }
+    }
+
+    public function fixtureQueueRender(FixtureQueueService $queue): JsonResponse
+    {
+        try {
+            return response()->json($queue->renderAll());
+        } catch (Throwable $error) {
+            return response()->json(['error' => $error->getMessage()], 422);
+        }
+    }
+
+    public function fixtureQueuePublish(FixtureQueueService $queue): JsonResponse
+    {
+        try {
+            return response()->json($queue->publishAll());
+        } catch (Throwable $error) {
+            return response()->json(['error' => $error->getMessage()], 422);
         }
     }
 

@@ -7,6 +7,10 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/status', [SportsBotController::class, 'status'])->name('status');
     Route::post('/run', [SportsBotController::class, 'run'])->name('run');
     Route::post('/test-route', [SportsBotController::class, 'testRoute'])->name('test-route');
+    Route::get('/fixture-queue', [SportsBotController::class, 'fixtureQueue'])->name('fixture-queue');
+    Route::post('/fixture-queue/prefetch', [SportsBotController::class, 'fixtureQueuePrefetch'])->name('fixture-queue.prefetch');
+    Route::post('/fixture-queue/render', [SportsBotController::class, 'fixtureQueueRender'])->name('fixture-queue.render');
+    Route::post('/fixture-queue/publish', [SportsBotController::class, 'fixtureQueuePublish'])->name('fixture-queue.publish');
     Route::post('/fixtures-today/preview', [SportsBotController::class, 'fixturesTodayPreview'])->name('fixtures-today.preview');
     Route::post('/fixtures-today/send', [SportsBotController::class, 'fixturesTodaySend'])->name('fixtures-today.send');
     Route::post('/football-fixtures/preview', [SportsBotController::class, 'footballFixturesPreview'])->name('football-fixtures.preview');
