@@ -132,19 +132,19 @@ function fb_telegram_default_chat_ids(array $config): array
     )));
 }
 
-function fb_telegram_route_targets(array $config, ?string $sport = null): array
+function fb_telegram_route_targets(array $config, ?string $route = null): array
 {
     $routes = $config['telegram']['routes'] ?? [];
     $defaultTargets = fb_telegram_default_targets($config);
 
     // If no specific routes configured or sport not provided, return defaults
-    if (!is_array($routes) && trim((string) $sport) === '') {
+    if (!is_array($routes) && trim((string) $route) === '') {
         return $defaultTargets;
     }
 
     $wantedKeys = array_filter(array_unique([
-        fb_sport_key((string) $sport),
-        fb_sport_key(fb_canonical_sport((string) $sport, (string) $sport)),
+        fb_sport_key((string) $route),
+        fb_sport_key(fb_canonical_sport((string) $route, (string) $route)),
     ]));
 
     foreach ($routes as $routeSport => $routeValue) {
@@ -171,8 +171,8 @@ function fb_telegram_route_targets(array $config, ?string $sport = null): array
                 try {
                     $db = fb_open_db($config);
                     $topics = fb_list_telegram_topics($db, null, 500);
-                    $routeRequested = strtoupper(trim((string) $sport));
-                    $routeRequestedKey = strtoupper(fb_sport_key((string) $sport));
+                    $routeRequested = strtoupper(trim((string) $route));
+                    $routeRequestedKey = strtoupper(fb_sport_key((string) $route));
 
                     foreach ($topics as $topic) {
                         $topicRoute = strtoupper(trim((string) ($topic['route'] ?? '')));
@@ -200,12 +200,12 @@ function fb_telegram_route_targets(array $config, ?string $sport = null): array
         $targets[fb_telegram_target_key($t)] = $t;
     }
 
-    if (is_file($config['paths']['state_db']) && trim((string) $sport) !== '') {
+    if (is_file($config['paths']['state_db']) && trim((string) $route) !== '') {
         try {
             $db = fb_open_db($config);
             $topics = fb_list_telegram_topics($db, null, 500);
-            $routeRequested = strtoupper(trim((string) $sport));
-            $routeRequestedKey = strtoupper(fb_sport_key((string) $sport));
+            $routeRequested = strtoupper(trim((string) $route));
+            $routeRequestedKey = strtoupper(fb_sport_key((string) $route));
 
             foreach ($topics as $topic) {
                 $topicRoute = strtoupper(trim((string) ($topic['route'] ?? '')));
@@ -226,12 +226,82 @@ function fb_telegram_route_targets(array $config, ?string $sport = null): array
     return array_values($targets);
 }
 
-function fb_telegram_route_chat_ids(array $config, ?string $sport = null): array
+function fb_telegram_route_chat_ids(array $config, ?string $route = null): array
 {
     return array_values(array_unique(array_map(
         static fn (array $target): string => (string) $target['chat_id'],
-        fb_telegram_route_targets($config, $sport)
+        fb_telegram_route_targets($config, $route)
     )));
+}
+
+function fb_get_route_target(array $config, ?string $route = null): array
+{
+    $route = trim((string) $route);
+    if ($route === '') {
+        $route = 'default';
+    }
+
+    $targets = fb_telegram_route_targets($config, $route);
+    $routeKey = fb_sport_key($route);
+    $isDefaultRoute = $routeKey === '' || $routeKey === 'default';
+    $assigned = $isDefaultRoute;
+
+    if (!$assigned) {
+        $routes = $config['telegram']['routes'] ?? [];
+        if (is_array($routes)) {
+            $wantedKeys = array_filter(array_unique([
+                fb_sport_key($route),
+                fb_sport_key(fb_canonical_sport($route, $route)),
+            ]));
+
+            foreach ($routes as $routeName => $routeValue) {
+                if (fb_sport_key((string) $routeName) === 'default') {
+                    continue;
+                }
+
+                $routeKeys = array_filter(array_unique([
+                    fb_sport_key((string) $routeName),
+                    fb_sport_key(fb_canonical_sport((string) $routeName, (string) $routeName)),
+                ]));
+
+                if (array_intersect($wantedKeys, $routeKeys) !== [] && fb_telegram_targets_from_value($routeValue) !== []) {
+                    $assigned = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!$assigned && is_file($config['paths']['state_db'])) {
+        try {
+            $db = fb_open_db($config);
+            $topics = fb_list_telegram_topics($db, null, 500);
+            $routeRequested = strtoupper($route);
+            $routeRequestedKey = strtoupper(fb_sport_key($route));
+
+            foreach ($topics as $topic) {
+                $topicRoute = strtoupper(trim((string) ($topic['route'] ?? '')));
+                if ($topicRoute === '') {
+                    continue;
+                }
+
+                if ($topicRoute === $routeRequested || $topicRoute === $routeRequestedKey) {
+                    $assigned = true;
+                    break;
+                }
+            }
+        } catch (Throwable) {
+            // Keep fallback behaviour if topic lookup fails.
+        }
+    }
+
+    return [
+        'route' => $route,
+        'targets' => $targets,
+        'assigned' => $assigned,
+        'fallback' => !$assigned,
+        'warning' => !$assigned ? 'Route not assigned — using General topic.' : '',
+    ];
 }
 
 function fb_telegram_send_photo(array $config, string $imagePath, string $caption = '', ?int $messageThreadId = null, array $options = []): array
@@ -438,6 +508,8 @@ function fb_telegram_edit_message_text(array $config, string $chatId, int $messa
 function fb_telegram_send_message_to_targets(array $config, string $message, array $targets, array $options = []): array
 {
     $results = [];
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    unset($options['_route_meta']);
 
     foreach (fb_telegram_targets_from_value($targets) as $target) {
         $key = fb_telegram_target_key($target);
@@ -449,10 +521,22 @@ function fb_telegram_send_message_to_targets(array $config, string $message, arr
                 $target['message_thread_id'] ?? null,
                 $options
             );
+            fb_log('info', 'telegram.route_send', [
+                'route' => (string) ($routeMeta['route'] ?? 'default'),
+                'chat_id' => (string) ($target['chat_id'] ?? ''),
+                'message_thread_id' => $target['message_thread_id'] ?? null,
+                'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+                'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+                'fallback' => !empty($routeMeta['fallback']),
+                'response' => $results[$key],
+            ]);
         } catch (Throwable $e) {
             fb_log('warning', 'Failed to send message to chat', [
+                'route' => (string) ($routeMeta['route'] ?? 'default'),
                 'chat_id' => $target['chat_id'],
                 'message_thread_id' => $target['message_thread_id'] ?? null,
+                'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+                'event_id' => (string) ($routeMeta['event_id'] ?? ''),
                 'error' => $e->getMessage(),
             ]);
             $results[$key] = ['ok' => false, 'error' => $e->getMessage()];
@@ -469,12 +553,20 @@ function fb_telegram_send_message_to_chats(array $config, string $message, array
 
 function fb_telegram_send_message_all_groups(array $config, string $message, array $options = []): array
 {
-    return fb_telegram_send_message_to_targets($config, $message, fb_telegram_default_targets($config), $options);
+    return fb_telegram_send_message_route($config, $message, 'default', $options);
 }
 
-function fb_telegram_send_message_route(array $config, string $message, ?string $sport = null, array $options = []): array
+function fb_telegram_send_message_route(array $config, string $message, ?string $route = null, array $options = []): array
 {
-    return fb_telegram_send_message_to_targets($config, $message, fb_telegram_route_targets($config, $sport), $options);
+    $routeTarget = fb_get_route_target($config, $route);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    $options['_route_meta'] = $routeMeta + [
+        'route' => (string) ($routeTarget['route'] ?? 'default'),
+        'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+        'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+        'fallback' => !empty($routeTarget['fallback']),
+    ];
+    return fb_telegram_send_message_to_targets($config, $message, $routeTarget['targets'] ?? [], $options);
 }
 
 function fb_telegram_send_error_alert(array $config, string $message, array $context = []): void
@@ -502,17 +594,27 @@ function fb_telegram_send_error_alert(array $config, string $message, array $con
 
 function fb_telegram_send_photo_all_groups(array $config, string $imagePath, string $caption = '', array $options = []): array
 {
-    return fb_telegram_send_photo_to_targets($config, $imagePath, $caption, fb_telegram_default_targets($config), $options);
+    return fb_telegram_send_photo_route($config, $imagePath, $caption, 'default', $options);
 }
 
-function fb_telegram_send_photo_route(array $config, string $imagePath, string $caption = '', ?string $sport = null, array $options = []): array
+function fb_telegram_send_photo_route(array $config, string $imagePath, string $caption = '', ?string $route = null, array $options = []): array
 {
-    return fb_telegram_send_photo_to_targets($config, $imagePath, $caption, fb_telegram_route_targets($config, $sport), $options);
+    $routeTarget = fb_get_route_target($config, $route);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    $options['_route_meta'] = $routeMeta + [
+        'route' => (string) ($routeTarget['route'] ?? 'default'),
+        'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+        'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+        'fallback' => !empty($routeTarget['fallback']),
+    ];
+    return fb_telegram_send_photo_to_targets($config, $imagePath, $caption, $routeTarget['targets'] ?? [], $options);
 }
 
 function fb_telegram_send_photo_to_targets(array $config, string $imagePath, string $caption, array $targets, array $options = []): array
 {
     $results = [];
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    unset($options['_route_meta']);
 
     foreach (fb_telegram_targets_from_value($targets) as $target) {
         $key = fb_telegram_target_key($target);
@@ -525,10 +627,22 @@ function fb_telegram_send_photo_to_targets(array $config, string $imagePath, str
                 $target['message_thread_id'] ?? null,
                 $options
             );
+            fb_log('info', 'telegram.route_send', [
+                'route' => (string) ($routeMeta['route'] ?? 'default'),
+                'chat_id' => (string) ($target['chat_id'] ?? ''),
+                'message_thread_id' => $target['message_thread_id'] ?? null,
+                'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+                'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+                'fallback' => !empty($routeMeta['fallback']),
+                'response' => $results[$key],
+            ]);
         } catch (Throwable $e) {
             fb_log('warning', 'Failed to send photo to chat', [
+                'route' => (string) ($routeMeta['route'] ?? 'default'),
                 'chat_id' => $target['chat_id'],
                 'message_thread_id' => $target['message_thread_id'] ?? null,
+                'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+                'event_id' => (string) ($routeMeta['event_id'] ?? ''),
                 'error' => $e->getMessage(),
             ]);
             $results[$key] = ['ok' => false, 'error' => $e->getMessage()];

@@ -694,6 +694,8 @@ function fb_outbox_finish(SQLite3 $db, string $outboxKey, string $status, ?strin
 function fb_telegram_send_photo_to_outbox(array $config, SQLite3 $db, string $scope, string $chatId, string $imagePath, string $caption = '', ?string $alertKey = null, ?int $messageThreadId = null, array $options = []): array
 {
     $outboxKey = fb_outbox_key($scope, 'sendPhoto', $chatId, $messageThreadId);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    unset($options['_route_meta']);
 
     if (fb_outbox_sent($db, $outboxKey)) {
         return ['ok' => true, 'skipped' => true, 'outbox_key' => $outboxKey];
@@ -703,16 +705,35 @@ function fb_telegram_send_photo_to_outbox(array $config, SQLite3 $db, string $sc
         'scope' => $scope,
         'file' => basename($imagePath),
         'options' => $options,
+        'route_meta' => $routeMeta,
     ]);
 
     try {
         $result = fb_telegram_send_photo_to($config, $imagePath, $caption, $chatId, $messageThreadId, $options);
         $messageId = (string) ($result['result']['message_id'] ?? '');
         fb_outbox_finish($db, $outboxKey, 'sent', $messageId !== '' ? $messageId : null, null);
+        fb_log('info', 'telegram.route_send', [
+            'route' => (string) ($routeMeta['route'] ?? 'default'),
+            'chat_id' => $chatId,
+            'message_thread_id' => $messageThreadId,
+            'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+            'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+            'fallback' => !empty($routeMeta['fallback']),
+            'response' => $result,
+        ]);
 
         return $result + ['outbox_key' => $outboxKey];
     } catch (Throwable $error) {
         fb_outbox_finish($db, $outboxKey, 'failed', null, $error->getMessage());
+        fb_log('warning', 'telegram.route_send_failed', [
+            'route' => (string) ($routeMeta['route'] ?? 'default'),
+            'chat_id' => $chatId,
+            'message_thread_id' => $messageThreadId,
+            'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+            'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+            'fallback' => !empty($routeMeta['fallback']),
+            'error' => $error->getMessage(),
+        ]);
 
         return ['ok' => false, 'error' => $error->getMessage(), 'outbox_key' => $outboxKey];
     }
@@ -721,6 +742,8 @@ function fb_telegram_send_photo_to_outbox(array $config, SQLite3 $db, string $sc
 function fb_telegram_send_message_to_outbox(array $config, SQLite3 $db, string $scope, string $chatId, string $message, ?string $alertKey = null, ?int $messageThreadId = null, array $options = []): array
 {
     $outboxKey = fb_outbox_key($scope, 'sendMessage', $chatId, $messageThreadId);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    unset($options['_route_meta']);
 
     if (fb_outbox_sent($db, $outboxKey)) {
         return ['ok' => true, 'skipped' => true, 'outbox_key' => $outboxKey];
@@ -729,16 +752,35 @@ function fb_telegram_send_message_to_outbox(array $config, SQLite3 $db, string $
     fb_outbox_start($db, $outboxKey, $alertKey, 'sendMessage', $chatId, $messageThreadId, $message, null, null, [
         'scope' => $scope,
         'options' => $options,
+        'route_meta' => $routeMeta,
     ]);
 
     try {
         $result = fb_telegram_send_message($config, $message, $chatId, $messageThreadId, $options);
         $messageId = (string) ($result['result']['message_id'] ?? '');
         fb_outbox_finish($db, $outboxKey, 'sent', $messageId !== '' ? $messageId : null, null);
+        fb_log('info', 'telegram.route_send', [
+            'route' => (string) ($routeMeta['route'] ?? 'default'),
+            'chat_id' => $chatId,
+            'message_thread_id' => $messageThreadId,
+            'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+            'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+            'fallback' => !empty($routeMeta['fallback']),
+            'response' => $result,
+        ]);
 
         return $result + ['outbox_key' => $outboxKey];
     } catch (Throwable $error) {
         fb_outbox_finish($db, $outboxKey, 'failed', null, $error->getMessage());
+        fb_log('warning', 'telegram.route_send_failed', [
+            'route' => (string) ($routeMeta['route'] ?? 'default'),
+            'chat_id' => $chatId,
+            'message_thread_id' => $messageThreadId,
+            'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+            'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+            'fallback' => !empty($routeMeta['fallback']),
+            'error' => $error->getMessage(),
+        ]);
 
         return ['ok' => false, 'error' => $error->getMessage(), 'outbox_key' => $outboxKey];
     }
@@ -755,13 +797,23 @@ function fb_telegram_outbox_all_ok(array $results): bool
     return true;
 }
 
-function fb_telegram_send_photo_route_outbox(array $config, SQLite3 $db, string $scope, string $imagePath, string $caption = '', ?string $sport = null, ?string $alertKey = null, array $options = []): array
+function fb_telegram_send_photo_route_outbox(array $config, SQLite3 $db, string $scope, string $imagePath, string $caption = '', ?string $route = null, ?string $alertKey = null, array $options = []): array
 {
     $results = [];
+    $targetInfo = fb_get_route_target($config, $route);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    $baseRouteMeta = [
+        'route' => (string) ($targetInfo['route'] ?? 'default'),
+        'post_type' => (string) ($routeMeta['post_type'] ?? 'photo'),
+        'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+        'fallback' => !empty($targetInfo['fallback']),
+    ];
 
-    foreach (fb_telegram_route_targets($config, $sport) as $target) {
+    foreach (($targetInfo['targets'] ?? []) as $target) {
         $key = fb_telegram_target_key($target);
-        $results[$key] = fb_telegram_send_photo_to_outbox($config, $db, $scope, (string) $target['chat_id'], $imagePath, $caption, $alertKey, $target['message_thread_id'] ?? null, $options);
+        $results[$key] = fb_telegram_send_photo_to_outbox($config, $db, $scope, (string) $target['chat_id'], $imagePath, $caption, $alertKey, $target['message_thread_id'] ?? null, $options + [
+            '_route_meta' => $baseRouteMeta,
+        ]);
     }
 
     return $results;
@@ -769,23 +821,26 @@ function fb_telegram_send_photo_route_outbox(array $config, SQLite3 $db, string 
 
 function fb_telegram_send_photo_all_groups_outbox(array $config, SQLite3 $db, string $scope, string $imagePath, string $caption = '', ?string $alertKey = null, array $options = []): array
 {
-    $results = [];
-
-    foreach (fb_telegram_default_targets($config) as $target) {
-        $key = fb_telegram_target_key($target);
-        $results[$key] = fb_telegram_send_photo_to_outbox($config, $db, $scope, (string) $target['chat_id'], $imagePath, $caption, $alertKey, $target['message_thread_id'] ?? null, $options);
-    }
-
-    return $results;
+    return fb_telegram_send_photo_route_outbox($config, $db, $scope, $imagePath, $caption, 'default', $alertKey, $options);
 }
 
-function fb_telegram_send_message_route_outbox(array $config, SQLite3 $db, string $scope, string $message, ?string $sport = null, ?string $alertKey = null, array $options = []): array
+function fb_telegram_send_message_route_outbox(array $config, SQLite3 $db, string $scope, string $message, ?string $route = null, ?string $alertKey = null, array $options = []): array
 {
     $results = [];
+    $targetInfo = fb_get_route_target($config, $route);
+    $routeMeta = is_array($options['_route_meta'] ?? null) ? $options['_route_meta'] : [];
+    $baseRouteMeta = [
+        'route' => (string) ($targetInfo['route'] ?? 'default'),
+        'post_type' => (string) ($routeMeta['post_type'] ?? 'message'),
+        'event_id' => (string) ($routeMeta['event_id'] ?? ''),
+        'fallback' => !empty($targetInfo['fallback']),
+    ];
 
-    foreach (fb_telegram_route_targets($config, $sport) as $target) {
+    foreach (($targetInfo['targets'] ?? []) as $target) {
         $key = fb_telegram_target_key($target);
-        $results[$key] = fb_telegram_send_message_to_outbox($config, $db, $scope, (string) $target['chat_id'], $message, $alertKey, $target['message_thread_id'] ?? null, $options);
+        $results[$key] = fb_telegram_send_message_to_outbox($config, $db, $scope, (string) $target['chat_id'], $message, $alertKey, $target['message_thread_id'] ?? null, $options + [
+            '_route_meta' => $baseRouteMeta,
+        ]);
     }
 
     return $results;
@@ -793,27 +848,28 @@ function fb_telegram_send_message_route_outbox(array $config, SQLite3 $db, strin
 
 function fb_telegram_send_message_all_groups_outbox(array $config, SQLite3 $db, string $scope, string $message, ?string $alertKey = null, array $options = []): array
 {
-    $results = [];
-
-    foreach (fb_telegram_default_targets($config) as $target) {
-        $key = fb_telegram_target_key($target);
-        $results[$key] = fb_telegram_send_message_to_outbox($config, $db, $scope, (string) $target['chat_id'], $message, $alertKey, $target['message_thread_id'] ?? null, $options);
-    }
-
-    return $results;
+    return fb_telegram_send_message_route_outbox($config, $db, $scope, $message, 'default', $alertKey, $options);
 }
 
 function fb_send_alert_photo_route_and_record(array $config, SQLite3 $db, array $alert, string $imagePath, string $caption): bool
 {
     $alertKey = (string) ($alert['key'] ?? hash('sha256', $caption));
+    $route = (string) ($alert['match']['sport'] ?? '');
     $results = fb_telegram_send_photo_route_outbox(
         $config,
         $db,
         'alert:' . $alertKey,
         $imagePath,
         $caption,
-        $alert['match']['sport'] ?? null,
-        $alertKey
+        $route,
+        $alertKey,
+        [
+            '_route_meta' => [
+                'route' => $route !== '' ? $route : 'default',
+                'post_type' => (string) ($alert['type'] ?? 'ALERT'),
+                'event_id' => (string) ($alert['match']['event_id'] ?? ''),
+            ],
+        ]
     );
 
     if (fb_telegram_outbox_all_ok($results)) {
@@ -829,7 +885,13 @@ function fb_send_alert_photo_route_and_record(array $config, SQLite3 $db, array 
 function fb_send_simple_alert_photo_all_and_record(array $config, SQLite3 $db, array $alert, string $imagePath, string $caption): bool
 {
     $alertKey = (string) ($alert['key'] ?? hash('sha256', $caption));
-    $results = fb_telegram_send_photo_all_groups_outbox($config, $db, 'simple:' . $alertKey, $imagePath, $caption, $alertKey);
+    $results = fb_telegram_send_photo_all_groups_outbox($config, $db, 'simple:' . $alertKey, $imagePath, $caption, $alertKey, [
+        '_route_meta' => [
+            'route' => 'default',
+            'post_type' => (string) ($alert['type'] ?? 'ALERT'),
+            'event_id' => (string) ($alert['match']['event_id'] ?? ''),
+        ],
+    ]);
 
     if (fb_telegram_outbox_all_ok($results)) {
         fb_mark_simple_alert_sent($db, $alertKey, (string) ($alert['type'] ?? 'ALERT'), $alert['meta'] ?? []);
@@ -841,10 +903,16 @@ function fb_send_simple_alert_photo_all_and_record(array $config, SQLite3 $db, a
     return false;
 }
 
-function fb_send_simple_alert_photo_route_and_record(array $config, SQLite3 $db, array $alert, string $imagePath, string $caption, ?string $sport = null): bool
+function fb_send_simple_alert_photo_route_and_record(array $config, SQLite3 $db, array $alert, string $imagePath, string $caption, ?string $route = null): bool
 {
     $alertKey = (string) ($alert['key'] ?? hash('sha256', $caption));
-    $results = fb_telegram_send_photo_route_outbox($config, $db, 'simple:' . $alertKey, $imagePath, $caption, $sport, $alertKey);
+    $results = fb_telegram_send_photo_route_outbox($config, $db, 'simple:' . $alertKey, $imagePath, $caption, $route, $alertKey, [
+        '_route_meta' => [
+            'route' => trim((string) $route) !== '' ? (string) $route : 'default',
+            'post_type' => (string) ($alert['type'] ?? 'ALERT'),
+            'event_id' => (string) ($alert['match']['event_id'] ?? ''),
+        ],
+    ]);
 
     if (fb_telegram_outbox_all_ok($results)) {
         fb_mark_simple_alert_sent($db, $alertKey, (string) ($alert['type'] ?? 'ALERT'), $alert['meta'] ?? []);
@@ -859,7 +927,13 @@ function fb_send_simple_alert_photo_route_and_record(array $config, SQLite3 $db,
 function fb_send_simple_alert_message_all_and_record(array $config, SQLite3 $db, array $alert, string $message, array $options = []): bool
 {
     $alertKey = (string) ($alert['key'] ?? hash('sha256', $message));
-    $results = fb_telegram_send_message_all_groups_outbox($config, $db, 'simple:' . $alertKey, $message, $alertKey, $options);
+    $results = fb_telegram_send_message_all_groups_outbox($config, $db, 'simple:' . $alertKey, $message, $alertKey, $options + [
+        '_route_meta' => [
+            'route' => 'default',
+            'post_type' => (string) ($alert['type'] ?? 'ALERT'),
+            'event_id' => (string) ($alert['match']['event_id'] ?? ''),
+        ],
+    ]);
 
     if (fb_telegram_outbox_all_ok($results)) {
         fb_mark_simple_alert_sent($db, $alertKey, (string) ($alert['type'] ?? 'ALERT'), $alert['meta'] ?? []);
@@ -871,10 +945,16 @@ function fb_send_simple_alert_message_all_and_record(array $config, SQLite3 $db,
     return false;
 }
 
-function fb_send_simple_alert_message_route_and_record(array $config, SQLite3 $db, array $alert, string $message, ?string $sport = null, array $options = []): bool
+function fb_send_simple_alert_message_route_and_record(array $config, SQLite3 $db, array $alert, string $message, ?string $route = null, array $options = []): bool
 {
     $alertKey = (string) ($alert['key'] ?? hash('sha256', $message));
-    $results = fb_telegram_send_message_route_outbox($config, $db, 'simple:' . $alertKey, $message, $sport, $alertKey, $options);
+    $results = fb_telegram_send_message_route_outbox($config, $db, 'simple:' . $alertKey, $message, $route, $alertKey, $options + [
+        '_route_meta' => [
+            'route' => trim((string) $route) !== '' ? (string) $route : 'default',
+            'post_type' => (string) ($alert['type'] ?? 'ALERT'),
+            'event_id' => (string) ($alert['match']['event_id'] ?? ''),
+        ],
+    ]);
 
     if (fb_telegram_outbox_all_ok($results)) {
         fb_mark_simple_alert_sent($db, $alertKey, (string) ($alert['type'] ?? 'ALERT'), $alert['meta'] ?? []);
@@ -5769,26 +5849,46 @@ function fb_record_card_dispatch(SQLite3 $db, string $jobKey, string $chatId, in
 
 function fb_card_chat_ids(array $config, array $job): array
 {
-    $routeKey = (string) ($job['route_key'] ?? 'default');
-    $sport = (string) ($job['sport'] ?? '');
-
-    if ($routeKey === 'default' || $sport === '') {
-        return fb_telegram_default_chat_ids($config);
-    }
-
-    return fb_telegram_route_chat_ids($config, $sport);
+    $route = fb_card_route_name($job);
+    return fb_telegram_route_chat_ids($config, $route);
 }
 
 function fb_card_targets(array $config, array $job): array
 {
     $routeKey = (string) ($job['route_key'] ?? 'default');
-    $sport = (string) ($job['sport'] ?? '');
+    $route = fb_card_route_name($job);
+    $targetInfo = fb_get_route_target($config, $route);
 
-    if ($routeKey === 'default' || $sport === '') {
-        return fb_telegram_default_targets($config);
+    fb_log('info', 'card.route_targets', [
+        'card_type' => (string) ($job['card_type'] ?? ''),
+        'route_key' => $routeKey,
+        'resolved_route' => (string) ($targetInfo['route'] ?? 'default'),
+        'fallback' => !empty($targetInfo['fallback']),
+        'target_count' => count($targetInfo['targets'] ?? []),
+    ]);
+
+    return $targetInfo['targets'] ?? [];
+}
+
+function fb_card_route_name(array $job): string
+{
+    $routeKey = trim((string) ($job['route_key'] ?? 'default'));
+    $cardType = trim((string) ($job['card_type'] ?? ''));
+    $sport = trim((string) ($job['sport'] ?? ''));
+
+    if ($routeKey !== '' && fb_sport_key($routeKey) !== 'default') {
+        return $routeKey;
     }
 
-    return fb_telegram_route_targets($config, $sport);
+    if ($cardType !== '') {
+        return $cardType;
+    }
+
+    if ($sport !== '') {
+        return $sport;
+    }
+
+    return 'default';
 }
 
 function fb_card_caption_compact_lines(array $lines): array
@@ -6337,6 +6437,9 @@ function fb_dispatch_matchday_card_jobs(array $config, SQLite3 $db, bool $dryRun
         $jobKey = (string) $job['job_key'];
         fb_update_card_job_status($db, $jobKey, 'rendering');
         $targets = fb_card_targets($config, $job);
+        $resolvedRoute = fb_card_route_name($job);
+        $routeTargetInfo = fb_get_route_target($config, $resolvedRoute);
+        $routeFallback = !empty($routeTargetInfo['fallback']);
         $jobFailed = false;
 
         foreach ($pages as $idx => $page) {
@@ -6366,6 +6469,7 @@ function fb_dispatch_matchday_card_jobs(array $config, SQLite3 $db, bool $dryRun
 
                 try {
                     $options = fb_card_reply_markup($config, $db, $page, $target);
+                    $eventId = trim((string) (($page['match']['event_id'] ?? $page['event']['event_id'] ?? '')));
                     $result = fb_telegram_send_photo_to_outbox(
                         $config,
                         $db,
@@ -6375,7 +6479,14 @@ function fb_dispatch_matchday_card_jobs(array $config, SQLite3 $db, bool $dryRun
                         fb_card_caption($page),
                         $jobKey,
                         $target['message_thread_id'] ?? null,
-                        $options
+                        $options + [
+                            '_route_meta' => [
+                                'route' => $resolvedRoute !== '' ? $resolvedRoute : 'default',
+                                'post_type' => (string) ($job['card_type'] ?? 'card'),
+                                'event_id' => $eventId,
+                                'fallback' => $routeFallback,
+                            ],
+                        ]
                     );
                     if (($result['ok'] ?? false) !== true) {
                         throw new RuntimeException((string) ($result['error'] ?? 'Telegram card send failed.'));

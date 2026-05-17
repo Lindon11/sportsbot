@@ -270,7 +270,7 @@ try {
             }
             $image = (glob($config['paths']['generated'] . '/sample_*goal*.png') ?: [$config['paths']['generated'] . '/sample_goal.png'])[0];
 
-            fb_telegram_send_photo($config, $image, 'Test alert from football bot');
+            fb_telegram_send_photo_route($config, $image, 'Test alert from football bot', 'default');
             admin_flash('success', 'Telegram test image sent.');
             admin_redirect('system');
         }
@@ -278,7 +278,7 @@ try {
         if ($action === 'send_manual_message') {
             fb_require_env($config, true);
             $message = (string) ($_POST['manual_message'] ?? '');
-            fb_telegram_send_message($config, $message);
+            fb_telegram_send_message_route($config, $message, 'default');
             admin_flash('success', 'Message sent to Telegram.');
             admin_redirect('system');
         }
@@ -398,9 +398,17 @@ try {
                     fb_tv_events_in_window($config, $events, (int) ($config['tv']['lookahead_hours'] ?? 24)),
                     (int) ($config['tv']['lookahead_hours'] ?? 24)
                 );
-                fb_telegram_send_photo_all_groups($config, $imagePath, strtok($message, "\n") ?: 'TV Sports Guide');
+                $routeInfo = fb_get_route_target($config, 'TV_GUIDE');
+                if (!empty($routeInfo['fallback'])) {
+                    admin_flash('info', 'Route not assigned — using General topic.');
+                }
+                fb_telegram_send_photo_route($config, $imagePath, strtok($message, "\n") ?: 'TV Sports Guide', 'TV_GUIDE');
             } else {
-                fb_telegram_send_message_all_groups($config, $message);
+                $routeInfo = fb_get_route_target($config, 'TV_GUIDE');
+                if (!empty($routeInfo['fallback'])) {
+                    admin_flash('info', 'Route not assigned — using General topic.');
+                }
+                fb_telegram_send_message_route($config, $message, 'TV_GUIDE');
             }
             admin_flash('success', sprintf(
                 'TV schedule test sent with %d listed event(s).',
@@ -419,19 +427,16 @@ try {
                 $alert = $alerts[0];
                 $caption = $alert['text'] ?? fb_format_daily_card_message($config, $alert['leagues'] ?? []);
                 $sportRoute = (string) ($alert['meta']['sport'] ?? '');
+                $routeName = $sportRoute !== '' ? $sportRoute : 'default';
+                $routeInfo = fb_get_route_target($config, $routeName);
+                if (!empty($routeInfo['fallback'])) {
+                    admin_flash('info', 'Route not assigned — using General topic.');
+                }
                 if (!empty($config['alerts']['daily_card_send_image'])) {
                     $imagePath = fb_generate_daily_card_image($config, $alert['leagues'] ?? []);
-                    if ($sportRoute !== '') {
-                        fb_telegram_send_photo_route($config, $imagePath, strtok($caption, "\n") ?: "Today's Matches", $sportRoute);
-                    } else {
-                        fb_telegram_send_photo_all_groups($config, $imagePath, strtok($caption, "\n") ?: "Today's Matches");
-                    }
+                    fb_telegram_send_photo_route($config, $imagePath, strtok($caption, "\n") ?: "Today's Matches", $routeName);
                 } else {
-                    if ($sportRoute !== '') {
-                        fb_telegram_send_message_route($config, $caption, $sportRoute);
-                    } else {
-                        fb_telegram_send_message_all_groups($config, $caption);
-                    }
+                    fb_telegram_send_message_route($config, $caption, $routeName);
                 }
                 admin_flash('success', sprintf('Daily card test sent with %d match(es).', $alert['meta']['match_count'] ?? 0));
             }
@@ -443,7 +448,7 @@ try {
             $db = fb_open_db($config);
             $guide = fb_format_customer_guide_message($config, $db);
             $options = !empty($guide['reply_markup']) ? ['reply_markup' => $guide['reply_markup']] : [];
-            fb_telegram_send_message_all_groups($config, $guide['text'], $options);
+            fb_telegram_send_message_route($config, $guide['text'], 'default', $options);
             admin_flash('success', sprintf(
                 'Customer guide test sent: %d live, %d fixtures, %d TV listings.',
                 (int) ($guide['meta']['live_count'] ?? 0),
@@ -468,7 +473,12 @@ try {
                 }
                 $caption = fb_caption_for_alert($alert);
                 $imagePath = fb_generate_alert_image($config, $alert);
-                fb_telegram_send_photo_route($config, $imagePath, $caption, $alert['match']['sport'] ?? null);
+                $routeName = (string) ($alert['match']['sport'] ?? '');
+                $routeInfo = fb_get_route_target($config, $routeName);
+                if (!empty($routeInfo['fallback'])) {
+                    admin_flash('info', 'Route not assigned — using General topic.');
+                }
+                fb_telegram_send_photo_route($config, $imagePath, $caption, $routeName !== '' ? $routeName : 'default');
                 admin_flash('success', sprintf('Kickoff reminder test sent for %s vs %s.', $alert['match']['home_team'] ?? 'Home', $alert['match']['away_team'] ?? 'Away'));
             }
             admin_redirect('publishing');
@@ -493,10 +503,18 @@ try {
 
         if ($action === 'test_telegram_routes') {
             fb_require_env($config, true);
-            fb_telegram_send_message_all_groups($config, 'Route test: default sports digest');
+            fb_telegram_send_message_route($config, 'Route test: default sports digest', 'default');
 
-            foreach (array_values(fb_configured_telegram_route_sports($config)) as $sport) {
-                fb_telegram_send_message_route($config, 'Route test: ' . $sport, $sport);
+            $routes = $config['telegram']['routes'] ?? [];
+            foreach (array_keys(is_array($routes) ? $routes : []) as $routeName) {
+                if (fb_sport_key((string) $routeName) === 'default') {
+                    continue;
+                }
+                $routeInfo = fb_get_route_target($config, (string) $routeName);
+                if (!empty($routeInfo['fallback'])) {
+                    admin_flash('info', 'Route not assigned — using General topic.');
+                }
+                fb_telegram_send_message_route($config, 'Route test: ' . (string) $routeName, (string) $routeName);
             }
 
             admin_flash('success', 'Telegram route test sent.');
@@ -664,6 +682,10 @@ try {
             fb_require_env($config, true);
             $db = fb_open_db($config);
             $msg = fb_format_fixtures_today_message($config, $db);
+            $routeInfo = fb_get_route_target($config, 'FIXTURES_TODAY');
+            if (!empty($routeInfo['fallback'])) {
+                admin_flash('info', 'Route not assigned — using General topic.');
+            }
             $results = fb_telegram_send_message_route($config, $msg['text'], 'FIXTURES_TODAY', [
                 'parse_mode' => 'HTML',
                 'reply_markup' => $msg['reply_markup'],
