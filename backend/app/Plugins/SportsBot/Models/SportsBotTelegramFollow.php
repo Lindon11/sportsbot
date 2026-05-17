@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SportsBotTelegramFollow extends Model
 {
+    protected $table = 'sportsbot_telegram_follows';
+
     protected $fillable = [
         'telegram_user_id',
         'telegram_username',

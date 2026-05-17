@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SportsBotSetting extends Model
 {
+    protected $table = 'sportsbot_settings';
+
     protected $fillable = ['key', 'value'];
 
     protected $casts = [

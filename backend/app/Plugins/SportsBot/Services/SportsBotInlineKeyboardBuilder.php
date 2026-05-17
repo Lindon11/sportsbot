@@ -11,16 +11,16 @@ class SportsBotInlineKeyboardBuilder
     {
         return [
             [
-                ['text' => '⚽ Football', 'callback_data' => 'fixtures_football'],
-                ['text' => '🏀 Basketball', 'callback_data' => 'fixtures_basketball'],
+                ['text' => '⚽ Football', 'callback_data' => 'football'],
+                ['text' => '🏀 Basketball', 'callback_data' => 'basketball'],
             ],
             [
-                ['text' => '🎾 Tennis', 'callback_data' => 'fixtures_tennis'],
-                ['text' => '🥊 MMA/UFC', 'callback_data' => 'fixtures_mma'],
+                ['text' => '🎾 Tennis', 'callback_data' => 'tennis'],
+                ['text' => '🥊 MMA/UFC', 'callback_data' => 'mma'],
             ],
             [
-                ['text' => '🏏 Cricket', 'callback_data' => 'fixtures_cricket'],
-                ['text' => '🏎 F1', 'callback_data' => 'fixtures_formula_1'],
+                ['text' => '🏏 Cricket', 'callback_data' => 'cricket'],
+                ['text' => '🏎 F1', 'callback_data' => 'f1'],
             ],
             [
                 ['text' => '📺 TV Guide', 'callback_data' => 'tv_guide'],
@@ -72,16 +72,89 @@ class SportsBotInlineKeyboardBuilder
     /**
      * @return array<int, array<int, array<string, string>>>
      */
+    public static function sportMenuKeyboard(string $sportKey): array
+    {
+        return [
+            [
+                ['text' => 'Today’s Fixtures', 'callback_data' => 'fixtures_' . $sportKey],
+                ['text' => 'Live Now', 'callback_data' => 'live:' . $sportKey],
+            ],
+            [
+                ['text' => 'Tables', 'callback_data' => 'league_table'],
+                ['text' => 'Top Teams', 'callback_data' => 'top_teams:' . $sportKey],
+            ],
+            [
+                ['text' => '⬅ Back', 'callback_data' => 'back_main'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<int, array<string, string>>>
+     */
+    public static function myTeamsKeyboard(): array
+    {
+        return [
+            [
+                ['text' => 'Add Team', 'callback_data' => 'add_team'],
+                ['text' => '⬅ Back', 'callback_data' => 'back_main'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function callbackDataAudit(): array
+    {
+        return [
+            'football',
+            'basketball',
+            'tennis',
+            'mma',
+            'cricket',
+            'f1',
+            'tv_guide',
+            'live_now',
+            'tables',
+            'my_teams',
+            'fixtures_today',
+            'fixtures_football',
+            'fixtures_basketball',
+            'fixtures_tennis',
+            'fixtures_mma',
+            'fixtures_cricket',
+            'fixtures_formula_1',
+            'back_main',
+            'match_stats:{event_id}',
+            'match_lineups:{event_id}',
+            'match_highlights:{event_id}',
+            'match_tv:{event_id}',
+            'league_table:{league_id}:{page}',
+            'table:{league_id}:{page}',
+            'scorers:{league_id}:{page}',
+            'team:{team_id}',
+            'follow_team:{team_id}',
+            'team_next:{team_id}:{page}',
+            'team_prev:{team_id}:{page}',
+            'top_teams:{sport}',
+            'add_team',
+        ];
+    }
+
+    /**
+     * @return array<int, array<int, array<string, string>>>
+     */
     public static function matchKeyboard(string $eventId, array $event = []): array
     {
         $keyboard = [
             [
-                ['text' => '📊 Match Stats', 'callback_data' => 'stats:' . $eventId],
-                ['text' => '👥 Lineups', 'callback_data' => 'lineups:' . $eventId],
+                ['text' => '📊 Match Stats', 'callback_data' => 'match_stats:' . $eventId],
+                ['text' => '👥 Lineups', 'callback_data' => 'match_lineups:' . $eventId],
             ],
             [
-                ['text' => '▶ Highlights', 'callback_data' => 'highlights:' . $eventId],
-                ['text' => '📺 TV Guide', 'callback_data' => 'tv:' . $eventId],
+                ['text' => '▶ Highlights', 'callback_data' => 'match_highlights:' . $eventId],
+                ['text' => '📺 TV Guide', 'callback_data' => 'match_tv:' . $eventId],
             ],
         ];
 
@@ -101,7 +174,7 @@ class SportsBotInlineKeyboardBuilder
         $leagueId = trim((string) ($event['idLeague'] ?? $event['league_id'] ?? ''));
         if ($leagueId !== '') {
             $keyboard[] = [
-                ['text' => '🏆 League Table', 'callback_data' => 'table:' . $leagueId . ':1'],
+                ['text' => '🏆 League Table', 'callback_data' => 'league_table:' . $leagueId . ':1'],
                 ['text' => '🎯 Top Scorers', 'callback_data' => 'scorers:' . $leagueId . ':1'],
             ];
         }
@@ -219,5 +292,21 @@ class SportsBotInlineKeyboardBuilder
     public static function teamReplyMarkup(string $teamId): array
     {
         return self::inlineKeyboardMarkup(self::teamKeyboard($teamId));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function sportMenuReplyMarkup(string $sportKey): array
+    {
+        return self::inlineKeyboardMarkup(self::sportMenuKeyboard($sportKey));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function myTeamsReplyMarkup(): array
+    {
+        return self::inlineKeyboardMarkup(self::myTeamsKeyboard());
     }
 }

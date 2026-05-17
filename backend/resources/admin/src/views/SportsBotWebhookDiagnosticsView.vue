@@ -73,6 +73,18 @@
         <p class="text-slate-400 text-sm">Last callback_data</p>
         <p class="text-white font-semibold mt-2 break-all">{{ diagnostics.last_callback_data || '-' }}</p>
       </div>
+      <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
+        <p class="text-slate-400 text-sm">Last Callback Action</p>
+        <p class="text-white font-semibold mt-2 break-all">{{ diagnostics.last_callback_action || '-' }}</p>
+      </div>
+      <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
+        <p class="text-slate-400 text-sm">Last Callback Handler</p>
+        <p class="text-white font-semibold mt-2 break-all">{{ diagnostics.last_callback_handler || '-' }}</p>
+      </div>
+      <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
+        <p class="text-slate-400 text-sm">Last Callback Error</p>
+        <p class="text-white font-semibold mt-2 break-all">{{ diagnostics.last_callback_error || 'None' }}</p>
+      </div>
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
@@ -106,6 +118,7 @@
             <tr>
               <th class="text-left py-2">Received</th>
               <th class="text-left py-2">callback_data</th>
+              <th class="text-left py-2">Handler</th>
               <th class="text-left py-2">Chat</th>
               <th class="text-left py-2">Message</th>
               <th class="text-left py-2">Status</th>
@@ -115,6 +128,7 @@
             <tr v-for="row in recentCallbacks" :key="row.id" class="border-b border-slate-800">
               <td class="py-2 text-slate-300">{{ formatDate(row.created_at) }}</td>
               <td class="py-2 text-slate-300">{{ row.callback_data || '-' }}</td>
+              <td class="py-2 text-slate-300">{{ payloadValue(row, 'callback_handler') || '-' }}</td>
               <td class="py-2 text-slate-300">{{ row.chat_id || '-' }}:{{ row.message_thread_id || '-' }}</td>
               <td class="py-2 text-slate-300">{{ row.telegram_message_id || '-' }}</td>
               <td class="py-2"><span :class="statusClass(row.status)" class="px-2 py-1 rounded text-xs font-medium">{{ row.status || '-' }}</span></td>
@@ -153,6 +167,10 @@ function statusClass(status) {
   if (status === 'received') return 'bg-cyan-500/20 text-cyan-300'
   if (status === 'failed') return 'bg-red-500/20 text-red-400'
   return 'bg-slate-700 text-slate-300'
+}
+
+function payloadValue(row, key) {
+  return row?.payload?.[key] || null
 }
 
 async function loadDiagnostics() {

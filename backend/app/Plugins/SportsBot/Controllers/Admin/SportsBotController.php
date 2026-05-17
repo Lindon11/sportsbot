@@ -523,9 +523,15 @@ class SportsBotController extends Controller
         }
 
         $lastCallbackData = null;
+        $lastCallbackAction = null;
+        $lastCallbackHandler = null;
+        $lastCallbackError = null;
         if ($lastCallback instanceof SportsBotTelegramUpdateState) {
             $payload = is_array($lastCallback->payload) ? $lastCallback->payload : [];
             $lastCallbackData = $payload['callback_data'] ?? $lastCallback->callback_data;
+            $lastCallbackAction = $payload['callback_action'] ?? null;
+            $lastCallbackHandler = $payload['callback_handler'] ?? null;
+            $lastCallbackError = $payload['callback_error'] ?? null;
         }
 
         $telegramHealth = null;
@@ -574,6 +580,10 @@ class SportsBotController extends Controller
                 ? $lastCallback->created_at->toIso8601String()
                 : null,
             'last_callback_data' => $lastCallbackData,
+            'last_callback_action' => $lastCallbackAction,
+            'last_callback_handler' => $lastCallbackHandler,
+            'last_callback_error' => $lastCallbackError,
+            'callback_data_audit' => \App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder::callbackDataAudit(),
             'telegram_webhook_health' => $telegramHealth,
             'recent_updates' => $recentUpdates,
             'recent_callbacks' => $recentCallbacks,
