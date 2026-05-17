@@ -522,7 +522,7 @@ class SportsBotController extends Controller
         return response()->json($queue->deleteItem($id));
     }
 
-    public function fixtureQueueCard(int $id, FixtureQueueService $queue): \Illuminate\Http\Response
+    public function fixtureQueueCard(int $id, FixtureQueueService $queue): mixed
     {
         $item = $queue->find($id);
         if (!$item || !$item->card_path || !is_file($item->card_path)) {
