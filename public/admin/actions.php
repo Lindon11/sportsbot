@@ -683,16 +683,111 @@ try {
             $db = fb_open_db($config);
             $msg = fb_format_fixtures_today_message($config, $db);
             $routeInfo = fb_get_route_target($config, 'FIXTURES_TODAY');
-            if (!empty($routeInfo['fallback'])) {
-                admin_flash('info', 'Route not assigned — using General topic.');
+            $targets = fb_telegram_targets_from_value($routeInfo['targets'] ?? []);
+            $targetCount = count($targets);
+            $targetLabels = array_map(static function (array $target): string {
+                $chatId = (string) ($target['chat_id'] ?? '');
+                $threadId = $target['message_thread_id'] ?? null;
+                return $chatId . ':' . ($threadId !== null ? (string) $threadId : '-');
+            }, $targets);
+            admin_flash('info', sprintf(
+                'FIXTURES_TODAY resolve: route=%s fallback=%s target_count=%d',
+                (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                !empty($routeInfo['fallback']) ? 'true' : 'false',
+                $targetCount
+            ));
+            admin_flash('info', 'FIXTURES_TODAY targets: ' . ($targetLabels !== [] ? implode(', ', $targetLabels) : 'none'));
+
+            if ($targetCount === 0) {
+                admin_flash('error', 'FIXTURES_TODAY has no resolved targets. Send skipped.');
+                admin_redirect('publishing');
             }
-            $results = fb_telegram_send_message_route($config, $msg['text'], 'FIXTURES_TODAY', [
+
+            $results = fb_telegram_send_message_to_targets($config, $msg['text'], $targets, [
                 'parse_mode' => 'HTML',
                 'reply_markup' => $msg['reply_markup'],
+                '_route_meta' => [
+                    'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                    'post_type' => 'FIXTURES_TODAY',
+                    'event_id' => '',
+                    'fallback' => !empty($routeInfo['fallback']),
+                ],
             ]);
+            foreach ($targets as $target) {
+                $key = fb_telegram_target_key($target);
+                $result = $results[$key] ?? ['ok' => false, 'error' => 'Missing Telegram result'];
+                $context = [
+                    'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                    'chat_id' => (string) ($target['chat_id'] ?? ''),
+                    'message_thread_id' => $target['message_thread_id'] ?? null,
+                    'post_type' => 'FIXTURES_TODAY',
+                    'event_id' => '',
+                    'result' => $result,
+                ];
+
+                if (!empty($result['ok'])) {
+                    fb_log('info', 'fixtures_today.target_send', $context);
+                } else {
+                    fb_log('warning', 'fixtures_today.target_send_failed', $context);
+                }
+            }
             $ok = count(array_filter($results, static fn (array $r): bool => !empty($r['ok'])));
             admin_flash('success', sprintf('Fixtures today sent to %d chat(s).', $ok));
 
+            admin_redirect('publishing');
+        }
+
+        if ($action === 'test_fixtures_today_route') {
+            fb_require_env($config, true);
+            $routeInfo = fb_get_route_target($config, 'FIXTURES_TODAY');
+            $targets = fb_telegram_targets_from_value($routeInfo['targets'] ?? []);
+            $targetCount = count($targets);
+            $targetLabels = array_map(static function (array $target): string {
+                $chatId = (string) ($target['chat_id'] ?? '');
+                $threadId = $target['message_thread_id'] ?? null;
+                return $chatId . ':' . ($threadId !== null ? (string) $threadId : '-');
+            }, $targets);
+            admin_flash('info', sprintf(
+                'FIXTURES_TODAY resolve: route=%s fallback=%s target_count=%d',
+                (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                !empty($routeInfo['fallback']) ? 'true' : 'false',
+                $targetCount
+            ));
+            admin_flash('info', 'FIXTURES_TODAY targets: ' . ($targetLabels !== [] ? implode(', ', $targetLabels) : 'none'));
+
+            if ($targetCount === 0) {
+                admin_flash('error', 'FIXTURES_TODAY has no resolved targets. Test skipped.');
+                admin_redirect('publishing');
+            }
+
+            $results = fb_telegram_send_message_to_targets($config, 'Route test: FIXTURES_TODAY', $targets, [
+                '_route_meta' => [
+                    'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                    'post_type' => 'ROUTE_TEST',
+                    'event_id' => '',
+                    'fallback' => !empty($routeInfo['fallback']),
+                ],
+            ]);
+            foreach ($targets as $target) {
+                $key = fb_telegram_target_key($target);
+                $result = $results[$key] ?? ['ok' => false, 'error' => 'Missing Telegram result'];
+                $context = [
+                    'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                    'chat_id' => (string) ($target['chat_id'] ?? ''),
+                    'message_thread_id' => $target['message_thread_id'] ?? null,
+                    'post_type' => 'ROUTE_TEST',
+                    'event_id' => '',
+                    'result' => $result,
+                ];
+
+                if (!empty($result['ok'])) {
+                    fb_log('info', 'fixtures_today.route_test_target_send', $context);
+                } else {
+                    fb_log('warning', 'fixtures_today.route_test_target_send_failed', $context);
+                }
+            }
+            $ok = count(array_filter($results, static fn (array $r): bool => !empty($r['ok'])));
+            admin_flash('success', sprintf('FIXTURES_TODAY route test sent to %d chat(s).', $ok));
             admin_redirect('publishing');
         }
     }
