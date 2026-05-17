@@ -358,7 +358,7 @@ function admin_card_jobs(array $config, int $limit = 20): array
     }
 
     $db = fb_open_db($config);
-    $result = $db->query('SELECT card_type, sport, route_key, status, failed_dispatches, updated_at FROM card_jobs ORDER BY updated_at DESC LIMIT ' . ((int) $limit));
+    $result = $db->query('SELECT cj.card_type, cj.sport, cj.route_key, cj.status, cj.updated_at, cj.page_count, (SELECT COUNT(*) FROM card_dispatches WHERE card_dispatches.job_key = cj.job_key AND card_dispatches.status = \'failed\') AS failed_dispatches FROM card_jobs cj ORDER BY cj.updated_at DESC LIMIT ' . ((int) $limit));
 
     if (!$result) {
         return [];
@@ -380,7 +380,7 @@ function admin_card_dispatches(array $config, int $limit = 20): array
     }
 
     $db = fb_open_db($config);
-    $result = $db->query('SELECT card_id, chat_id, message_thread_id, status, attempts, last_error, updated_at FROM card_dispatches ORDER BY updated_at DESC LIMIT ' . ((int) $limit));
+    $result = $db->query('SELECT id, job_key, chat_id, page_no, status, last_error, sent_at FROM card_dispatches ORDER BY id DESC LIMIT ' . ((int) $limit));
 
     if (!$result) {
         return [];
@@ -424,15 +424,17 @@ function admin_customer_follow_state(array $config): array
     }
 
     $db = fb_open_db($config);
+
+    // Use the actual column names from the DB schema defined in functions.php
     $counts = [
         'total' => (int) ($db->querySingle('SELECT COUNT(*) FROM customer_follows') ?: 0),
-        'teams' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE follow_type = 'team'") ?: 0),
-        'players' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE follow_type = 'player'") ?: 0),
-        'feeds' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE follow_type = 'feed'") ?: 0),
-        'users' => (int) ($db->querySingle('SELECT COUNT(DISTINCT user_id) FROM customer_follows') ?: 0),
+        'teams' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE kind = 'team'") ?: 0),
+        'players' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE kind = 'player'") ?: 0),
+        'feeds' => (int) ($db->querySingle("SELECT COUNT(*) FROM customer_follows WHERE kind = 'feed'") ?: 0),
+        'users' => (int) ($db->querySingle('SELECT COUNT(DISTINCT telegram_user_id) FROM customer_follows') ?: 0),
     ];
 
-    $result = $db->query('SELECT user_id, follow_type, follow_id, follow_name, created_at FROM customer_follows ORDER BY created_at DESC LIMIT 20');
+    $result = $db->query('SELECT telegram_user_id, kind, subject, subject_key, created_at FROM customer_follows ORDER BY created_at DESC LIMIT 20');
 
     if (!$result) {
         return ['counts' => $counts, 'recent' => []];
