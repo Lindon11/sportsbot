@@ -19,10 +19,12 @@ use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
+use App\Plugins\SportsBot\Services\SportsFixturePublisher;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -325,6 +327,135 @@ class SportsBotController extends Controller
                 'error' => $error->getMessage(),
             ], 422);
         }
+    }
+
+    public function sportFixturePreview(
+        string $sport,
+        Request $request,
+        SportsBotPublisher $publisher,
+        SportsBotCardRenderer $cards,
+        SportsBotSettingsService $settings,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        $config = SportsFixtureConfig::for($sport);
+        if ($config === null) {
+            return response()->json(['error' => "Unknown sport: {$sport}"], 422);
+        }
+
+        $contentModule = $this->resolveContentModule($sport);
+        if ($contentModule === null) {
+            return response()->json(['error' => "No content module for sport: {$sport}"], 422);
+        }
+
+        $preview = $publisher->preview($contentModule);
+        $summary = (array) ($preview['summary'] ?? []);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get(
+            $this->settingKey($sport, 'card_version'),
+            $config['default_card_version'] ?? 'v1'
+        ));
+
+        return response()->json(array_merge($preview, [
+            'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'captions_enabled' => (bool) $settings->get($this->settingKey($sport, 'captions_enabled'), $config['captions_enabled_default'] ?? false),
+            'card_version' => $cardVersion,
+            'sport_config' => $config,
+        ]));
+    }
+
+    public function sportFixtureSend(
+        string $sport,
+        Request $request,
+        SportsBotPublisher $publisher,
+        SportsBotSettingsService $settings,
+    ): JsonResponse {
+        $config = SportsFixtureConfig::for($sport);
+        if ($config === null) {
+            return response()->json(['error' => "Unknown sport: {$sport}"], 422);
+        }
+
+        $validated = $request->validate([
+            'captions_enabled' => ['sometimes', 'boolean'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        if (array_key_exists('captions_enabled', $validated)) {
+            $settings->set($this->settingKey($sport, 'captions_enabled'), (bool) $validated['captions_enabled']);
+        }
+        if (array_key_exists('card_version', $validated)) {
+            $settings->set($this->settingKey($sport, 'card_version'), $this->footballFixtureCardVersion($validated['card_version']));
+        }
+
+        $contentModule = $this->resolveContentModule($sport);
+        if ($contentModule === null) {
+            return response()->json(['error' => "No content module for sport: {$sport}"], 422);
+        }
+
+        try {
+            return response()->json($publisher->send($contentModule, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.sport_fixture_send_failed', [
+                'sport' => $sport,
+                'route_key' => $config['topic_key'] ?? null,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'sport' => $sport,
+                'route_key' => $config['topic_key'] ?? null,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function sportFixturePublish(
+        string $sport,
+        Request $request,
+        SportsFixturePublisher $fixturePublisher,
+    ): JsonResponse {
+        $config = SportsFixtureConfig::for($sport);
+        if ($config === null) {
+            return response()->json(['error' => "Unknown sport: {$sport}"], 422);
+        }
+
+        try {
+            return response()->json($fixturePublisher->send($sport, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.sport_fixture_publish_failed', [
+                'sport' => $sport,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'sport' => $sport,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    private function resolveContentModule(string $sport): ?object
+    {
+        return match (SportsBotSports::normalize($sport)) {
+            'football' => app(\App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule::class),
+            'rugby' => app(\App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule::class),
+            'fights', 'mma', 'boxing' => app(\App\Plugins\SportsBot\Services\Content\FightFixturesContentModule::class),
+            default => null,
+        };
+    }
+
+    private function settingKey(string $sport, string $key): string
+    {
+        $normalized = SportsBotSports::normalize($sport);
+
+        return match ($key) {
+            'captions_enabled' => $normalized . '_fixture_captions_enabled',
+            'card_version' => $normalized . '_fixture_card_version',
+            default => $normalized . '_fixture_' . $key,
+        };
     }
 
     /**

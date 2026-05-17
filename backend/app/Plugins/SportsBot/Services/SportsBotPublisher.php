@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
+use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -41,6 +42,72 @@ class SportsBotPublisher
             'summary' => $summary,
             'message' => $message,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $extraOptions
+     * @return array<string, mixed>
+     */
+    public function sendSportFixtures(string $sportKey, string $source = 'publisher', array $extraOptions = []): array
+    {
+        $config = SportsFixtureConfig::for($sportKey);
+
+        if ($config === null) {
+            return [
+                'sent' => false,
+                'error' => "Unknown sport: {$sportKey}",
+            ];
+        }
+
+        $contentKey = strtoupper($sportKey) . '_FIXTURES';
+
+        $summary = app(FixturesTodayService::class)->buildSummary($sportKey, (int) ($config['lookahead_days'] ?? 0));
+        $message = app(FixturesTodayFormatter::class)->format($summary);
+
+        $options = array_merge([
+            'parse_mode' => '',
+            'route_key' => $config['topic_key'],
+            'type' => $contentKey,
+            'payload' => [
+                'source' => $source,
+                'content_key' => $contentKey,
+                'sport_key' => $sportKey,
+                'card_version' => $config['default_card_version'] ?? 'v1',
+                'captions_enabled' => (bool) ($config['captions_enabled_default'] ?? false),
+            ],
+        ], $extraOptions);
+
+        $routeStatus = $this->routingService->resolveTargets($config['topic_key']);
+        $preview = [
+            'content_key' => $contentKey,
+            'route_key' => $config['topic_key'],
+            'route_status' => $routeStatus,
+            'summary' => $summary,
+            'message' => $message,
+        ];
+
+        try {
+            $results = $this->sendFixtureCards($summary, $message, $options);
+        } catch (Throwable $error) {
+            Log::error('sportsbot.publisher.sport_send_failed', [
+                'sport_key' => $sportKey,
+                'content_key' => $contentKey,
+                'error' => $error->getMessage(),
+            ]);
+
+            $results = $this->notifier->send($message, $options);
+        }
+
+        Log::info('sportsbot.publisher.sport_sent', [
+            'sport_key' => $sportKey,
+            'content_key' => $contentKey,
+            'result_count' => count($results),
+        ]);
+
+        return array_merge($preview, [
+            'sent' => true,
+            'results' => $results,
+        ]);
     }
 
     /**
@@ -117,15 +184,13 @@ class SportsBotPublisher
             return $this->notifier->send($message, $options);
         }
 
-        $cardsEnabled = (bool) $this->settings->get('cards_enabled', config('plugins.SportsBot.cards.enabled', true))
-            && (bool) $this->settings->get('rich_cards_enabled', config('plugins.SportsBot.features.rich_cards', true));
-
-        if (!$cardsEnabled) {
+        if (!$this->cardsEnabled()) {
             return $this->notifier->send($message, $options);
         }
 
         $results = [];
-        $cardVersion = $this->footballFixtureCardVersion($options);
+        $cardVersion = $this->fixtureCardVersionFromOptions($options);
+        $captionsEnabled = $this->fixtureCaptionsFromOptions($options);
 
         foreach ($fixtures as $fixture) {
             $card = $this->cards->fixtureCard($fixture, $cardVersion);
@@ -144,7 +209,7 @@ class SportsBotPublisher
             ]);
 
             $contentKey = (string) (($fixtureOptions['payload']['content_key'] ?? $options['payload']['content_key'] ?? '') ?: '');
-            $caption = $this->footballFixtureCaptionsEnabled($options) ? $this->fixtureCaption($fixture, $contentKey) : '';
+            $caption = $captionsEnabled ? $this->fixtureCaption($fixture, $contentKey) : '';
             foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
                 $results[] = $result;
             }
@@ -156,7 +221,7 @@ class SportsBotPublisher
     /**
      * @param array<string, mixed> $options
      */
-    private function footballFixtureCardVersion(array $options): string
+    private function fixtureCardVersionFromOptions(array $options): string
     {
         $payload = (array) ($options['payload'] ?? []);
         $version = (string) ($payload['card_version'] ?? $this->settings->get('football_fixture_card_version', 'v1'));
@@ -167,7 +232,7 @@ class SportsBotPublisher
     /**
      * @param array<string, mixed> $options
      */
-    private function footballFixtureCaptionsEnabled(array $options): bool
+    private function fixtureCaptionsFromOptions(array $options): bool
     {
         $payload = (array) ($options['payload'] ?? []);
 
@@ -201,10 +266,54 @@ class SportsBotPublisher
      */
     private function fixtureCaption(array $fixture, string $contentKey = ''): string
     {
-        if (strtoupper($contentKey) === 'FIGHT_FIXTURES') {
-            return $this->fightFixtureCaption($fixture);
+        $key = strtoupper($contentKey);
+        $sportMap = [
+            'FOOTBALL_FIXTURES' => 'football',
+            'RUGBY_FIXTURES' => 'rugby',
+            'FIGHT_FIXTURES' => 'fights',
+            'MMA_FIXTURES' => 'mma',
+            'BOXING_FIXTURES' => 'boxing',
+        ];
+
+        $sportKey = $sportMap[$key] ?? null;
+        $formatter = $sportKey !== null ? SportsFixtureConfig::captionFormatter($sportKey) : 'generic';
+
+        return match ($formatter) {
+            'combat' => $this->combatCaption($fixture),
+            'rugby' => $this->otherChannelsCaption($fixture),
+            'football' => $this->otherChannelsCaption($fixture),
+            default => $this->otherChannelsCaption($fixture),
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function combatCaption(array $fixture): string
+    {
+        $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'));
+        if ($title === '') {
+            $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? ''));
+            $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? ''));
+            $title = trim($home . ($home !== '' && $away !== '' ? ' vs ' : '') . $away);
         }
 
+        $date = trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC'));
+        $time = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
+
+        return mb_substr(implode("\n", [
+            $title !== '' ? $title : 'Fight event',
+            trim($date . ' ' . $time),
+            '',
+            'PPV: Check the PPV folders for this event.',
+        ]), 0, 1000);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function otherChannelsCaption(array $fixture): string
+    {
         $primary = $this->normalizeChannel((string) ($fixture['tv_channel'] ?? ''));
         $channels = [];
 
@@ -226,32 +335,15 @@ class SportsBotPublisher
         return mb_substr(implode("\n\n", $parts), 0, 1000);
     }
 
-    /**
-     * @param array<string, mixed> $fixture
-     */
-    private function fightFixtureCaption(array $fixture): string
-    {
-        $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'));
-        if ($title === '') {
-            $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? ''));
-            $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? ''));
-            $title = trim($home . ($home !== '' && $away !== '' ? ' vs ' : '') . $away);
-        }
-
-        $date = trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC'));
-        $time = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
-
-        return mb_substr(implode("\n", [
-            $title !== '' ? $title : 'Fight event',
-            trim($date . ' ' . $time),
-            '',
-            'PPV: Check the PPV folders for this event.',
-        ]), 0, 1000);
-    }
-
     private function normalizeChannel(string $channel): string
     {
         return trim(preg_replace('/\s+/', ' ', $channel) ?? $channel);
+    }
+
+    private function cardsEnabled(): bool
+    {
+        return (bool) $this->settings->get('cards_enabled', config('plugins.SportsBot.cards.enabled', true))
+            && (bool) $this->settings->get('rich_cards_enabled', config('plugins.SportsBot.features.rich_cards', true));
     }
 
     /**
