@@ -459,7 +459,7 @@ class SportsBotController extends Controller
                 ->count(),
             'recent_items' => SportsBotFixtureQueue::query()
                 ->latest('updated_at')
-                ->limit(20)
+                ->limit(500)
                 ->get()
                 ->toArray(),
         ]);
