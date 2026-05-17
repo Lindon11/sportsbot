@@ -24,7 +24,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Soccer',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_FOOTBALL,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -94,7 +94,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Basketball',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -108,7 +108,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Baseball',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -122,7 +122,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Tennis',
                 'card_template'          => self::CARD_TEMPLATE_GENERIC,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -136,7 +136,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Cricket',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -150,7 +150,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Motorsport',
                 'card_template'          => self::CARD_TEMPLATE_RACE_EVENT,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 14,
                 'asset_cache_window'     => 14,
@@ -164,7 +164,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'American Football',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -178,7 +178,7 @@ class SportsFixtureConfig
                 'provider_sport'         => 'Ice Hockey',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
-                'default_card_version'   => 'v1',
+                'default_card_version'   => 'v2',
                 'captions_enabled_default' => false,
                 'data_fetch_window'      => 7,
                 'asset_cache_window'     => 7,
@@ -222,7 +222,7 @@ class SportsFixtureConfig
 
     public static function defaultCardVersion(string $sportKey): string
     {
-        return (string) (self::for($sportKey)['default_card_version'] ?? 'v1');
+        return (string) (self::for($sportKey)['default_card_version'] ?? 'v2');
     }
 
     public static function captionsEnabledDefault(string $sportKey): bool
