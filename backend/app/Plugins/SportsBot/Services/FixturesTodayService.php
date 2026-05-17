@@ -335,7 +335,7 @@ class FixturesTodayService
      */
     private function compareFixtures(array $a, array $b, string $sport, array $leagueOrder): int
     {
-        if (in_array($sport, ['Football', 'Rugby', 'Fights'], true)) {
+        if (in_array($sport, ['Football', 'Rugby', 'Fights', 'Motorsport'], true)) {
             $aLeague = (string) ($a['league_id'] ?? '');
             $bLeague = (string) ($b['league_id'] ?? '');
             $aLeagueOrder = $leagueOrder[$aLeague] ?? PHP_INT_MAX;

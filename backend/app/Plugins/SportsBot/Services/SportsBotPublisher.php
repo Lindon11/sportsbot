@@ -129,7 +129,7 @@ class SportsBotPublisher
         ]);
 
         try {
-            if (in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES'], true)) {
+            if (in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES'], true)) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
             } else {
                 $card = $this->renderCard($module->key(), $summary);
@@ -273,6 +273,7 @@ class SportsBotPublisher
             'FIGHT_FIXTURES' => 'fights',
             'MMA_FIXTURES' => 'mma',
             'BOXING_FIXTURES' => 'boxing',
+            'MOTORSPORT_FIXTURES' => 'formula_1',
         ];
 
         $sportKey = $sportMap[$key] ?? null;

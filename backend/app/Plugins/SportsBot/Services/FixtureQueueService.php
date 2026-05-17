@@ -18,6 +18,7 @@ class FixtureQueueService
         private readonly TelegramNotifier $notifier = new TelegramNotifier(),
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
+        private readonly SportsBotScraperService $scrapers = new SportsBotScraperService(),
     ) {
     }
 
@@ -146,7 +147,7 @@ class FixtureQueueService
             ->get();
 
         foreach ($drafts as $entry) {
-            $fixture = (array) ($entry->fixture_data ?? []);
+            $fixture = $this->effectiveFixtureData($entry);
 
             try {
                 $this->cacheAssets($entry, $fixture);
@@ -351,14 +352,14 @@ class FixtureQueueService
                 return false;
             }
 
-            $fixture = (array) ($entry->fixture_data ?? []);
-            $currentHash = $this->computeHash($fixture);
+            $providerFixture = (array) ($entry->fixture_data ?? []);
+            $currentHash = $this->computeHash($providerFixture);
 
             foreach ($freshData as $key => $value) {
-                $fixture[$key] = $value;
+                $providerFixture[$key] = $value;
             }
 
-            $newHash = $this->computeHash($fixture);
+            $newHash = $this->computeHash($providerFixture);
 
             if ($currentHash === $newHash) {
                 return true;
@@ -369,7 +370,7 @@ class FixtureQueueService
                 'sport' => $entry->sport_key,
             ]);
 
-            $entry->fixture_data = $fixture;
+            $entry->fixture_data = $providerFixture;
             $entry->payload_hash = $newHash;
             $entry->asset_status = SportsBotFixtureQueue::ASSET_PENDING;
             $entry->status = SportsBotFixtureQueue::STATUS_DRAFT;
@@ -378,6 +379,7 @@ class FixtureQueueService
             $entry->save();
 
             $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
+            $fixture = $this->effectiveFixtureData($entry);
 
             $this->cacheAssets($entry, $fixture);
 
@@ -407,6 +409,7 @@ class FixtureQueueService
     private function sendToTelegram(SportsBotFixtureQueue $entry, array $config, array $options): array
     {
         $routeKey = $entry->route_key ?? $config['topic_key'] ?? 'default';
+        $fixture = $this->effectiveFixtureData($entry);
         $caption = (string) ($entry->caption ?? '');
         $cardPath = (string) ($entry->card_path ?? '');
 
@@ -419,11 +422,11 @@ class FixtureQueueService
                 'event_id' => $entry->event_id,
                 'fixture_queue_id' => $entry->id,
                 'fixture' => [
-                    'time' => (string) ($entry->fixture_data['time'] ?? ''),
-                    'league' => (string) ($entry->fixture_data['league'] ?? ''),
-                    'home_team' => (string) ($entry->fixture_data['home_team'] ?? ''),
-                    'away_team' => (string) ($entry->fixture_data['away_team'] ?? ''),
-                    'tv_channel' => (string) ($entry->fixture_data['tv_channel'] ?? ''),
+                    'time' => (string) ($fixture['time'] ?? ''),
+                    'league' => (string) ($fixture['league'] ?? ''),
+                    'home_team' => (string) ($fixture['home_team'] ?? ''),
+                    'away_team' => (string) ($fixture['away_team'] ?? ''),
+                    'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
                 ],
             ],
         ];
@@ -442,7 +445,6 @@ class FixtureQueueService
             ];
         }
 
-        $fixture = (array) ($entry->fixture_data ?? []);
         $home = (string) ($fixture['home_team'] ?? '');
         $away = (string) ($fixture['away_team'] ?? '');
         $time = (string) ($fixture['time'] ?? 'TBC');
@@ -489,7 +491,7 @@ class FixtureQueueService
             return ['error' => "Unknown sport: {$sportKey}"];
         }
 
-        $fixture = (array) ($entry->fixture_data ?? []);
+        $fixture = $this->effectiveFixtureData($entry);
         $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
 
         try {
@@ -590,6 +592,56 @@ class FixtureQueueService
         return ['deleted' => true, 'id' => $id];
     }
 
+    public function findPoster(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        return array_merge($this->scrapers->findPoster($entry), ['item' => $entry->fresh()?->toArray()]);
+    }
+
+    public function findTvInfo(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        return array_merge($this->scrapers->findTvInfo($entry), ['item' => $entry->fresh()?->toArray()]);
+    }
+
+    public function refreshScrapedData(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        return array_merge($this->scrapers->refresh($entry), ['item' => $entry->fresh()?->toArray()]);
+    }
+
+    public function acceptScrapedData(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        return array_merge($this->scrapers->accept($entry), ['item' => $entry->fresh()?->toArray()]);
+    }
+
+    public function rejectScrapedData(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        return array_merge($this->scrapers->reject($entry), ['item' => $entry->fresh()?->toArray()]);
+    }
+
     private function cacheAssets(SportsBotFixtureQueue $entry, array $fixture): void
     {
         if ($entry->asset_status === SportsBotFixtureQueue::ASSET_CACHED) {
@@ -650,6 +702,112 @@ class FixtureQueueService
             'home_team_id' => $fixture['home_team_id'] ?? '',
             'away_team_id' => $fixture['away_team_id'] ?? '',
         ]));
+    }
+
+    /**
+     * Manual override > API provider > accepted scraped data > high-confidence scraped data > generated fallback.
+     *
+     * @return array<string, mixed>
+     */
+    private function effectiveFixtureData(SportsBotFixtureQueue $entry): array
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+        $payload = (array) ($entry->payload ?? []);
+        $sources = [];
+
+        foreach (array_keys($fixture) as $field) {
+            if (!$this->emptyFixtureValue($fixture[$field] ?? null)) {
+                $sources[$field] = 'api_provider';
+            }
+        }
+
+        if ($this->hasTrustedProviderData($fixture)) {
+            $accepted = (array) ($payload['accepted_scraped_data']['fields'] ?? []);
+            $this->fillMissingFixtureFields($fixture, $accepted, $sources, 'accepted_scraped_data');
+
+            $normalized = (array) ($payload['scraper']['normalized'] ?? []);
+            $confidence = (float) ($normalized['confidence'] ?? 0.0);
+            $rejected = isset($payload['rejected_scraped_data']);
+            if (!$rejected && $confidence >= $this->scrapers->autoUseConfidenceThreshold()) {
+                $this->fillMissingFixtureFields($fixture, (array) ($normalized['fields'] ?? []), $sources, 'high_confidence_scraped_data');
+                if (($normalized['fields'] ?? []) !== []) {
+                    $fixture['_scraper_auto_used'] = true;
+                }
+            }
+        }
+
+        $manual = (array) ($payload['manual_override']['fields'] ?? []);
+        foreach ($manual as $field => $value) {
+            if (!$this->scrapedFieldAllowed((string) $field) || $this->emptyFixtureValue($value)) {
+                continue;
+            }
+            $fixture[$field] = $value;
+            $sources[$field] = 'manual_override';
+        }
+
+        if ($sources !== []) {
+            $fixture['_field_sources'] = $sources;
+        }
+
+        return $fixture;
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @param array<string, mixed> $fields
+     * @param array<string, string> $sources
+     */
+    private function fillMissingFixtureFields(array &$fixture, array $fields, array &$sources, string $source): void
+    {
+        foreach ($fields as $field => $value) {
+            $field = (string) $field;
+            if (!$this->scrapedFieldAllowed($field) || $this->emptyFixtureValue($value)) {
+                continue;
+            }
+
+            if (!$this->emptyFixtureValue($fixture[$field] ?? null)) {
+                continue;
+            }
+
+            $fixture[$field] = $value;
+            $sources[$field] = $source;
+        }
+    }
+
+    private function scrapedFieldAllowed(string $field): bool
+    {
+        return in_array($field, [
+            'event_poster',
+            'event_name',
+            'home_team',
+            'away_team',
+            'date_label',
+            'kickoff_label',
+            'time',
+            'venue',
+            'tv_channel',
+            'tv_channels',
+            'f1_sessions',
+        ], true);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function hasTrustedProviderData(array $fixture): bool
+    {
+        return trim((string) ($fixture['event_id'] ?? '')) !== ''
+            || trim((string) ($fixture['idEvent'] ?? '')) !== ''
+            || trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? '')) !== '';
+    }
+
+    private function emptyFixtureValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            return $value === [];
+        }
+
+        return trim((string) $value) === '';
     }
 
     private function buildCaption(array $fixture, array $config): string

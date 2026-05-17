@@ -109,12 +109,62 @@
             </div>
           </details>
 
+          <details v-if="scraper" open class="rounded-xl bg-slate-800/30 border border-slate-700/30">
+            <summary class="px-4 py-3 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300 select-none flex items-center gap-2">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.35-5.65a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              Scraper enrichment
+            </summary>
+            <div class="px-4 pb-4 space-y-3 text-xs">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <p class="text-slate-500">Status</p>
+                  <p class="text-white">{{ scraper.status || '-' }}</p>
+                </div>
+                <div>
+                  <p class="text-slate-500">Confidence</p>
+                  <p class="text-white">{{ scraperConfidence }}</p>
+                </div>
+                <div class="col-span-2">
+                  <p class="text-slate-500">Last Checked</p>
+                  <p class="text-white">{{ formatDate(scraper.last_checked_at) }}</p>
+                </div>
+              </div>
+
+              <div v-if="Object.keys(scrapedFields).length" class="bg-slate-900 rounded-lg p-3 space-y-1">
+                <p class="text-slate-400 font-medium mb-2">Fields Found</p>
+                <div v-for="(value, key) in scrapedFields" :key="key" class="grid grid-cols-3 gap-2">
+                  <span class="text-slate-500">{{ key }}</span>
+                  <span class="col-span-2 text-white break-words">{{ printable(value) }}</span>
+                </div>
+              </div>
+
+              <div v-if="sourceUrls.length" class="space-y-1">
+                <p class="text-slate-400 font-medium">Sources</p>
+                <a v-for="url in sourceUrls" :key="url" :href="url" target="_blank" rel="noreferrer" class="block text-sky-300 hover:text-sky-200 break-all">{{ url }}</a>
+              </div>
+
+              <div v-if="scraperLogs.length" class="bg-slate-950/70 rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
+                <div v-for="(log, index) in scraperLogs" :key="index" class="border-b border-slate-800 last:border-b-0 pb-2 last:pb-0">
+                  <p class="text-slate-300">{{ log.provider || 'scraper' }} · {{ log.status || 'log' }} · {{ formatDate(log.checked_at) }}</p>
+                  <p v-if="log.source_url" class="text-slate-500 break-all">{{ log.source_url }}</p>
+                  <p v-if="log.error" class="text-red-300">{{ log.error }}</p>
+                  <p v-if="log.fields_found" class="text-slate-500">Fields: {{ printable(log.fields_found) }}</p>
+                </div>
+              </div>
+            </div>
+          </details>
+
           <QueueAssetHealth :fixture-data="fixture" :asset-status="item.asset_status" :card-path="item.card_path" :sport-key="item.sport_key" />
         </div>
 
         <div class="sticky bottom-0 bg-slate-900/95 backdrop-blur-sm flex items-center gap-2 p-4 border-t border-slate-700">
           <button @click="$emit('render', item.id)" class="px-4 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-500 text-sm font-medium transition-colors">Re-Render</button>
           <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-sm font-medium transition-colors">Publish Now</button>
+          <button @click="$emit('find-poster', item.id)" class="px-3 py-2 rounded-xl bg-fuchsia-700 text-white hover:bg-fuchsia-600 text-sm font-medium transition-colors">Find Poster</button>
+          <button @click="$emit('find-tv-info', item.id)" class="px-3 py-2 rounded-xl bg-sky-700 text-white hover:bg-sky-600 text-sm font-medium transition-colors">Find TV Info</button>
+          <button @click="$emit('refresh-scraped-data', item.id)" class="px-3 py-2 rounded-xl bg-violet-700 text-white hover:bg-violet-600 text-sm font-medium transition-colors">Refresh Scraped</button>
+          <button v-if="Object.keys(scrapedFields).length" @click="$emit('accept-scraped-data', item.id)" class="px-3 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 text-sm font-medium transition-colors">Accept Scraped</button>
+          <button v-if="Object.keys(scrapedFields).length || acceptedScrape" @click="$emit('reject-scraped-data', item.id)" class="px-3 py-2 rounded-xl bg-red-700 text-white hover:bg-red-600 text-sm font-medium transition-colors">Reject Scraped</button>
           <button @click="$emit('close')" class="px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 text-sm font-medium transition-colors ml-auto">Close</button>
         </div>
       </div>
@@ -131,9 +181,19 @@ const props = defineProps({
   sportConfigs: { type: Object, default: () => ({}) },
 })
 
-defineEmits(['close', 'render', 'send'])
+defineEmits(['close', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data'])
 
 const fixture = computed(() => props.item?.fixture_data || {})
+const payload = computed(() => props.item?.payload || {})
+const scraper = computed(() => payload.value.scraper || null)
+const scrapedFields = computed(() => scraper.value?.normalized?.fields || {})
+const sourceUrls = computed(() => scraper.value?.normalized?.source_urls || [])
+const scraperLogs = computed(() => scraper.value?.logs || [])
+const acceptedScrape = computed(() => Boolean(payload.value.accepted_scraped_data))
+const scraperConfidence = computed(() => {
+  const value = scraper.value?.normalized?.confidence
+  return typeof value === 'number' ? `${Math.round(value * 100)}%` : '-'
+})
 const title = computed(() => {
   const d = fixture.value
   const home = d.home_team || ''
@@ -153,5 +213,10 @@ const placeholderText = computed(() => {
 function formatDate(value) {
   if (!value) return '-'
   return new Date(value).toLocaleString()
+}
+
+function printable(value) {
+  if (Array.isArray(value) || (value && typeof value === 'object')) return JSON.stringify(value)
+  return String(value ?? '')
 }
 </script>

@@ -98,6 +98,11 @@
         @preview="previewItem = $event"
         @render="reRender"
         @send="publishNow"
+        @find-poster="findPoster"
+        @find-tv-info="findTvInfo"
+        @refresh-scraped-data="refreshScrapedData"
+        @accept-scraped-data="acceptScrapedData"
+        @reject-scraped-data="rejectScrapedData"
         @skip="skipItem"
         @delete="deleteItem"
       />
@@ -114,6 +119,11 @@
     @close="previewItem = null"
     @render="reRender"
     @send="publishNow"
+    @find-poster="findPoster"
+    @find-tv-info="findTvInfo"
+    @refresh-scraped-data="refreshScrapedData"
+    @accept-scraped-data="acceptScrapedData"
+    @reject-scraped-data="rejectScrapedData"
   />
 </template>
 
@@ -268,6 +278,45 @@ async function publishNow(id) {
   } finally {
     pendingActions.value.delete(id)
   }
+}
+
+async function scraperAction(id, action, url, successMessage) {
+  pendingActions.value.set(id, action)
+  try {
+    const { data } = await api.post(url)
+    if (data.error) {
+      toast.error(data.error)
+    } else {
+      const fields = data.normalized?.fields_found || Object.keys(data.fields || {})
+      toast.success(fields.length ? `${successMessage}: ${fields.join(', ')}` : successMessage)
+    }
+    if (data.item && previewItem.value?.id === id) previewItem.value = data.item
+    await loadQueue()
+  } catch (error) {
+    toast.error(error?.response?.data?.message || `${successMessage} failed`)
+  } finally {
+    pendingActions.value.delete(id)
+  }
+}
+
+function findPoster(id) {
+  return scraperAction(id, 'find-poster', `/admin/sportsbot/fixture-queue/${id}/find-poster`, 'Poster search complete')
+}
+
+function findTvInfo(id) {
+  return scraperAction(id, 'find-tv-info', `/admin/sportsbot/fixture-queue/${id}/find-tv-info`, 'TV info search complete')
+}
+
+function refreshScrapedData(id) {
+  return scraperAction(id, 'refresh-scraped-data', `/admin/sportsbot/fixture-queue/${id}/refresh-scraped-data`, 'Scraped data refreshed')
+}
+
+function acceptScrapedData(id) {
+  return scraperAction(id, 'accept-scraped-data', `/admin/sportsbot/fixture-queue/${id}/accept-scraped-data`, 'Scraped data accepted')
+}
+
+function rejectScrapedData(id) {
+  return scraperAction(id, 'reject-scraped-data', `/admin/sportsbot/fixture-queue/${id}/reject-scraped-data`, 'Scraped data rejected')
 }
 
 async function skipItem(id) {

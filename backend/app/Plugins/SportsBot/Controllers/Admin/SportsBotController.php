@@ -14,6 +14,7 @@ use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
+use App\Plugins\SportsBot\Services\Content\MotorsportFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
@@ -332,6 +333,63 @@ class SportsBotController extends Controller
         }
     }
 
+    public function motorsportFixturesPreview(
+        Request $request,
+        MotorsportFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotCardRenderer $cards,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+        $preview = $publisher->preview($module);
+        $summary = (array) ($preview['summary'] ?? []);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('formula_1_fixture_card_version', 'v2'));
+
+        return response()->json(array_merge($preview, [
+            'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'captions_enabled' => (bool) $settings->get('formula_1_fixture_captions_enabled', false),
+            'card_version' => $cardVersion,
+        ]));
+    }
+
+    public function motorsportFixturesSend(
+        Request $request,
+        MotorsportFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'captions_enabled' => ['sometimes', 'boolean'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        if (array_key_exists('captions_enabled', $validated)) {
+            $settings->set('formula_1_fixture_captions_enabled', (bool) $validated['captions_enabled']);
+        }
+        if (array_key_exists('card_version', $validated)) {
+            $settings->set('formula_1_fixture_card_version', $this->footballFixtureCardVersion($validated['card_version']));
+        }
+
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.motorsport_fixtures_send_failed', [
+                'route_key' => TelegramRouteKeys::MOTORSPORT,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::MOTORSPORT,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
     public function sportFixturePreview(
         string $sport,
         Request $request,
@@ -512,6 +570,31 @@ class SportsBotController extends Controller
         return response()->json($queue->publishNow($id));
     }
 
+    public function fixtureQueueFindPoster(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->findPoster($id));
+    }
+
+    public function fixtureQueueFindTvInfo(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->findTvInfo($id));
+    }
+
+    public function fixtureQueueRefreshScrapedData(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->refreshScrapedData($id));
+    }
+
+    public function fixtureQueueAcceptScrapedData(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->acceptScrapedData($id));
+    }
+
+    public function fixtureQueueRejectScrapedData(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->rejectScrapedData($id));
+    }
+
     public function fixtureQueueSkip(int $id, FixtureQueueService $queue): JsonResponse
     {
         return response()->json($queue->skipItem($id));
@@ -538,6 +621,7 @@ class SportsBotController extends Controller
             'football' => app(\App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule::class),
             'rugby' => app(\App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule::class),
             'fights', 'mma', 'boxing' => app(\App\Plugins\SportsBot\Services\Content\FightFixturesContentModule::class),
+            'formula_1', 'motorsport' => app(\App\Plugins\SportsBot\Services\Content\MotorsportFixturesContentModule::class),
             default => null,
         };
     }
@@ -722,6 +806,83 @@ class SportsBotController extends Controller
         return response()->json([
             'saved' => true,
             'settings' => $settings->all(),
+        ]);
+    }
+
+    public function scraperSettings(SportsBotSettingsService $settings): JsonResponse
+    {
+        $current = [
+            'enabled' => (bool) $settings->get('scraper_enabled', config('plugins.SportsBot.scrapers.enabled', true)),
+            'search_enabled' => (bool) $settings->get('scraper_search_enabled', config('plugins.SportsBot.scrapers.search_enabled', true)),
+            'search_urls' => $this->stringList($settings->get('scraper_search_urls', config('plugins.SportsBot.scrapers.search_urls', []))),
+            'search_max_results' => (int) $settings->get('scraper_search_max_results', config('plugins.SportsBot.scrapers.search_max_results', 5)),
+            'timeout' => (int) $settings->get('scraper_timeout', config('plugins.SportsBot.scrapers.timeout', 8)),
+            'auto_use_confidence' => (float) $settings->get('scraper_auto_use_confidence', config('plugins.SportsBot.scrapers.auto_use_confidence', 0.9)),
+            'combat_poster_urls' => $this->stringList($settings->get('scraper_combat_poster_urls', config('plugins.SportsBot.scrapers.combat_poster_urls', []))),
+            'broadcast_schedule_urls' => $this->stringList($settings->get('scraper_broadcast_schedule_urls', config('plugins.SportsBot.scrapers.broadcast_schedule_urls', []))),
+            'f1_schedule_urls' => $this->stringList($settings->get('scraper_f1_schedule_urls', config('plugins.SportsBot.scrapers.f1_schedule_urls', []))),
+            'combat_poster_search_queries' => $this->stringList($settings->get('scraper_combat_poster_search_queries', config('plugins.SportsBot.scrapers.combat_poster_search_queries', []))),
+            'broadcast_schedule_search_queries' => $this->stringList($settings->get('scraper_broadcast_schedule_search_queries', config('plugins.SportsBot.scrapers.broadcast_schedule_search_queries', []))),
+            'f1_schedule_search_queries' => $this->stringList($settings->get('scraper_f1_schedule_search_queries', config('plugins.SportsBot.scrapers.f1_schedule_search_queries', []))),
+        ];
+
+        $usesDefaultSearch = $current['search_urls'] === ['https://duckduckgo.com/html/?q={query}'];
+
+        return response()->json([
+            'settings' => $current,
+            'diagnostics' => [
+                'search_configured' => $current['search_enabled'] && $current['search_urls'] !== [],
+                'uses_default_search' => $usesDefaultSearch,
+                'known_source_count' => count($current['combat_poster_urls']) + count($current['broadcast_schedule_urls']) + count($current['f1_schedule_urls']),
+                'default_search_warning' => $usesDefaultSearch
+                    ? 'The default DuckDuckGo page often returns a human challenge to backend requests. Use known source URLs or a search endpoint you are allowed to call for reliable enrichment.'
+                    : null,
+            ],
+            'examples' => [
+                'search_url' => 'https://your-search.example/search?q={query}&format=json',
+                'known_source_url' => 'https://www.skysports.com/watch/sport-on-sky',
+            ],
+        ]);
+    }
+
+    public function saveScraperSettings(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['sometimes', 'boolean'],
+            'search_enabled' => ['sometimes', 'boolean'],
+            'search_urls' => ['sometimes', 'array'],
+            'search_urls.*' => ['string', 'max:500'],
+            'search_max_results' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'timeout' => ['sometimes', 'integer', 'min:2', 'max:30'],
+            'auto_use_confidence' => ['sometimes', 'numeric', 'min:0', 'max:1'],
+            'combat_poster_urls' => ['sometimes', 'array'],
+            'combat_poster_urls.*' => ['string', 'max:500'],
+            'broadcast_schedule_urls' => ['sometimes', 'array'],
+            'broadcast_schedule_urls.*' => ['string', 'max:500'],
+            'f1_schedule_urls' => ['sometimes', 'array'],
+            'f1_schedule_urls.*' => ['string', 'max:500'],
+            'combat_poster_search_queries' => ['sometimes', 'array'],
+            'combat_poster_search_queries.*' => ['string', 'max:240'],
+            'broadcast_schedule_search_queries' => ['sometimes', 'array'],
+            'broadcast_schedule_search_queries.*' => ['string', 'max:240'],
+            'f1_schedule_search_queries' => ['sometimes', 'array'],
+            'f1_schedule_search_queries.*' => ['string', 'max:240'],
+        ]);
+
+        foreach ($validated as $key => $value) {
+            if (is_array($value)) {
+                $value = $this->stringList($value);
+            }
+            $settings->set('scraper_' . $key, $value);
+        }
+
+        Log::info('sportsbot.admin.scraper_settings_saved', [
+            'keys' => array_keys($validated),
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'settings' => $this->scraperSettings($settings)->getData(true)['settings'] ?? [],
         ]);
     }
 
@@ -1264,6 +1425,25 @@ class SportsBotController extends Controller
         }
 
         return $statuses;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $items = preg_split('/\r\n|\r|\n|,/', $value) ?: [];
+        } elseif (is_array($value)) {
+            $items = $value;
+        } else {
+            $items = [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (mixed $item): string => trim((string) $item),
+            $items
+        ))));
     }
 
     /**

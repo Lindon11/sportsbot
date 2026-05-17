@@ -14,6 +14,11 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueItem'])->name('fixture-queue.item');
     Route::post('/fixture-queue/{id}/re-render', [SportsBotController::class, 'fixtureQueueReRender'])->name('fixture-queue.re-render');
     Route::post('/fixture-queue/{id}/publish', [SportsBotController::class, 'fixtureQueuePublishNow'])->name('fixture-queue.publish-now');
+    Route::post('/fixture-queue/{id}/find-poster', [SportsBotController::class, 'fixtureQueueFindPoster'])->name('fixture-queue.find-poster');
+    Route::post('/fixture-queue/{id}/find-tv-info', [SportsBotController::class, 'fixtureQueueFindTvInfo'])->name('fixture-queue.find-tv-info');
+    Route::post('/fixture-queue/{id}/refresh-scraped-data', [SportsBotController::class, 'fixtureQueueRefreshScrapedData'])->name('fixture-queue.refresh-scraped-data');
+    Route::post('/fixture-queue/{id}/accept-scraped-data', [SportsBotController::class, 'fixtureQueueAcceptScrapedData'])->name('fixture-queue.accept-scraped-data');
+    Route::post('/fixture-queue/{id}/reject-scraped-data', [SportsBotController::class, 'fixtureQueueRejectScrapedData'])->name('fixture-queue.reject-scraped-data');
     Route::post('/fixture-queue/{id}/skip', [SportsBotController::class, 'fixtureQueueSkip'])->name('fixture-queue.skip');
     Route::delete('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueDelete'])->name('fixture-queue.delete');
     Route::post('/fixtures-today/preview', [SportsBotController::class, 'fixturesTodayPreview'])->name('fixtures-today.preview');
@@ -24,6 +29,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/rugby-fixtures/send', [SportsBotController::class, 'rugbyFixturesSend'])->name('rugby-fixtures.send');
     Route::post('/fight-fixtures/preview', [SportsBotController::class, 'fightFixturesPreview'])->name('fight-fixtures.preview');
     Route::post('/fight-fixtures/send', [SportsBotController::class, 'fightFixturesSend'])->name('fight-fixtures.send');
+    Route::post('/motorsport-fixtures/preview', [SportsBotController::class, 'motorsportFixturesPreview'])->name('motorsport-fixtures.preview');
+    Route::post('/motorsport-fixtures/send', [SportsBotController::class, 'motorsportFixturesSend'])->name('motorsport-fixtures.send');
     Route::post('/fixtures/{sport}/preview', [SportsBotController::class, 'sportFixturePreview'])->name('fixtures.preview');
     Route::post('/fixtures/{sport}/send', [SportsBotController::class, 'sportFixtureSend'])->name('fixtures.send');
     Route::post('/fixtures/{sport}/publish', [SportsBotController::class, 'sportFixturePublish'])->name('fixtures.publish');
@@ -33,6 +40,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/live-now/send', [SportsBotController::class, 'liveNowSend'])->name('live-now.send');
     Route::get('/coverage', [SportsBotController::class, 'coverageSettings'])->name('coverage');
     Route::post('/coverage', [SportsBotController::class, 'saveCoverageSettings'])->name('coverage.save');
+    Route::get('/scraper-settings', [SportsBotController::class, 'scraperSettings'])->name('scraper-settings');
+    Route::post('/scraper-settings', [SportsBotController::class, 'saveScraperSettings'])->name('scraper-settings.save');
     Route::post('/telegram/send-diagnostics', [SportsBotController::class, 'sendTelegramDiagnostics'])->name('telegram.send-diagnostics');
     Route::get('/telegram/messages', [SportsBotController::class, 'telegramMessages'])->name('telegram.messages');
     Route::get('/telegram/topics', [SportsBotController::class, 'telegramTopics'])->name('telegram.topics');

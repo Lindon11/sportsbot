@@ -62,6 +62,11 @@ class SportsBotCardRenderer
                 return;
             }
 
+            if (in_array($normalizedSport, ['formula_1', 'motorsport'], true)) {
+                $this->motorsportFixtureCard($image, $fixture);
+                return;
+            }
+
             $this->header($image, $c, SportsBotSports::icon($sport) . ' Fixture', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
             $this->versusBlock($image, $c, $fixture, 'VS');
             $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC'), [20, 184, 166]);
@@ -422,6 +427,84 @@ class SportsBotCardRenderer
         if ($poster === '') {
             foreach ($this->fitTextLines($title, 900, 54, true, 2) as $index => $line) {
                 $this->centerFittedText($image, $line, 600, 265 + ($index * 62), 900, 52, 28, $white, true);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function motorsportFixtureCard($image, array $fixture): void
+    {
+        $black = imagecolorallocate($image, 5, 8, 14);
+        $panel = imagecolorallocate($image, 248, 250, 252);
+        $panelSoft = imagecolorallocate($image, 226, 232, 240);
+        $border = imagecolorallocate($image, 203, 213, 225);
+        $text = imagecolorallocate($image, 15, 23, 42);
+        $muted = imagecolorallocate($image, 71, 85, 105);
+        $red = imagecolorallocate($image, 220, 38, 38);
+        $redDark = imagecolorallocate($image, 127, 29, 29);
+        $yellow = imagecolorallocate($image, 250, 204, 21);
+        $white = imagecolorallocate($image, 255, 255, 255);
+
+        imagefilledrectangle($image, 0, 0, $this->width, $this->height, $black);
+        $this->drawCheckeredBand($image, 0, 0, 1200, 76, 38, imagecolorallocate($image, 229, 231, 235), $black);
+        imagefilledrectangle($image, 0, 76, 1200, 88, $red);
+        $this->filledPolygon($image, [[0, 88], [255, 88], [140, 675], [0, 675]], $redDark);
+        $this->filledPolygon($image, [[1035, 88], [1200, 88], [1200, 675], [872, 675]], imagecolorallocate($image, 30, 41, 59));
+        $this->roundedRect($image, 92, 132, 1108, 620, 28, $panel);
+        imagerectangle($image, 92, 132, 1108, 620, $border);
+
+        $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Motorsport'));
+        $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Race event'));
+        $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
+        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
+        $venue = trim((string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Circuit TBC'));
+        $tv = trim((string) ($fixture['tv_channel'] ?? '')) ?: 'Not listed';
+
+        $this->drawLeagueLogoMark($image, $fixture, 172, 196, 92, $white, $red);
+        $this->textFitted($image, strtoupper($this->shortLeagueName($league)), 238, 190, 760, 30, 18, $redDark, true);
+        imagefilledrectangle($image, 238, 214, 1000, 218, $yellow);
+
+        foreach ($this->fitTextLines($this->displayTitle($title), 880, 48, true, 2) as $index => $line) {
+            $this->centerFittedText($image, $line, 600, 310 + ($index * 58), 880, 48, 28, $text, true);
+        }
+
+        $this->roundedRect($image, 134, 464, 1066, 586, 18, $panelSoft);
+        imagefilledrectangle($image, 412, 486, 415, 566, $border);
+        imagefilledrectangle($image, 740, 486, 743, 566, $border);
+
+        $this->drawCalendarIcon($image, 156, 494, 48, $redDark, $panel);
+        $this->text($image, 'SESSION', 220, 505, 18, $redDark, true);
+        $this->textFitted($image, $date, 220, 536, 178, 17, 13, $text, true);
+        $this->textFitted($image, $kickoff, 220, 562, 178, 17, 13, $muted, true);
+
+        $this->drawTvIcon($image, 444, 494, 50, $redDark, $panel);
+        $this->text($image, 'UK TV', 510, 505, 18, $redDark, true);
+        foreach ($this->fitTextLines($tv, 198, 18, true, 2) as $index => $line) {
+            $this->textFitted($image, $line, 510, 538 + ($index * 24), 198, 17, 13, $index === 0 ? $text : $muted, true);
+        }
+
+        $this->drawVenueIcon($image, 772, 496, 48, $redDark);
+        $this->text($image, 'CIRCUIT', 836, 505, 18, $redDark, true);
+        foreach ($this->fitTextLines($this->displayTitle($venue !== '' ? $venue : 'Circuit TBC'), 205, 17, true, 2) as $index => $line) {
+            $this->textFitted($image, $line, 836, 538 + ($index * 24), 205, 16, 12, $index === 0 ? $text : $muted, true);
+        }
+    }
+
+    private function drawCheckeredBand($image, int $x, int $y, int $width, int $height, int $cell, int $light, int $dark): void
+    {
+        for ($row = 0; $row * $cell < $height; $row++) {
+            for ($col = 0; $col * $cell < $width; $col++) {
+                $color = (($row + $col) % 2 === 0) ? $light : $dark;
+                imagefilledrectangle(
+                    $image,
+                    $x + ($col * $cell),
+                    $y + ($row * $cell),
+                    min($x + $width, $x + (($col + 1) * $cell)),
+                    min($y + $height, $y + (($row + 1) * $cell)),
+                    $color
+                );
             }
         }
     }

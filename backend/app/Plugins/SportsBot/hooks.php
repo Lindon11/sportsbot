@@ -97,6 +97,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/scraper-settings',
+                'label' => 'Scraper Settings',
+                'icon' => 'MagnifyingGlassIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/webhook-diagnostics',
                 'label' => 'Webhook Diagnostics',
                 'icon' => 'CommandLineIcon',

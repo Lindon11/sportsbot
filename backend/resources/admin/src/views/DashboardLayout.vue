@@ -424,6 +424,7 @@ const pageTitle = computed(() => {
     '/sportsbot/live-now': 'SportsBot Live Now',
     '/sportsbot/routing': 'SportsBot Telegram Routes',
     '/sportsbot/coverage': 'SportsBot Coverage Settings',
+    '/sportsbot/scraper-settings': 'SportsBot Scraper Settings',
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
     '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
   }

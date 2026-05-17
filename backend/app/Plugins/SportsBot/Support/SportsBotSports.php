@@ -19,7 +19,7 @@ class SportsBotSports
             'mma' => ['label' => 'MMA / UFC', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::MMA, 'aliases' => ['mma', 'ufc', 'fighting']],
             'rugby' => ['label' => 'Rugby', 'sport' => 'Rugby', 'icon' => '🏉', 'route_key' => TelegramRouteKeys::RUGBY, 'aliases' => ['rugby']],
             'cricket' => ['label' => 'Cricket', 'sport' => 'Cricket', 'icon' => '🏏', 'route_key' => TelegramRouteKeys::CRICKET, 'aliases' => ['cricket']],
-            'formula_1' => ['label' => 'Formula 1', 'sport' => 'Motorsport', 'icon' => '🏎', 'route_key' => TelegramRouteKeys::FORMULA_1, 'aliases' => ['formula 1', 'f1', 'motorsport']],
+            'formula_1' => ['label' => 'Formula 1', 'sport' => 'Motorsport', 'icon' => '🏎', 'route_key' => TelegramRouteKeys::MOTORSPORT, 'aliases' => ['formula 1', 'f1', 'motorsport']],
             'ice_hockey' => ['label' => 'Ice Hockey', 'sport' => 'Ice Hockey', 'icon' => '🏒', 'route_key' => TelegramRouteKeys::ICE_HOCKEY, 'aliases' => ['ice hockey', 'hockey', 'nhl']],
             'golf' => ['label' => 'Golf', 'sport' => 'Golf', 'icon' => '⛳', 'route_key' => TelegramRouteKeys::GOLF, 'aliases' => ['golf']],
             'motorsport' => ['label' => 'Motorsport', 'sport' => 'Motorsport', 'icon' => '🏁', 'route_key' => TelegramRouteKeys::MOTORSPORT, 'aliases' => ['motorsport', 'racing']],

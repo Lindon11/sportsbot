@@ -69,6 +69,15 @@
         <span v-if="item.payload_hash" class="font-mono text-slate-600 truncate max-w-[80px]" :title="item.payload_hash">{{ shortHash(item.payload_hash) }}</span>
       </div>
 
+      <div v-if="scraperStatus" class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="px-2 py-1 rounded-lg" :class="scraperStatusClass">
+          Scraped: {{ scraperStatus }}
+        </span>
+        <span v-if="scraperConfidence !== null" class="text-slate-500">confidence {{ Math.round(scraperConfidence * 100) }}%</span>
+        <span v-if="acceptedScrape" class="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300">accepted</span>
+        <span v-if="rejectedScrape" class="px-2 py-1 rounded-lg bg-red-500/10 text-red-300">rejected</span>
+      </div>
+
       <div class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-700/40">
         <button @click="$emit('preview', item)" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white text-xs font-medium transition-colors">Preview</button>
         <button @click="$emit('render', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40">
@@ -76,6 +85,21 @@
         </button>
         <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium transition-colors disabled:opacity-40">
           {{ busyId === item.id && busyAction === 'send' ? '...' : 'Send' }}
+        </button>
+        <button @click="$emit('find-poster', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-fuchsia-500/10 text-fuchsia-300 hover:bg-fuchsia-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'find-poster' ? '...' : 'Find Poster' }}
+        </button>
+        <button @click="$emit('find-tv-info', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'find-tv-info' ? '...' : 'Find TV Info' }}
+        </button>
+        <button @click="$emit('refresh-scraped-data', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'refresh-scraped-data' ? '...' : 'Refresh Scraped Data' }}
+        </button>
+        <button v-if="hasScrapedFields" @click="$emit('accept-scraped-data', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'accept-scraped-data' ? '...' : 'Accept Scraped Data' }}
+        </button>
+        <button v-if="hasScrapedFields || acceptedScrape" @click="$emit('reject-scraped-data', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'reject-scraped-data' ? '...' : 'Reject Scraped Data' }}
         </button>
         <button @click="$emit('skip', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-slate-700/30 text-slate-400 hover:text-slate-300 text-xs font-medium transition-colors disabled:opacity-40">Skip</button>
         <button @click="$emit('delete', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-medium transition-colors disabled:opacity-40 ml-auto">Delete</button>
@@ -97,9 +121,24 @@ const props = defineProps({
   busyAction: { type: String, default: '' },
 })
 
-defineEmits(['preview', 'render', 'send', 'skip', 'delete'])
+defineEmits(['preview', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data', 'skip', 'delete'])
 
 const fixture = computed(() => props.item.fixture_data || {})
+const payload = computed(() => props.item.payload || {})
+const scraper = computed(() => payload.value.scraper || null)
+const scraperStatus = computed(() => scraper.value?.status || '')
+const scraperConfidence = computed(() => {
+  const value = scraper.value?.normalized?.confidence
+  return typeof value === 'number' ? value : null
+})
+const hasScrapedFields = computed(() => Object.keys(scraper.value?.normalized?.fields || {}).length > 0)
+const acceptedScrape = computed(() => Boolean(payload.value.accepted_scraped_data))
+const rejectedScrape = computed(() => Boolean(payload.value.rejected_scraped_data))
+const scraperStatusClass = computed(() => {
+  if (scraperStatus.value === 'found') return 'bg-emerald-500/10 text-emerald-300'
+  if (scraperStatus.value === 'error') return 'bg-red-500/10 text-red-300'
+  return 'bg-slate-700/40 text-slate-300'
+})
 const title = computed(() => {
   const d = fixture.value
   const home = d.home_team || ''

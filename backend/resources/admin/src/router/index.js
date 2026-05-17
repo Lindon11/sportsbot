@@ -205,6 +205,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotCoverageView.vue')
         },
         {
+          path: '/sportsbot/scraper-settings',
+          name: 'sportsbot-scraper-settings',
+          component: () => import('../views/SportsBotScraperSettingsView.vue')
+        },
+        {
           path: '/sportsbot/webhook-diagnostics',
           name: 'sportsbot-webhook-diagnostics',
           component: () => import('../views/SportsBotWebhookDiagnosticsView.vue')
@@ -217,8 +222,7 @@ const router = createRouter({
         {
           path: '/sportsbot/motorsport-fixtures',
           name: 'sportsbot-motorsport-fixtures',
-          component: () => import('../views/SportsBotSportFixturesView.vue'),
-          props: { sport: 'formula_1', label: 'Motorsport Fixtures TV', routeKey: 'MOTORSPORT', emoji: '🏎', description: 'Formula 1, MotoGP, NASCAR, WRC and more motorsport events.' }
+          component: () => import('../views/SportsBotMotorsportFixturesView.vue')
         }
       ]
     }
