@@ -146,7 +146,7 @@ class SportsFixtureConfig
             'formula_1' => [
                 'sport'                  => 'formula_1',
                 'emoji'                  => '🏎',
-                'topic_key'              => TelegramRouteKeys::FORMULA_1,
+                'topic_key'              => TelegramRouteKeys::MOTORSPORT,
                 'provider_sport'         => 'Motorsport',
                 'card_template'          => self::CARD_TEMPLATE_RACE_EVENT,
                 'caption_formatter'      => self::CAPTION_GENERIC,
