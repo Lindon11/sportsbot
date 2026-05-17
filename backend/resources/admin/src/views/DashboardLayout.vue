@@ -414,10 +414,12 @@ const pageTitle = computed(() => {
     '/security': 'Security Settings',
     '/license': 'License Management',
     '/announcements': 'Announcements',
+    '/sportsbot/dashboard': 'SportsBot Dashboard',
     '/sportsbot/fixtures-today': 'SportsBot Fixtures Today',
     '/sportsbot/tv-guide': 'SportsBot TV Guide',
     '/sportsbot/live-now': 'SportsBot Live Now',
-    '/sportsbot/routing': 'SportsBot Telegram Routing',
+    '/sportsbot/routing': 'SportsBot Telegram Routes',
+    '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
   }
 
   // Check overrides first

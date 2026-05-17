@@ -37,6 +37,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
         'plugin' => 'sportsbot',
         'children' => [
             [
+                'route' => '/sportsbot/dashboard',
+                'label' => 'Dashboard',
+                'icon' => 'ChartBarIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/fixtures-today',
                 'label' => 'Fixtures Today',
                 'icon' => 'CalendarIcon',
@@ -56,8 +62,14 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
             ],
             [
                 'route' => '/sportsbot/routing',
-                'label' => 'Telegram Routing',
+                'label' => 'Telegram Routes',
                 'icon' => 'MapIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
+                'route' => '/sportsbot/webhook-diagnostics',
+                'label' => 'Webhook Diagnostics',
+                'icon' => 'CommandLineIcon',
                 'plugin' => 'sportsbot',
             ],
         ],

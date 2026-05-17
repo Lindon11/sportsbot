@@ -392,24 +392,32 @@ class SportsBotController extends Controller
 
     public function telegramWebhookDiagnostics(): JsonResponse
     {
-        if (!config('plugins.SportsBot.telegram.webhook_enabled', false)) {
-            return response()->json([
-                'webhook_enabled' => false,
-                'webhook_url' => null,
-                'error' => 'Webhook is not enabled. Set SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED=true',
-                'last_webhook_received' => null,
-                'last_callback_received' => null,
-                'last_callback_data' => null,
-                'telegram_webhook_health' => null,
-            ]);
-        }
-
         $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
-        $lastUpdate = SportsBotTelegramUpdateState::query()->latest()->first();
-        $lastCallback = SportsBotTelegramUpdateState::query()
-            ->where('type', 'callback_query')
-            ->latest()
-            ->first();
+        $webhookEnabled = (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
+        $webhookUrl = url(route('sportsbot.telegram.webhook', [], false));
+        $lastUpdate = null;
+        $lastCallback = null;
+        $recentUpdates = [];
+        $recentCallbacks = [];
+
+        if (Schema::hasTable('sportsbot_telegram_update_states')) {
+            $lastUpdate = SportsBotTelegramUpdateState::query()->latest()->first();
+            $lastCallback = SportsBotTelegramUpdateState::query()
+                ->where('type', 'callback_query')
+                ->latest()
+                ->first();
+            $recentUpdates = SportsBotTelegramUpdateState::query()
+                ->latest()
+                ->take(20)
+                ->get()
+                ->toArray();
+            $recentCallbacks = SportsBotTelegramUpdateState::query()
+                ->where('type', 'callback_query')
+                ->latest()
+                ->take(20)
+                ->get()
+                ->toArray();
+        }
 
         $lastCallbackData = null;
         if ($lastCallback instanceof SportsBotTelegramUpdateState) {
@@ -452,8 +460,10 @@ class SportsBotController extends Controller
         }
 
         return response()->json([
-            'webhook_enabled' => true,
-            'webhook_url' => route('sportsbot.telegram.webhook', [], false),
+            'webhook_enabled' => $webhookEnabled,
+            'webhook_url' => $webhookUrl,
+            'bot_token_configured' => $token !== '',
+            'error' => $webhookEnabled ? null : 'Webhook is not enabled. Set SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED=true',
             'last_webhook_received' => $lastUpdate instanceof SportsBotTelegramUpdateState
                 ? $lastUpdate->created_at->toIso8601String()
                 : null,
@@ -462,12 +472,139 @@ class SportsBotController extends Controller
                 : null,
             'last_callback_data' => $lastCallbackData,
             'telegram_webhook_health' => $telegramHealth,
-            'recent_updates' => SportsBotTelegramUpdateState::query()
-                ->latest()
-                ->take(20)
-                ->get()
-                ->toArray(),
+            'recent_updates' => $recentUpdates,
+            'recent_callbacks' => $recentCallbacks,
         ]);
+    }
+
+    public function setTelegramWebhook(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'url' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'max_connections' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'drop_pending_updates' => ['sometimes', 'boolean'],
+        ]);
+
+        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        if ($token === '') {
+            return response()->json([
+                'set' => false,
+                'error' => 'Telegram bot token is not configured.',
+            ], 422);
+        }
+
+        $url = trim((string) ($validated['url'] ?? ''));
+        if ($url === '') {
+            $url = url(route('sportsbot.telegram.webhook', [], false));
+        }
+
+        $payload = [
+            'url' => $url,
+            'max_connections' => (int) ($validated['max_connections'] ?? 40),
+            'drop_pending_updates' => (bool) ($validated['drop_pending_updates'] ?? false),
+        ];
+
+        $secret = trim((string) config('plugins.SportsBot.telegram.webhook_secret', ''));
+        if ($secret !== '') {
+            $payload['secret_token'] = $secret;
+        }
+
+        try {
+            $response = Http::asForm()
+                ->timeout(15)
+                ->post("https://api.telegram.org/bot{$token}/setWebhook", $payload);
+            $result = $response->json();
+
+            if ($response->successful() && ($result['ok'] ?? false)) {
+                Log::info('sportsbot.admin.telegram_webhook_set', [
+                    'url' => $url,
+                    'max_connections' => $payload['max_connections'],
+                    'drop_pending_updates' => $payload['drop_pending_updates'],
+                ]);
+
+                return response()->json([
+                    'set' => true,
+                    'result' => $result,
+                    'diagnostics' => $this->telegramWebhookDiagnostics()->getData(true),
+                ]);
+            }
+
+            Log::error('sportsbot.admin.telegram_webhook_set_failed', [
+                'response' => $result,
+            ]);
+
+            return response()->json([
+                'set' => false,
+                'error' => $result['description'] ?? 'Failed to set Telegram webhook.',
+                'response' => $result,
+            ], 422);
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.telegram_webhook_set_error', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'set' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function deleteTelegramWebhook(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'drop_pending_updates' => ['sometimes', 'boolean'],
+        ]);
+
+        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        if ($token === '') {
+            return response()->json([
+                'deleted' => false,
+                'error' => 'Telegram bot token is not configured.',
+            ], 422);
+        }
+
+        $payload = [
+            'drop_pending_updates' => (bool) ($validated['drop_pending_updates'] ?? false),
+        ];
+
+        try {
+            $response = Http::asForm()
+                ->timeout(15)
+                ->post("https://api.telegram.org/bot{$token}/deleteWebhook", $payload);
+            $result = $response->json();
+
+            if ($response->successful() && ($result['ok'] ?? false)) {
+                Log::info('sportsbot.admin.telegram_webhook_deleted', [
+                    'drop_pending_updates' => $payload['drop_pending_updates'],
+                ]);
+
+                return response()->json([
+                    'deleted' => true,
+                    'result' => $result,
+                    'diagnostics' => $this->telegramWebhookDiagnostics()->getData(true),
+                ]);
+            }
+
+            Log::error('sportsbot.admin.telegram_webhook_delete_failed', [
+                'response' => $result,
+            ]);
+
+            return response()->json([
+                'deleted' => false,
+                'error' => $result['description'] ?? 'Failed to delete Telegram webhook.',
+                'response' => $result,
+            ], 422);
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.telegram_webhook_delete_error', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'deleted' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
     }
 
     public function importLegacyTelegramTopics(TelegramTopicDiscoveryService $service, TelegramRoutingService $routingService): JsonResponse

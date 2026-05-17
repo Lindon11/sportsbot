@@ -160,6 +160,11 @@ const router = createRouter({
           component: () => import('../views/ApiKeysView.vue')
         },
         {
+          path: '/sportsbot/dashboard',
+          name: 'sportsbot-dashboard',
+          component: () => import('../views/SportsBotDashboardView.vue')
+        },
+        {
           path: '/sportsbot/fixtures-today',
           name: 'sportsbot-fixtures-today',
           component: () => import('../views/SportsBotFixturesTodayView.vue')
@@ -178,6 +183,11 @@ const router = createRouter({
           path: '/sportsbot/routing',
           name: 'sportsbot-routing',
           component: () => import('../views/SportsBotRoutingView.vue')
+        },
+        {
+          path: '/sportsbot/webhook-diagnostics',
+          name: 'sportsbot-webhook-diagnostics',
+          component: () => import('../views/SportsBotWebhookDiagnosticsView.vue')
         }
       ]
     }
