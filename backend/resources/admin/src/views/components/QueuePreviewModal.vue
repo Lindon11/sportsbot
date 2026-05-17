@@ -18,7 +18,7 @@
         <div class="p-4 space-y-4">
           <div class="rounded-xl overflow-hidden bg-slate-800 border border-slate-700" style="aspect-ratio: 16/9;">
             <template v-if="item.card_path && item.status === 'ready'">
-              <img :src="`/admin/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-contain bg-slate-900">
+              <img :src="`${cardBase}/admin/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-contain bg-slate-900">
             </template>
             <template v-else>
               <div class="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
@@ -124,7 +124,10 @@
 
 <script setup>
 import { computed } from 'vue'
+import api from '@/services/api'
 import QueueAssetHealth from './QueueAssetHealth.vue'
+
+const cardBase = api.defaults.baseURL || '/api/v1'
 
 const props = defineProps({
   item: { type: Object, default: null },

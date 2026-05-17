@@ -2,7 +2,7 @@
   <div :class="[accentBorder]" class="rounded-2xl bg-slate-800/50 border overflow-hidden hover:border-slate-500/70 transition-all duration-200 group">
     <div class="relative bg-slate-900/90 aspect-video flex items-center justify-center overflow-hidden cursor-pointer" @click="$emit('preview', item)">
       <template v-if="item.card_path && item.status === 'ready'">
-        <img :src="`/admin/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy">
+        <img :src="`${cardBase}/admin/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy">
         <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent"></div>
         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
           <span class="opacity-0 group-hover:opacity-100 transition-opacity px-4 py-2 rounded-xl bg-white/15 text-white backdrop-blur-sm text-sm font-medium">Click to preview</span>
@@ -86,8 +86,11 @@
 
 <script setup>
 import { computed } from 'vue'
+import api from '@/services/api'
 import QueueStatusBadge from './QueueStatusBadge.vue'
 import QueueAssetHealth from './QueueAssetHealth.vue'
+
+const cardBase = api.defaults.baseURL || '/api/v1'
 
 const props = defineProps({
   item: { type: Object, required: true },
