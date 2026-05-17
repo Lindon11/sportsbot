@@ -58,6 +58,7 @@ return [
     'telegram' => [
         'bot_token' => env('SPORTSBOT_TELEGRAM_BOT_TOKEN', $legacyEnv('TELEGRAM_BOT_TOKEN')),
         'chat_id' => env('SPORTSBOT_TELEGRAM_CHAT_ID', $legacyEnv('TELEGRAM_CHAT_ID')),
+        'message_thread_id' => env('SPORTSBOT_TELEGRAM_MESSAGE_THREAD_ID', $legacyEnv('TELEGRAM_MESSAGE_THREAD_ID')),
         'extra_chat_ids' => $csv(env('SPORTSBOT_TELEGRAM_EXTRA_CHAT_IDS', $legacyEnv('TELEGRAM_EXTRA_CHAT_IDS', ''))),
         'parse_mode' => env('SPORTSBOT_TELEGRAM_PARSE_MODE', 'HTML'),
         'disable_notification' => env('SPORTSBOT_TELEGRAM_DISABLE_NOTIFICATION', $legacyEnv('BOT_TELEGRAM_DISABLE_NOTIFICATION', false)),
