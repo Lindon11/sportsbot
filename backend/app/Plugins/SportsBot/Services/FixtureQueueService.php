@@ -478,6 +478,18 @@ class FixtureQueueService
         return SportsBotFixtureQueue::query()->find($id);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function itemData(SportsBotFixtureQueue $entry): array
+    {
+        $data = $entry->toArray();
+        $data['raw_fixture_data'] = $data['fixture_data'] ?? [];
+        $data['fixture_data'] = $this->effectiveFixtureData($entry);
+
+        return $data;
+    }
+
     public function reRenderItem(int $id): array
     {
         $entry = $this->find($id);
@@ -599,7 +611,10 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
-        return array_merge($this->scrapers->findPoster($entry), ['item' => $entry->fresh()?->toArray()]);
+        $result = $this->scrapers->findPoster($entry);
+        $fresh = $entry->fresh();
+
+        return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
     public function findTvInfo(int $id): array
@@ -609,7 +624,10 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
-        return array_merge($this->scrapers->findTvInfo($entry), ['item' => $entry->fresh()?->toArray()]);
+        $result = $this->scrapers->findTvInfo($entry);
+        $fresh = $entry->fresh();
+
+        return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
     public function refreshScrapedData(int $id): array
@@ -619,7 +637,10 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
-        return array_merge($this->scrapers->refresh($entry), ['item' => $entry->fresh()?->toArray()]);
+        $result = $this->scrapers->refresh($entry);
+        $fresh = $entry->fresh();
+
+        return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
     public function acceptScrapedData(int $id): array
@@ -629,7 +650,10 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
-        return array_merge($this->scrapers->accept($entry), ['item' => $entry->fresh()?->toArray()]);
+        $result = $this->scrapers->accept($entry);
+        $fresh = $entry->fresh();
+
+        return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
     public function rejectScrapedData(int $id): array
@@ -639,7 +663,10 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
-        return array_merge($this->scrapers->reject($entry), ['item' => $entry->fresh()?->toArray()]);
+        $result = $this->scrapers->reject($entry);
+        $fresh = $entry->fresh();
+
+        return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
     private function cacheAssets(SportsBotFixtureQueue $entry, array $fixture): void

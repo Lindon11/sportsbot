@@ -56,6 +56,15 @@ class SportsBotScraperService
             return ['accepted' => false, 'error' => 'No scraped fields available to accept'];
         }
 
+        $action = (string) ($payload['scraper']['action'] ?? '');
+        if ($action === 'find_tv_info' && !$this->hasAnyField($fields, ['tv_channel', 'tv_channels', 'date_label', 'kickoff_label', 'time'])) {
+            return ['accepted' => false, 'error' => 'No TV channel or date/time fields were found to accept'];
+        }
+
+        if ($action === 'find_poster' && !$this->hasAnyField($fields, ['event_poster'])) {
+            return ['accepted' => false, 'error' => 'No poster image field was found to accept'];
+        }
+
         $payload['accepted_scraped_data'] = [
             'fields' => $fields,
             'confidence' => (float) ($normalized['confidence'] ?? 0.0),
@@ -184,6 +193,22 @@ class SportsBotScraperService
             'logs' => $payload['scraper']['logs'],
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @param array<int, string> $keys
+     */
+    private function hasAnyField(array $fields, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            $value = $fields[$key] ?? null;
+            if (is_array($value) ? $value !== [] : trim((string) $value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function scraperConfig(string $key, mixed $default = null): mixed

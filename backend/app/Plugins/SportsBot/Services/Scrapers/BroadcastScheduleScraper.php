@@ -241,11 +241,25 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
     {
         $channels = [];
         $patterns = [
+            // UK
             '/\bSky Sports(?:\+| Plus)?(?:\s+(?:Main Event|Premier League|Football|Cricket|Golf|F1|Mix|Arena|Action|Racing|Tennis|News))?\b/i',
             '/\bTNT Sports(?:\s+(?:1|2|3|4|Ultimate|Box Office))?\b/i',
             '/\b(?:Premier Sports(?:\s+(?:1|2|Player))?|Racing TV|Eurosport\s+(?:1|2))\b/i',
             '/\b(?:BBC One|BBC Two|BBC Three|BBC Four|BBC iPlayer|BBC Sport Website)\b/i',
-            '/\b(?:ITV1|ITV4|ITVX|Channel 4|Channel 5|DAZN UK|discovery\+|Amazon Prime Video|UFC Fight Pass|YouTube)\b/i',
+            '/\b(?:ITV1|ITV4|ITVX|Channel 4|Channel 5|DAZN UK|DAZN|discovery\+|Amazon Prime Video|UFC Fight Pass|YouTube)\b/i',
+            // Canada
+            '/\bTSN(?:\s*(?:1|2|3|4|5))?\b/i',
+            '/\bSportsnet(?:\s+(?:One|360|1|SN1))?\b/i',
+            '/\b(?:SN(?:\s*360)?|SN1)\b/i',
+            '/\bCBC\s+(?:Sports|Gem)\b/i',
+            '/\b(?:RDS(?:\s*2)?|TVA\s+Sports(?:\s*2)?)\b/i',
+            // US
+            '/\bESPN(?:\s*\+|2)?\b/i',
+            '/\b(?:Fox\s+Sports\s+(?:1|2)|FS1|FS2)\b/i',
+            '/\b(?:NBC\s+Sports|USA\s+Network)\b/i',
+            '/\b(?:CBS\s+Sports\s+Network|CBS|ABC)\b/i',
+            '/\b(?:NFL\s+Network|NBA\s+TV|NHL\s+Network|MLB\s+Network)\b/i',
+            '/\b(?:Golf\s+Channel|TNT|TBS)\b/i',
         ];
 
         foreach ($patterns as $pattern) {
@@ -278,6 +292,7 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
     {
         $normalized = $this->normalizeForMatch($channel);
         $map = [
+            // UK
             'sky sports main event' => 'Sky Sports Main Event',
             'sky sports premier league' => 'Sky Sports Premier League',
             'sky sports football' => 'Sky Sports Football',
@@ -312,8 +327,47 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             'dazn uk' => 'DAZN UK',
             'racing tv' => 'Racing TV',
             'discovery plus' => 'discovery+',
+            'discovery+' => 'discovery+',
             'amazon prime video' => 'Amazon Prime Video',
             'ufc fight pass' => 'UFC Fight Pass',
+            // Canada
+            'tsn' => 'TSN',
+            'tsn1' => 'TSN1',
+            'tsn2' => 'TSN2',
+            'tsn3' => 'TSN3',
+            'tsn4' => 'TSN4',
+            'tsn5' => 'TSN5',
+            'sportsnet' => 'Sportsnet',
+            'sportsnet one' => 'Sportsnet One',
+            'sportsnet 360' => 'Sportsnet 360',
+            'sn1' => 'SN1',
+            'sn360' => 'SN360',
+            'cbc sports' => 'CBC Sports',
+            'cbc gem' => 'CBC Gem',
+            'rds' => 'RDS',
+            'rds2' => 'RDS2',
+            'tva sports' => 'TVA Sports',
+            'tva sports 2' => 'TVA Sports 2',
+            // US
+            'espn' => 'ESPN',
+            'espn2' => 'ESPN2',
+            'espn plus' => 'ESPN+',
+            'fox sports 1' => 'FS1',
+            'fox sports 2' => 'FS2',
+            'fs1' => 'FS1',
+            'fs2' => 'FS2',
+            'nbc sports' => 'NBC Sports',
+            'usa network' => 'USA Network',
+            'cbs sports network' => 'CBS Sports Network',
+            'cbs' => 'CBS',
+            'abc' => 'ABC',
+            'nfl network' => 'NFL Network',
+            'nba tv' => 'NBA TV',
+            'nhl network' => 'NHL Network',
+            'mlb network' => 'MLB Network',
+            'golf channel' => 'Golf Channel',
+            'tnt' => 'TNT',
+            'tbs' => 'TBS',
         ];
 
         return $map[$normalized] ?? ucwords($normalized);

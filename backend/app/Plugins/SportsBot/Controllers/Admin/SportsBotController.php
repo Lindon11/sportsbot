@@ -519,7 +519,9 @@ class SportsBotController extends Controller
                 ->latest('updated_at')
                 ->limit(500)
                 ->get()
-                ->toArray(),
+                ->map(fn (SportsBotFixtureQueue $entry): array => $queue->itemData($entry))
+                ->values()
+                ->all(),
         ]);
     }
 
@@ -557,7 +559,7 @@ class SportsBotController extends Controller
             return response()->json(['error' => "Queue item {$id} not found"], 404);
         }
 
-        return response()->json(['item' => $item->toArray()]);
+        return response()->json(['item' => $queue->itemData($item)]);
     }
 
     public function fixtureQueueReRender(int $id, FixtureQueueService $queue): JsonResponse
