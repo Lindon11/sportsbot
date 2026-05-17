@@ -270,28 +270,24 @@ $defaultBroadcastScheduleUrls = [
     'https://www.tvguide.co.uk/sport',
     'https://www.whatsportson.com/',
     'https://www.livescore.com/en/tv-guide/football-on-tv/',
-    'https://www.nascar.com/news-media/2026/4/19/nascar-tv-guide/amp/',
     // Canada - CFL, NHL, NBA
     'https://www.tsn.ca/tv-schedule',
     'https://www.sportsnet.ca/schedule/',
     'https://www.cbc.ca/sports',
-    'https://www.livesportsontv.com/sports/cfl-football',
-    'https://www.livesportsontv.com/sports/canadian-football',
-    'https://www.livesportsontv.com/sports/ice-hockey',
-    'https://www.livesportsontv.com/sports/basketball',
-    'https://www.livesportsontv.com/sports/baseball',
-    // US / ESPN
-    'https://www.espn.com/sports/schedule',
-    'https://www.espn.com/racing/schedule/_/year/2026',
+    // Multi-sport TV listings with per-game search
+    'https://www.livesportsontv.com/search?q={home_team}+vs+{away_team}',
+    'https://www.livesportsontv.com/search?q={event_name}',
+    'https://www.sportsglory.com/search?q={home_team}+vs+{away_team}',
+    'https://www.sportsglory.com/search?q={event_name}',
+    'https://www.sportingnews.com/us/schedule',
+    // US schedules
     'https://www.espn.com/nfl/schedule',
     'https://www.espn.com/nhl/schedule',
     'https://www.espn.com/nba/schedule',
     'https://www.espn.com/mlb/schedule',
+    'https://www.espn.com/racing/schedule/_/year/2026',
     'https://www.foxsports.com/schedule',
     'https://www.cbssports.com/schedule/',
-    // Multi-sport TV listings
-    'https://www.sportsglory.com/tv-schedule',
-    'https://www.sportingnews.com/us/schedule',
 ];
 
 $defaultCombatPosterUrls = [
@@ -404,9 +400,9 @@ return [
 
     'scrapers' => [
         'enabled' => env('SPORTSBOT_SCRAPERS_ENABLED', true),
-        'search_enabled' => env('SPORTSBOT_SCRAPER_SEARCH_ENABLED', false),
+        'search_enabled' => env('SPORTSBOT_SCRAPER_SEARCH_ENABLED', true),
         'search_url' => env('SPORTSBOT_SCRAPER_SEARCH_URL', ''),
-        'search_urls' => $csv(env('SPORTSBOT_SCRAPER_SEARCH_URLS', env('SPORTSBOT_SCRAPER_SEARCH_URL', ''))),
+        'search_urls' => $csv(env('SPORTSBOT_SCRAPER_SEARCH_URLS', env('SPORTSBOT_SCRAPER_SEARCH_URL', 'https://html.duckduckgo.com/html/?q={query}'))),
         'search_max_results' => (int) env('SPORTSBOT_SCRAPER_SEARCH_MAX_RESULTS', 5),
         'timeout' => (int) env('SPORTSBOT_SCRAPER_TIMEOUT', 8),
         'user_agent' => env('SPORTSBOT_SCRAPER_USER_AGENT', 'SportsBot/1.0 public-page-enrichment'),
