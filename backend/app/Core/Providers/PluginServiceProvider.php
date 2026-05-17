@@ -54,6 +54,7 @@ class PluginServiceProvider extends ServiceProvider
         $this->loadPluginViews();
         $this->loadPluginMigrations();
         $this->loadPluginTranslations();
+        $this->loadPluginCommands();
         $this->publishPluginAssets();
 
         // Register plugins to registry using already-discovered data (no duplicate scan)
@@ -388,6 +389,50 @@ class PluginServiceProvider extends ServiceProvider
 
             if (File::exists($langPath)) {
                 $this->loadTranslationsFrom($langPath, $plugin['id']);
+            }
+        }
+    }
+
+    /**
+     * Load plugin Artisan commands.
+     */
+    protected function loadPluginCommands(): void
+    {
+        if (!$this->app->runningInConsole()) {
+            return;
+        }
+
+        foreach ($this->plugins as $plugin) {
+            if (!($plugin['enabled'] ?? true)) {
+                continue;
+            }
+
+            $commandsPath = $plugin['path'] . '/Console/Commands';
+
+            if (!File::exists($commandsPath)) {
+                continue;
+            }
+
+            $commands = [];
+
+            foreach (File::allFiles($commandsPath) as $file) {
+                if ($file->getExtension() !== 'php') {
+                    continue;
+                }
+
+                $relativePath = Str::of($file->getRelativePathname())
+                    ->replaceLast('.php', '')
+                    ->replace(['/', '\\'], '\\')
+                    ->toString();
+                $class = rtrim($plugin['namespace'], '\\') . '\\Console\\Commands\\' . $relativePath;
+
+                if (class_exists($class) && is_subclass_of($class, \Illuminate\Console\Command::class)) {
+                    $commands[] = $class;
+                }
+            }
+
+            if ($commands !== []) {
+                $this->commands($commands);
             }
         }
     }

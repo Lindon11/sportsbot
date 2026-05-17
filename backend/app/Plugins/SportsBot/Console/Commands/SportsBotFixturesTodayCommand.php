@@ -1,21 +1,23 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Plugins\SportsBot\Console\Commands;
 
-use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
+use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use Illuminate\Console\Command;
 use Throwable;
 
-class SportsBotTvGuideCommand extends Command
+class SportsBotFixturesTodayCommand extends Command
 {
-    protected $signature = 'sportsbot:tv-guide
-        {--send : Send formatted TV guide to Telegram route TV_GUIDE}';
+    protected $signature = 'sportsbot:fixtures-today
+        {--send : Send formatted fixtures to Telegram route FIXTURES_TODAY}';
 
-    protected $description = 'Build and optionally send the SportsBot TV guide';
+    protected $description = 'Build and optionally send today\'s fixtures grouped by sport';
 
-    public function handle(TvGuideContentModule $module, SportsBotPublisher $publisher): int
-    {
+    public function handle(
+        FixturesTodayContentModule $module,
+        SportsBotPublisher $publisher,
+    ): int {
         if (!(bool) $this->option('send')) {
             $preview = $publisher->preview($module);
             $message = (string) ($preview['message'] ?? '');
@@ -33,13 +35,14 @@ class SportsBotTvGuideCommand extends Command
         }
 
         $results = (array) ($sent['results'] ?? []);
-        $this->info('Sent TV guide to ' . count($results) . ' Telegram target(s).');
+
+        $this->info('Sent fixtures message to ' . count($results) . ' Telegram target(s).');
 
         foreach ($results as $result) {
             $this->line(sprintf(
                 '- %s:%s (message_id=%s, fallback=%s)',
                 (string) ($result['chat_id'] ?? ''),
-                ($result['message_thread_id'] ?? null) !== null ? (string) $result['message_thread_id'] : '-',
+                $result['message_thread_id'] !== null ? (string) $result['message_thread_id'] : '-',
                 (string) ($result['message_id'] ?? ''),
                 !empty($result['fallback']) ? 'true' : 'false'
             ));

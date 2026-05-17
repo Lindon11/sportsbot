@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Plugins\SportsBot\Console\Commands;
 
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use Illuminate\Console\Command;

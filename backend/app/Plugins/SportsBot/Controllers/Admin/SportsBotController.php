@@ -8,6 +8,7 @@ use App\Plugins\SportsBot\Models\SportsBotSentAlert;
 use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
 use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
 use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
+use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
@@ -17,9 +18,11 @@ use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -384,6 +387,86 @@ class SportsBotController extends Controller
             'summary' => $summary,
             'topics' => $this->recentTelegramTopics(100),
             'diagnostics' => $service->diagnostics(),
+        ]);
+    }
+
+    public function telegramWebhookDiagnostics(): JsonResponse
+    {
+        if (!config('plugins.SportsBot.telegram.webhook_enabled', false)) {
+            return response()->json([
+                'webhook_enabled' => false,
+                'webhook_url' => null,
+                'error' => 'Webhook is not enabled. Set SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED=true',
+                'last_webhook_received' => null,
+                'last_callback_received' => null,
+                'last_callback_data' => null,
+                'telegram_webhook_health' => null,
+            ]);
+        }
+
+        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $lastUpdate = SportsBotTelegramUpdateState::query()->latest()->first();
+        $lastCallback = SportsBotTelegramUpdateState::query()
+            ->where('type', 'callback_query')
+            ->latest()
+            ->first();
+
+        $lastCallbackData = null;
+        if ($lastCallback instanceof SportsBotTelegramUpdateState) {
+            $payload = is_array($lastCallback->payload) ? $lastCallback->payload : [];
+            $lastCallbackData = $payload['callback_data'] ?? $lastCallback->callback_data;
+        }
+
+        $telegramHealth = null;
+        if ($token !== '') {
+            try {
+                $response = Http::timeout(10)->get("https://api.telegram.org/bot{$token}/getWebhookInfo");
+                $result = $response->json();
+                if ($response->successful() && ($result['ok'] ?? false)) {
+                    $info = $result['result'] ?? [];
+                    $telegramHealth = [
+                        'url' => $info['url'] ?? '',
+                        'pending_update_count' => $info['pending_update_count'] ?? 0,
+                        'last_error_date' => isset($info['last_error_date']) ? date('Y-m-d H:i:s', $info['last_error_date']) : null,
+                        'last_error_message' => $info['last_error_message'] ?? null,
+                        'max_connections' => $info['max_connections'] ?? null,
+                        'healthy' => ($info['pending_update_count'] ?? 0) < 100 && empty($info['last_error_message']),
+                    ];
+                } else {
+                    $telegramHealth = [
+                        'error' => $result['description'] ?? 'Unknown API error',
+                        'healthy' => false,
+                    ];
+                }
+            } catch (ConnectionException $e) {
+                $telegramHealth = [
+                    'error' => 'Could not connect to Telegram API: ' . $e->getMessage(),
+                    'healthy' => false,
+                ];
+            } catch (Throwable $e) {
+                $telegramHealth = [
+                    'error' => 'Unexpected error: ' . $e->getMessage(),
+                    'healthy' => false,
+                ];
+            }
+        }
+
+        return response()->json([
+            'webhook_enabled' => true,
+            'webhook_url' => route('sportsbot.telegram.webhook', [], false),
+            'last_webhook_received' => $lastUpdate instanceof SportsBotTelegramUpdateState
+                ? $lastUpdate->created_at->toIso8601String()
+                : null,
+            'last_callback_received' => $lastCallback instanceof SportsBotTelegramUpdateState
+                ? $lastCallback->created_at->toIso8601String()
+                : null,
+            'last_callback_data' => $lastCallbackData,
+            'telegram_webhook_health' => $telegramHealth,
+            'recent_updates' => SportsBotTelegramUpdateState::query()
+                ->latest()
+                ->take(20)
+                ->get()
+                ->toArray(),
         ]);
     }
 

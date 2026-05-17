@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Exclude installer routes from CSRF verification
         $middleware->validateCsrfTokens(except: [
             'install/*',
+            'sportsbot/telegram/webhook',
         ]);
 
         // Register Spatie Permission middleware aliases

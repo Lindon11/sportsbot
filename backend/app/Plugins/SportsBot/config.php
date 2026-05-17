@@ -99,6 +99,8 @@ return [
         'extra_chat_ids' => $csv(env('SPORTSBOT_TELEGRAM_EXTRA_CHAT_IDS', $legacyEnv('TELEGRAM_EXTRA_CHAT_IDS', ''))),
         'parse_mode' => env('SPORTSBOT_TELEGRAM_PARSE_MODE', 'HTML'),
         'disable_notification' => env('SPORTSBOT_TELEGRAM_DISABLE_NOTIFICATION', $legacyEnv('BOT_TELEGRAM_DISABLE_NOTIFICATION', false)),
+        'webhook_enabled' => env('SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED', false),
+        'webhook_secret' => env('SPORTSBOT_TELEGRAM_WEBHOOK_SECRET', ''),
     ],
 
     'legacy' => [

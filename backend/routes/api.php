@@ -15,7 +15,7 @@ Route::middleware('throttle:10,1')->group(function () {
 });
 
 Route::middleware('throttle:60,1')->group(function () {
-    Route::post('/footballbot/telegram/webhook', \App\Core\Http\Controllers\FootballBotWebhookController::class);
+    Route::post('/footballbot/telegram/webhook', [\App\Plugins\SportsBot\Controllers\TelegramWebhookController::class, 'handle']);
 });
 
 // ── v1 API ────────────────────────────────────────────────────────────────────

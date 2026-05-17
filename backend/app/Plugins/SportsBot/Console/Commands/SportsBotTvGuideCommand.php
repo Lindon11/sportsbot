@@ -1,20 +1,20 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Plugins\SportsBot\Console\Commands;
 
-use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
+use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use Illuminate\Console\Command;
 use Throwable;
 
-class SportsBotLiveNowCommand extends Command
+class SportsBotTvGuideCommand extends Command
 {
-    protected $signature = 'sportsbot:live-now
-        {--send : Send formatted live-now digest to Telegram route LIVE_NOW}';
+    protected $signature = 'sportsbot:tv-guide
+        {--send : Send formatted TV guide to Telegram route TV_GUIDE}';
 
-    protected $description = 'Build and optionally send the SportsBot Live Now digest';
+    protected $description = 'Build and optionally send the SportsBot TV guide';
 
-    public function handle(LiveNowContentModule $module, SportsBotPublisher $publisher): int
+    public function handle(TvGuideContentModule $module, SportsBotPublisher $publisher): int
     {
         if (!(bool) $this->option('send')) {
             $preview = $publisher->preview($module);
@@ -33,7 +33,7 @@ class SportsBotLiveNowCommand extends Command
         }
 
         $results = (array) ($sent['results'] ?? []);
-        $this->info('Sent Live Now digest to ' . count($results) . ' Telegram target(s).');
+        $this->info('Sent TV guide to ' . count($results) . ' Telegram target(s).');
 
         foreach ($results as $result) {
             $this->line(sprintf(

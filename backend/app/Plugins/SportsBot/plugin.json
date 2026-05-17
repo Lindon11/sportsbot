@@ -32,7 +32,7 @@
         "sportsbot.alert.sent": "Observe successfully sent alerts."
     },
     "routes": {
-        "web": false,
+        "web": true,
         "api": false,
         "admin": true
     }
