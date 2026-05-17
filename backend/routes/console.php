@@ -38,3 +38,16 @@ if ((bool) config('footballbot.enabled') && (bool) config('footballbot.schedule.
         default => $footballBot->everyTwoMinutes(),
     };
 }
+
+if ((bool) config('plugins.SportsBot.enabled') && (bool) config('plugins.SportsBot.schedule.enabled')) {
+    $sportsBot = Schedule::command('sportsbot:run-native')
+        ->withoutOverlapping()
+        ->onOneServer()
+        ->appendOutputTo(storage_path('logs/sportsbot-scheduler.log'));
+
+    match ((string) config('plugins.SportsBot.schedule.frequency')) {
+        'everyMinute' => $sportsBot->everyMinute(),
+        'everyFiveMinutes' => $sportsBot->everyFiveMinutes(),
+        default => $sportsBot->everyTwoMinutes(),
+    };
+}

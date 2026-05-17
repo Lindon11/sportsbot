@@ -1,0 +1,39 @@
+{
+    "name": "Sports Bot",
+    "slug": "sportsbot",
+    "version": "0.1.0",
+    "description": "Laravel-native sports alert bot with provider, renderer, and notifier extension hooks.",
+    "author": "LaravelCP",
+    "enabled": true,
+    "license_required": false,
+    "requires": {
+        "laravel": "^11.0",
+        "plugins": {}
+    },
+    "settings": {
+        "icon": "SB",
+        "color": "#0f766e",
+        "menu": {
+            "enabled": false,
+            "order": 80,
+            "section": "admin"
+        }
+    },
+    "permissions": {
+        "sportsbot.view": "View Sports Bot status",
+        "sportsbot.admin": "Administer Sports Bot"
+    },
+    "hooks": {
+        "sportsbot.live_rows": "Filter provider live-score rows before normalization.",
+        "sportsbot.match.normalized": "Filter a normalized match before allow-list checks.",
+        "sportsbot.match.allowed": "Filter whether a normalized match should be tracked.",
+        "sportsbot.alerts.detected": "Filter generated alerts before duplicate checks.",
+        "sportsbot.alert.message": "Filter the final Telegram message for an alert.",
+        "sportsbot.alert.sent": "Observe successfully sent alerts."
+    },
+    "routes": {
+        "web": false,
+        "api": false,
+        "admin": true
+    }
+}
