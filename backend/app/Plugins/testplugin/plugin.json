@@ -1,0 +1,33 @@
+{
+    "name": "TestPlugin",
+    "slug": "testplugin",
+    "version": "1.0.0",
+    "description": "A new plugin created with hub:make",
+    "author": "Developer",
+    "enabled": false,
+    "license_required": false,
+    "requires": {
+        "laravel": "^11.0",
+        "plugins": {}
+    },
+    "settings": {
+        "icon": "\ud83d\udce6",
+        "color": "#6366f1",
+        "menu": {
+            "enabled": true,
+            "order": 99,
+            "section": "actions"
+        }
+    },
+    "permissions": {
+        "testplugin.view": "View TestPlugin content",
+        "testplugin.use": "Use TestPlugin features",
+        "testplugin.admin": "Administer TestPlugin"
+    },
+    "hooks": {},
+    "routes": {
+        "web": false,
+        "api": true,
+        "admin": false
+    }
+}

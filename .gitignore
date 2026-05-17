@@ -1,23 +1,148 @@
-cache/
-logs/
-generated/
+# ====================
+# Frontend (Vue/Node)
+# ====================
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
 node_modules/
-.DS_Store
+
+# Build outputs
+dist
+dist-ssr
+coverage
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.tsbuildinfo
+
+.eslintcache
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Vitest
+__screenshots__/
+
+# Vite
+*.timestamp-*-*.mjs
+
+test-results/
+playwright-report/
+
+# ====================
+# Backend (Laravel/PHP)
+# ====================
+
+/.phpunit.cache
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/installed
+/storage/pail
+/storage/logs/*.log
+/storage/debugbar
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/bundles
+backend/app/Plugins/_archived
+backend/storage/bundles
+backend/database/migrations/archived_gaming
+backend/footballbot/cache
+backend/footballbot/generated
+backend/footballbot/logs
+backend/footballbot/node_modules
+backend/footballbot/config/footballbot.env
+/vendor
+
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+/auth.json
+/.fleet
+/.nova
+/.zed
+license_private.pem
+license_public.pem
+storage/license_key
+
+# IDE Helper files (generated, not needed in repo)
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# ====================
+# Environment files (root level)
+# ====================
+
 .env
-config/.env
-vendor/
-cache/*
-!cache/.gitkeep
-!cache/.htaccess
-generated/*
-!generated/.gitkeep
-!generated/.htaccess
-!generated/sample_*.png
-logs/*
-!logs/.gitkeep
-!logs/.htaccess
-config/footballbot.env
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
+.env.local
+.env.production
+.env.*.local
+.env.backup
+
+# ====================
+# OS generated files
+# ====================
+
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ====================
+# Vite cache
+# ====================
+
+.vite/
+
+# ====================
+# Development
+# ====================
+
+
+backend-bug-tracking.md
+DEVELOPMENT.md
+LOCAL-DEPLOYMENT-DETAILS.md
+LOCAL-DEPLOYMENT-PROBLEMS.md
+REBRANDING.md
+docs/BUG-USERNAME-GUEST.md
+backend/docs/ADMIN_MENU_AUDIT.md
+backend/app/Core/Models/archived_plugin/Item.php
+backend/app/Core/Models/archived_plugin/ItemType.php
+backend/app/Core/Models/archived_plugin/Location.php
+backend/app/Core/Models/archived_plugin/Rank.php
+backend/app/Core/Models/archived_plugin/UserTimer.php
+backend/app/Core/Services/archived_plugin/Feature.php
+backend/app/Core/Services/archived_plugin/GameHooks.php
+backend/app/Core/Services/archived_plugin/PlayerStatsService.php
+backend/app/Core/Services/archived_plugin/TimerService.php
+backend/app/Core/Services/archived_plugin/WalletService.php
+backend/app/Core/Models/archived_plugin/LocationController.php
+backend/app/Core/Models/archived_plugin/MembershipController.php
+backend/app/Core/Models/archived_plugin/RankController.php
+backend/app/Core/Models/archived_plugin/UserTimerController.php
+frontend/.npm-cache
+.npm-cache

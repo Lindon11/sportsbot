@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"name": "Frontend (Vue 3)",
+			"path": "frontend"
+		},
+		{
+			"name": "Backend (Laravel)",
+			"path": "backend"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.vue": "vue",
+			"*.blade.php": "blade"
+		},
+		"editor.formatOnSave": true
+	}
+}

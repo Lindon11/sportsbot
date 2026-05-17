@@ -1,44 +1,97 @@
 services:
-  bot:
-    build: .
-    container_name: footballbot-admin
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: laravelcp_frontend
     ports:
-      - "8010:8010"
+      - "5175:5175"
     volumes:
-      - .:/app
-      - generated:/app/generated
-      - cache:/app/cache
-      - logs:/app/logs
+      - ./frontend:/app
+      - /app/node_modules
     environment:
-      - BOT_FONT_REGULAR=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-      - BOT_FONT_BOLD=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+      - NODE_ENV=development
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - laravelcp_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: laravelcp_backend
+    ports:
+      - "8001:80"
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html/public
+      - APP_DEBUG=1
+    networks:
+      - laravelcp_net
     restart: unless-stopped
 
-  cron:
-    build: .
-    container_name: footballbot-cron
-    depends_on:
-      - bot
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: laravelcp_scheduler
     volumes:
-      - .:/app
-      - generated:/app/generated
-      - cache:/app/cache
-      - logs:/app/logs
+      - ./backend:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
-      - BOT_FONT_REGULAR=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-      - BOT_FONT_BOLD=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
-    command:
-      - /bin/sh
-      - -lc
-      - |
-        while true; do
-          date '+[%Y-%m-%d %H:%M:%S] cron tick' >> /app/logs/cron.log
-          /usr/local/bin/php /app/check_live.php >> /app/logs/cron.log 2>&1
-          sleep 120
-        done
+      - APP_DEBUG=1
+    command: php artisan schedule:work
+    networks:
+      - laravelcp_net
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: laravelcp_db
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: laravelcp
+      MYSQL_USER: laravelcp
+      MYSQL_PASSWORD: laravelcp
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - laravelcp_net
+    restart: unless-stopped
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: laravelcp_pma
+    ports:
+      - "8082:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: root
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - laravelcp_net
     restart: unless-stopped
 
 volumes:
-  generated:
-  cache:
-  logs:
+  mysql_data:
+
+
+networks:
+  laravelcp_net:
+    driver: bridge
