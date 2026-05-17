@@ -920,13 +920,10 @@ function fb_telegram_menu_callback_action(string $callbackData): ?string
 
 function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $callback, string $action): bool
 {
-    $callbackId = (string) ($callback['id'] ?? '');
     $message = is_array($callback['message'] ?? null) ? $callback['message'] : [];
     $chat = is_array($message['chat'] ?? null) ? $message['chat'] : [];
     $chatId = trim((string) ($chat['id'] ?? ''));
     $threadId = is_numeric((string) ($message['message_thread_id'] ?? '')) ? (int) $message['message_thread_id'] : null;
-
-    fb_telegram_answer_callback($config, $callbackId, fb_bot_menu_action_label($action));
 
     if ($chatId === '') {
         return false;
@@ -993,9 +990,9 @@ function fb_telegram_process_menu_callback(array $config, SQLite3 $db, array $ca
     return true;
 }
 
-function fb_process_telegram_updates(array $config, SQLite3 $db): array
+function fb_telegram_update_summary_empty(): array
 {
-    $summary = [
+    return [
         'updates' => 0,
         'messages' => 0,
         'callbacks' => 0,
@@ -1004,8 +1001,131 @@ function fb_process_telegram_updates(array $config, SQLite3 $db): array
         'topics' => 0,
         'errors' => [],
     ];
+}
+
+function fb_process_single_telegram_update(array $config, SQLite3 $db, array $update): array
+{
+    $summary = fb_telegram_update_summary_empty();
+    $nextOffset = null;
+    $summary['updates']++;
+
+    $updateId = (int) ($update['update_id'] ?? 0);
+    if ($updateId > 0) {
+        $nextOffset = $updateId + 1;
+    }
+
+    $messageUpdate = $update['message'] ?? null;
+    if (is_array($messageUpdate)) {
+        $summary['messages']++;
+        try {
+            $messageSummary = fb_telegram_process_message_update($config, $db, $messageUpdate);
+            if (!empty($messageSummary['topic_saved'])) {
+                $summary['topics']++;
+            }
+            if (!empty($messageSummary['menu_sent'])) {
+                $summary['menus']++;
+            }
+        } catch (Throwable $error) {
+            fb_log('warning', 'Could not process Telegram message update', [
+                'error' => $error->getMessage(),
+            ]);
+            $summary['errors'][] = $error->getMessage();
+        }
+    }
+
+    $callback = $update['callback_query'] ?? null;
+    if (is_array($callback)) {
+        $summary['callbacks']++;
+        $callbackId = (string) ($callback['id'] ?? '');
+        $data = (string) ($callback['data'] ?? '');
+        $menuAction = fb_telegram_menu_callback_action($data);
+        $callbackMessage = is_array($callback['message'] ?? null) ? $callback['message'] : [];
+        $callbackChat = is_array($callbackMessage['chat'] ?? null) ? $callbackMessage['chat'] : [];
+        $callbackFrom = is_array($callback['from'] ?? null) ? $callback['from'] : [];
+        $callbackMessageId = is_numeric((string) ($callbackMessage['message_id'] ?? null)) ? (int) $callbackMessage['message_id'] : null;
+        $callbackChatId = trim((string) ($callbackChat['id'] ?? ''));
+        $callbackUserId = trim((string) ($callbackFrom['id'] ?? ''));
+
+        fb_log('info', 'telegram.callback_query.received', [
+            'callback_data' => $data,
+            'chat_id' => $callbackChatId,
+            'message_id' => $callbackMessageId,
+            'user_id' => $callbackUserId,
+        ]);
+
+        // Acknowledge callbacks immediately so button taps feel responsive.
+        $callbackAckText = $menuAction !== null ? fb_bot_menu_action_label($menuAction) : 'Working...';
+        fb_telegram_answer_callback($config, $callbackId, $callbackAckText);
+
+        if ($menuAction !== null) {
+            try {
+                if (fb_telegram_process_menu_callback($config, $db, $callback, $menuAction)) {
+                    $summary['menus']++;
+                }
+            } catch (Throwable $error) {
+                fb_log('warning', 'Could not process Telegram menu callback', [
+                    'action' => $menuAction,
+                    'error' => $error->getMessage(),
+                ]);
+                $summary['errors'][] = $error->getMessage();
+            }
+        } else {
+            $follow = fb_follow_button_payload($db, $data);
+
+            if ($follow !== null) {
+                $message = is_array($callback['message'] ?? null) ? $callback['message'] : [];
+                $chat = is_array($message['chat'] ?? null) ? $message['chat'] : [];
+                $chatId = trim((string) ($chat['id'] ?? ''));
+                $threadId = is_numeric((string) ($message['message_thread_id'] ?? '')) ? (int) $message['message_thread_id'] : null;
+
+                if ($chatId !== '') {
+                    fb_save_customer_follow(
+                        $db,
+                        $chatId,
+                        $threadId,
+                        is_array($callback['from'] ?? null) ? $callback['from'] : [],
+                        $follow
+                    );
+
+                    $summary['follows']++;
+                }
+            }
+        }
+    }
+
+    return [
+        'summary' => $summary,
+        'next_offset' => $nextOffset,
+    ];
+}
+
+function fb_process_telegram_webhook_update(array $config, SQLite3 $db, array $update): array
+{
+    $summary = fb_telegram_update_summary_empty();
+    if (empty($config['telegram']['bot_token'])) {
+        return $summary;
+    }
+
+    $result = fb_process_single_telegram_update($config, $db, $update);
+    $summary = $result['summary'] ?? $summary;
+    $nextOffset = $result['next_offset'] ?? null;
+
+    if (is_numeric((string) $nextOffset) && (int) $nextOffset > 0) {
+        fb_telegram_save_update_offset($db, (int) $nextOffset);
+    }
+
+    return $summary;
+}
+
+function fb_process_telegram_updates(array $config, SQLite3 $db): array
+{
+    $summary = fb_telegram_update_summary_empty();
 
     if (empty($config['telegram']['updates_enabled']) || empty($config['telegram']['bot_token'])) {
+        return $summary;
+    }
+
+    if (!empty($config['telegram']['webhook_enabled'])) {
         return $summary;
     }
 
@@ -1032,91 +1152,20 @@ function fb_process_telegram_updates(array $config, SQLite3 $db): array
             continue;
         }
 
-        $summary['updates']++;
-        $updateId = (int) ($update['update_id'] ?? 0);
-        if ($updateId > 0) {
-            $nextOffset = max((int) ($nextOffset ?? 0), $updateId + 1);
+        $result = fb_process_single_telegram_update($config, $db, $update);
+        $delta = is_array($result['summary'] ?? null) ? $result['summary'] : [];
+        $summary['updates'] += (int) ($delta['updates'] ?? 0);
+        $summary['messages'] += (int) ($delta['messages'] ?? 0);
+        $summary['callbacks'] += (int) ($delta['callbacks'] ?? 0);
+        $summary['follows'] += (int) ($delta['follows'] ?? 0);
+        $summary['menus'] += (int) ($delta['menus'] ?? 0);
+        $summary['topics'] += (int) ($delta['topics'] ?? 0);
+        $summary['errors'] = array_merge($summary['errors'], is_array($delta['errors'] ?? null) ? $delta['errors'] : []);
+
+        $deltaOffset = $result['next_offset'] ?? null;
+        if (is_numeric((string) $deltaOffset) && (int) $deltaOffset > 0) {
+            $nextOffset = max((int) ($nextOffset ?? 0), (int) $deltaOffset);
         }
-
-        $messageUpdate = $update['message'] ?? null;
-        if (is_array($messageUpdate)) {
-            $summary['messages']++;
-            try {
-                $messageSummary = fb_telegram_process_message_update($config, $db, $messageUpdate);
-                if (!empty($messageSummary['topic_saved'])) {
-                    $summary['topics']++;
-                }
-                if (!empty($messageSummary['menu_sent'])) {
-                    $summary['menus']++;
-                }
-            } catch (Throwable $error) {
-                fb_log('warning', 'Could not process Telegram message update', [
-                    'error' => $error->getMessage(),
-                ]);
-                $summary['errors'][] = $error->getMessage();
-            }
-        }
-
-        $callback = $update['callback_query'] ?? null;
-        if (!is_array($callback)) {
-            continue;
-        }
-
-        $summary['callbacks']++;
-        $callbackId = (string) ($callback['id'] ?? '');
-        $data = (string) ($callback['data'] ?? '');
-        $menuAction = fb_telegram_menu_callback_action($data);
-
-        if ($menuAction !== null) {
-            try {
-                if (fb_telegram_process_menu_callback($config, $db, $callback, $menuAction)) {
-                    $summary['menus']++;
-                }
-            } catch (Throwable $error) {
-                fb_log('warning', 'Could not process Telegram menu callback', [
-                    'action' => $menuAction,
-                    'error' => $error->getMessage(),
-                ]);
-                fb_telegram_answer_callback($config, $callbackId, 'Could not load that menu right now.', true);
-                $summary['errors'][] = $error->getMessage();
-            }
-            continue;
-        }
-
-        $follow = fb_follow_button_payload($db, $data);
-
-        if ($follow === null) {
-            fb_telegram_answer_callback($config, $callbackId, 'That follow button has expired.', true);
-            continue;
-        }
-
-        $message = is_array($callback['message'] ?? null) ? $callback['message'] : [];
-        $chat = is_array($message['chat'] ?? null) ? $message['chat'] : [];
-        $chatId = trim((string) ($chat['id'] ?? ''));
-        $threadId = is_numeric((string) ($message['message_thread_id'] ?? '')) ? (int) $message['message_thread_id'] : null;
-
-        if ($chatId === '') {
-            fb_telegram_answer_callback($config, $callbackId, 'Open the bot chat once, then try again.', true);
-            continue;
-        }
-
-        fb_save_customer_follow(
-            $db,
-            $chatId,
-            $threadId,
-            is_array($callback['from'] ?? null) ? $callback['from'] : [],
-            $follow
-        );
-
-        $summary['follows']++;
-        $answerText = (($follow['kind'] ?? '') === 'feed')
-            ? 'Subscribed to ' . $follow['subject'] . '. Your preference is saved.'
-            : 'Following ' . $follow['subject'] . '. Updates will be highlighted in this group.';
-        fb_telegram_answer_callback(
-            $config,
-            $callbackId,
-            $answerText
-        );
     }
 
     if ($nextOffset !== null) {

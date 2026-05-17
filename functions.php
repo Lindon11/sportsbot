@@ -6795,8 +6795,44 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
 
             return 'TV info available';
         };
+        $sportHeading = static function (string $sport): string {
+            $raw = trim($sport);
+            $normalized = strtolower($raw);
+            $normalized = str_replace(['_', '-'], ' ', $normalized);
+            $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
-        $parts = ['<b>📋 Today\'s Fixtures</b>', ''];
+            $label = match ($normalized) {
+                'soccer', 'football' => 'Football',
+                'basketball' => 'Basketball',
+                'baseball' => 'Baseball',
+                'american football' => 'American Football',
+                'tennis' => 'Tennis',
+                'mma', 'mixed martial arts' => 'MMA',
+                default => $raw !== '' ? $raw : 'Other',
+            };
+
+            $emoji = match ($label) {
+                'Football' => '⚽',
+                'Basketball' => '🏀',
+                'Baseball' => '⚾',
+                'American Football' => '🏈',
+                'Tennis' => '🎾',
+                'MMA' => '🥊',
+                default => '🏅',
+            };
+
+            return $emoji . ' ' . $label;
+        };
+        $shortLeague = static function (string $league): string {
+            $trimmed = trim($league);
+            return match ($trimmed) {
+                'English Premier League' => 'Premier League',
+                'Scottish Premiership' => 'Premiership',
+                default => $trimmed,
+            };
+        };
+
+        $parts = ['<b>📋 Today\'s Fixtures</b>', '🕒 Times shown in local timezone', ''];
         $shownCount = 0;
         $tvFound = 0;
 
@@ -6808,7 +6844,7 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
                 continue;
             }
 
-            $parts[] = '<b>' . $escapeFn($sport) . '</b>';
+            $parts[] = '<b>' . $escapeFn($sportHeading($sport)) . '</b>';
 
             foreach ($sportMatches as $match) {
                 if (!is_array($match)) {
@@ -6827,7 +6863,7 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
                     ? ($homeTeam . ' vs ' . $awayTeam)
                     : ($eventName !== '' ? $eventName : trim($homeTeam . ' ' . $awayTeam));
                 $parts[] = '🕐 ' . $escapeFn($time) . ' — ' . $escapeFn($fixtureTitle);
-                $parts[] = '🏆 ' . $escapeFn($league !== '' ? $league : 'Competition TBC');
+                $parts[] = '🏆 ' . $escapeFn($league !== '' ? $shortLeague($league) : 'Competition TBC');
 
                 $eid = (string) ($match['event_id'] ?? '');
                 if ($eid !== '' && isset($tvMap[$eid]) && $tvMap[$eid] !== []) {
@@ -6838,9 +6874,9 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
                         $parts[] = '📺 ' . $escapeFn($selectedChannel);
                     }
                 }
-            }
 
-            $parts[] = '';
+                $parts[] = '';
+            }
         }
 
         $parts[] = 'Showing ' . $shownCount . ' of ' . $totalFixturesCount . ' fixtures.';

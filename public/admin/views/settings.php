@@ -42,6 +42,10 @@ declare(strict_types=1);
                     <input id="TELEGRAM_EXTRA_CHAT_IDS" name="TELEGRAM_EXTRA_CHAT_IDS" value="<?= htmlspecialchars(admin_env_value($env, 'TELEGRAM_EXTRA_CHAT_IDS')) ?>" autocomplete="off">
                 </div>
                 <div class="field-full">
+                    <label for="TELEGRAM_WEBHOOK_SECRET_TOKEN">Webhook Secret Token</label>
+                    <input id="TELEGRAM_WEBHOOK_SECRET_TOKEN" name="TELEGRAM_WEBHOOK_SECRET_TOKEN" value="<?= htmlspecialchars(admin_env_value($env, 'TELEGRAM_WEBHOOK_SECRET_TOKEN')) ?>" autocomplete="off">
+                </div>
+                <div class="field-full">
                     <label for="THESPORTSDB_API_KEY">TheSportsDB API Key</label>
                     <input id="THESPORTSDB_API_KEY" name="THESPORTSDB_API_KEY" value="<?= htmlspecialchars(admin_env_value($env, 'THESPORTSDB_API_KEY')) ?>" autocomplete="off">
                 </div>
@@ -58,6 +62,10 @@ declare(strict_types=1);
                 <label class="toggle">
                     <input name="TELEGRAM_UPDATES_ENABLED" type="checkbox" value="1" <?= admin_env_bool($env, 'TELEGRAM_UPDATES_ENABLED', true) ? 'checked' : '' ?>>
                     <b>Process follow buttons<span>Cron polls Telegram callbacks for team/player follows.</span></b>
+                </label>
+                <label class="toggle">
+                    <input name="TELEGRAM_WEBHOOK_ENABLED" type="checkbox" value="1" <?= admin_env_bool($env, 'TELEGRAM_WEBHOOK_ENABLED', false) ? 'checked' : '' ?>>
+                    <b>Enable Telegram webhook mode<span>When enabled, callbacks/messages are processed by <code>public/telegram_webhook.php</code> instead of getUpdates polling.</span></b>
                 </label>
             </div>
         </div>
@@ -122,7 +130,7 @@ declare(strict_types=1);
                 </table>
             <?php endif; ?>
             <div class="actions" style="margin-top:14px">
-                <button class="secondary" name="action" value="process_telegram_updates" type="submit">Sync Topic IDs</button>
+                <button class="secondary" name="action" value="process_telegram_updates" type="submit">Process Telegram Updates Now</button>
             </div>
         </form>
 

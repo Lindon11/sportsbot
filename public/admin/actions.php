@@ -82,6 +82,7 @@ try {
                 'TELEGRAM_EXTRA_CHAT_IDS',
                 'BOT_TELEGRAM_ROUTES_JSON',
                 'TELEGRAM_UPDATES_ENABLED',
+                'TELEGRAM_WEBHOOK_SECRET_TOKEN',
                 'THESPORTSDB_API_KEY',
                 'BOT_TIMEZONE',
                 'BOT_COVERAGE_PRESET',
@@ -208,6 +209,7 @@ try {
             foreach ([
                 'BOT_TELEGRAM_DISABLE_NOTIFICATION',
                 'TELEGRAM_UPDATES_ENABLED',
+                'TELEGRAM_WEBHOOK_ENABLED',
                 'BOT_SEND_RED_CARDS',
                 'BOT_SEND_YELLOW_CARDS',
                 'BOT_SEND_SUBSTITUTIONS',

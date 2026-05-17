@@ -36,15 +36,19 @@ function fb_run_live_check(array $config, bool $dryRun = false): array
         fb_cleanup_generated_images($config);
         if (!$dryRun) {
             fb_maybe_send_daily_health_summary($config, $db);
-            $updateSummary = fb_process_telegram_updates($config, $db);
-            if ((int) ($updateSummary['follows'] ?? 0) > 0) {
-                $summary['messages'][] = sprintf('Telegram follows processed: %d', (int) $updateSummary['follows']);
-            }
-            if ((int) ($updateSummary['topics'] ?? 0) > 0) {
-                $summary['messages'][] = sprintf('Telegram topics discovered: %d', (int) $updateSummary['topics']);
-            }
-            if ((int) ($updateSummary['menus'] ?? 0) > 0) {
-                $summary['messages'][] = sprintf('Telegram bot menus handled: %d', (int) $updateSummary['menus']);
+            if (empty($config['telegram']['webhook_enabled'])) {
+                $updateSummary = fb_process_telegram_updates($config, $db);
+                if ((int) ($updateSummary['follows'] ?? 0) > 0) {
+                    $summary['messages'][] = sprintf('Telegram follows processed: %d', (int) $updateSummary['follows']);
+                }
+                if ((int) ($updateSummary['topics'] ?? 0) > 0) {
+                    $summary['messages'][] = sprintf('Telegram topics discovered: %d', (int) $updateSummary['topics']);
+                }
+                if ((int) ($updateSummary['menus'] ?? 0) > 0) {
+                    $summary['messages'][] = sprintf('Telegram bot menus handled: %d', (int) $updateSummary['menus']);
+                }
+            } else {
+                $summary['messages'][] = 'Telegram updates: webhook mode enabled, getUpdates polling skipped.';
             }
         }
 

@@ -217,6 +217,8 @@ return [
         'extra_chat_ids' => array_filter(array_map('trim', explode(',', footballbot_env('TELEGRAM_EXTRA_CHAT_IDS', '')))),
         'routes' => footballbot_env_json('BOT_TELEGRAM_ROUTES_JSON', []),
         'updates_enabled' => footballbot_env_bool('TELEGRAM_UPDATES_ENABLED', true),
+        'webhook_enabled' => footballbot_env_bool('TELEGRAM_WEBHOOK_ENABLED', false),
+        'webhook_secret_token' => footballbot_env('TELEGRAM_WEBHOOK_SECRET_TOKEN', ''),
         'api_base' => 'https://api.telegram.org',
         'timeout' => 25,
         'connect_timeout' => 10,

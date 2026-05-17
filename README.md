@@ -375,6 +375,49 @@ Because `config/footballbot.env` is auto-loaded, this shorter cron also works:
 
 This matches TheSportsDB premium two-minute livescore cadence and keeps polling efficient.
 
+### Telegram Webhook Mode (Optional)
+
+If you want button taps and Telegram messages handled instantly (instead of via `getUpdates` polling), enable webhook mode:
+
+1. In `config/footballbot.env`:
+
+```bash
+TELEGRAM_WEBHOOK_ENABLED=true
+TELEGRAM_WEBHOOK_SECRET_TOKEN=replace_with_random_secret
+```
+
+2. Deploy the public webhook endpoint:
+
+```text
+https://your-domain.example/telegram_webhook.php
+```
+
+3. Register webhook with Telegram:
+
+```bash
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=https://your-domain.example/telegram_webhook.php" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET_TOKEN"
+```
+
+4. Verify webhook status:
+
+```bash
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
+```
+
+To switch back to polling:
+
+```bash
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
+```
+
+Then set:
+
+```bash
+TELEGRAM_WEBHOOK_ENABLED=false
+```
+
 ## How Alert Detection Works
 
 - The bot polls `/api/v2/json/livescore/all` and falls back to `/api/v2/json/livescore/soccer`.
@@ -390,7 +433,7 @@ This matches TheSportsDB premium two-minute livescore cadence and keeps polling 
 - Substitutions are sent once per unsent substitution timeline event.
 - Match previews are posted for upcoming fixtures within a configurable window (default 4 hours) before kick-off.
 - The customer guide is posted once per local day after the configured guide time, combining live scores, fixtures, TV channels, and followed-team highlights.
-- Follow buttons under guide messages are processed through `getUpdates` during cron runs; no webhook is required.
+- Follow buttons under guide messages are processed through `getUpdates` during cron runs unless webhook mode is enabled.
 - When TV channels are configured, previews are enriched with matching TV channel names by `idEvent`.
 - Event TV lookup is attempted with `/lookup/event_tv/{idEvent}` before falling back to configured channel listings.
 - A daily TV guide is posted once per local day after the configured time, covering the configured channel list, sport filter, and lookahead window.
