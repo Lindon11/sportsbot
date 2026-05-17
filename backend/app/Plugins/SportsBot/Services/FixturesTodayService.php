@@ -34,6 +34,14 @@ class FixturesTodayService
         'rugby' => 'Rugby',
         'rugby union' => 'Rugby',
         'rugby league' => 'Rugby',
+        'motorsport' => 'Motorsport',
+        'formula 1' => 'Motorsport',
+        'f1' => 'Motorsport',
+        'american football' => 'American Football',
+        'ice hockey' => 'Ice Hockey',
+        'hockey' => 'Ice Hockey',
+        'cricket' => 'Cricket',
+        'golf' => 'Golf',
     ];
 
     /**
@@ -43,10 +51,15 @@ class FixturesTodayService
         'Football',
         'Basketball',
         'Baseball',
+        'American Football',
+        'Ice Hockey',
         'Fights',
         'MMA',
         'Tennis',
         'Rugby',
+        'Cricket',
+        'Motorsport',
+        'Golf',
     ];
 
     /**
@@ -291,16 +304,24 @@ class FixturesTodayService
     private function leagueIdsForSport(?string $sportKey): array
     {
         $normalizedSport = $sportKey !== null ? SportsBotSports::normalize($sportKey) : null;
-        $settingKey = $normalizedSport === 'rugby' ? 'rugby_fixture_league_ids' : 'featured_league_ids';
-        if ($normalizedSport === 'fights') {
-            $settingKey = 'fight_fixture_league_ids';
-            $default = config('plugins.SportsBot.fixtures_today.fight_league_ids', []);
-        } elseif ($normalizedSport === 'rugby') {
-            $default = config('plugins.SportsBot.fixtures_today.rugby_league_ids', []);
-        } else {
-            $default = config('plugins.SportsBot.coverage.allowed_league_ids', []);
-        }
 
+        $sportConfigIds = config('plugins.SportsBot.fixtures_today.' . $normalizedSport . '_league_ids', []);
+
+        return match ($normalizedSport) {
+            'fights' => $this->resolveLeagueIds('fight_fixture_league_ids', $sportConfigIds ?: config('plugins.SportsBot.fixtures_today.fight_league_ids', [])),
+            'rugby' => $this->resolveLeagueIds('rugby_fixture_league_ids', $sportConfigIds ?: config('plugins.SportsBot.fixtures_today.rugby_league_ids', [])),
+            'football' => $this->resolveLeagueIds('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', [])),
+            null => $this->resolveLeagueIds('featured_league_ids', config('plugins.SportsBot.fixtures_today.default_league_ids', [])),
+            default => $this->resolveLeagueIds($normalizedSport . '_fixture_league_ids', $sportConfigIds),
+        };
+    }
+
+    /**
+     * @param array<int, string> $default
+     * @return array<int, string>
+     */
+    private function resolveLeagueIds(string $settingKey, array $default): array
+    {
         return array_values(array_unique(array_filter(
             array_map('strval', (array) $this->settings->get($settingKey, $default)),
             static fn (string $id): bool => trim($id) !== ''

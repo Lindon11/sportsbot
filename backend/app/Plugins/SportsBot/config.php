@@ -122,6 +122,80 @@ $fightLeagueIds = [
     '4567', // BKFC
 ];
 
+$motorsportLeagueIds = [
+    '4370', // Formula 1
+    '4486', // Formula 2
+    '4487', // Formula 3
+    '4371', // Formula E
+    '4407', // MotoGP
+    '4436', // Moto2
+    '4437', // Moto3
+    '4372', // BTCC
+    '4373', // IndyCar Series
+    '4393', // NASCAR Cup Series
+    '4409', // WRC
+    '4412', // Super GT
+    '4413', // WEC
+    '4438', // DTM
+    '4447', // Dakar Rally
+    '4466', // Electric GT
+    '4488', // IMSA
+    '4489', // V8 Supercars
+    '4576', // WTCR
+    '4732', // Isle of Man TT
+    '5264', // British Superbike
+    '5412', // SuperMotocross
+    '5600', // British Speedway
+    '5873', // WorldSSP
+];
+
+$americanFootballLeagueIds = [
+    '4391', // NFL
+    '4405', // CFL
+    '4479', // NCAA Division 1
+    '4470', // Arena Football League
+];
+
+$iceHockeyLeagueIds = [
+    '4380', // NHL
+    '4381', // UK Elite Ice Hockey League
+    '4419', // Swedish Hockey League
+    '4738', // AHL
+];
+
+$cricketLeagueIds = [
+    '4458', // English County Championship Div 1
+    '4459', // English County Championship Div 2
+    '4460', // Indian Premier League
+    '4461', // Big Bash League
+    '4462', // South African T20
+    '4463', // English t20 Blast
+    '4575', // Cricket World Cup
+];
+
+$basketballLeagueIds = [
+    '4387', // NBA
+    '4408', // Spanish Liga ACB
+    '4431', // Super League Basketball
+    '4433', // Italian Lega Basket
+    '4434', // Australian NBL
+    '4441', // German BBL
+];
+
+$baseballLeagueIds = [
+    '4424', // MLB
+    '4591', // Nippon Baseball League
+    '4830', // Korean KBO League
+];
+
+$tennisLeagueIds = [
+    '4464', // ATP World Tour
+    '4517', // WTA Tour
+    '4581', // Laver Cup
+    '5347', // Davis Cup
+    '5348', // Fed Cup
+];
+
 $defaultTvChannels = [
     'Sky Sports Main Event',
     'Sky Sports Premier League',
@@ -209,6 +283,13 @@ return [
         'international_league_ids' => $internationalFootballLeagueIds,
         'rugby_league_ids' => $rugbyLeagueIds,
         'fight_league_ids' => $fightLeagueIds,
+        'formula_1_league_ids' => $motorsportLeagueIds,
+        'american_football_league_ids' => $americanFootballLeagueIds,
+        'ice_hockey_league_ids' => $iceHockeyLeagueIds,
+        'cricket_league_ids' => $cricketLeagueIds,
+        'basketball_league_ids' => $basketballLeagueIds,
+        'baseball_league_ids' => $baseballLeagueIds,
+        'tennis_league_ids' => $tennisLeagueIds,
         'fight_lookahead_days' => (int) env('SPORTSBOT_FIGHT_FIXTURES_LOOKAHEAD_DAYS', 30),
         'max_per_sport' => (int) env('SPORTSBOT_FIXTURES_TODAY_MAX_PER_SPORT', 5),
         'timezone' => env('SPORTSBOT_FIXTURES_TIMEZONE', 'Europe/London'),
