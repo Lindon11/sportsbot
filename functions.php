@@ -6726,6 +6726,9 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
     $grouped = [];
     foreach ($matches as $match) {
         $sport = $match['sport'] !== '' ? $match['sport'] : 'Other';
+        if (!isset($grouped[$sport])) {
+            $grouped[$sport] = [];
+        }
         $grouped[$sport][] = $match;
     }
 
@@ -6753,37 +6756,86 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
         ];
     }
 
-    $parts = ['<b>📋 Today\'s Fixtures</b>', ''];
-
+    $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $maxPerSport = 8;
+    $sections = [];
     foreach ($grouped as $sport => $sportMatches) {
-        $parts[] = '<b>' . htmlspecialchars($sport) . '</b>';
+        $sections[] = [
+            'sport' => (string) $sport,
+            'matches' => array_slice(array_values($sportMatches), 0, $maxPerSport),
+        ];
+    }
 
-        foreach ($sportMatches as $match) {
-            $time = trim((string) ($match['event_time'] ?? '')) !== '' ? (string) $match['event_time'] : 'TBC';
-            $homeTeam = trim((string) ($match['home_team'] ?? ''));
-            $awayTeam = trim((string) ($match['away_team'] ?? ''));
-            $eventName = trim((string) ($match['event_name'] ?? ''));
-            $league = trim((string) ($match['league_name'] ?? ''));
-            $hasNamedTeams = $homeTeam !== '' && $awayTeam !== '' && $homeTeam !== 'Home' && $awayTeam !== 'Away'
-                && strcasecmp($homeTeam, $eventName) !== 0
-                && strcasecmp($awayTeam, $eventName) !== 0;
-            $fixtureTitle = $hasNamedTeams
-                ? ($homeTeam . ' vs ' . $awayTeam)
-                : ($eventName !== '' ? $eventName : trim($homeTeam . ' ' . $awayTeam));
-            $parts[] = '🕐 ' . htmlspecialchars($time) . ' - ' . htmlspecialchars($fixtureTitle) . ' - ' . htmlspecialchars($league !== '' ? $league : 'Competition TBC');
+    $buildText = static function (array $sectionsInput, array $tvMap, callable $escapeFn, int &$tvFound): string {
+        $parts = ['<b>📋 Today\'s Fixtures</b>', ''];
+        $shownCount = 0;
+        $tvFound = 0;
 
-            $eid = $match['event_id'];
-            if (isset($tvChannels[$eid]) && $tvChannels[$eid] !== []) {
-                $labels = array_map('fb_tv_channel_label', $tvChannels[$eid]);
-                $parts[] = '📺 ' . htmlspecialchars(implode(', ', $labels));
-                $tvChannelsFound += count($labels);
+        foreach ($sectionsInput as $section) {
+            $sport = (string) ($section['sport'] ?? 'Other');
+            $sportMatches = array_values($section['matches'] ?? []);
+
+            if ($sportMatches === []) {
+                continue;
+            }
+
+            $parts[] = '<b>' . $escapeFn($sport) . '</b>';
+
+            foreach ($sportMatches as $match) {
+                if (!is_array($match)) {
+                    continue;
+                }
+                $shownCount++;
+                $time = trim((string) ($match['event_time'] ?? '')) !== '' ? (string) $match['event_time'] : 'TBC';
+                $homeTeam = trim((string) ($match['home_team'] ?? ''));
+                $awayTeam = trim((string) ($match['away_team'] ?? ''));
+                $eventName = trim((string) ($match['event_name'] ?? ''));
+                $league = trim((string) ($match['league_name'] ?? ''));
+                $hasNamedTeams = $homeTeam !== '' && $awayTeam !== '' && $homeTeam !== 'Home' && $awayTeam !== 'Away'
+                    && strcasecmp($homeTeam, $eventName) !== 0
+                    && strcasecmp($awayTeam, $eventName) !== 0;
+                $fixtureTitle = $hasNamedTeams
+                    ? ($homeTeam . ' vs ' . $awayTeam)
+                    : ($eventName !== '' ? $eventName : trim($homeTeam . ' ' . $awayTeam));
+                $parts[] = '🕐 ' . $escapeFn($time) . ' - ' . $escapeFn($fixtureTitle) . ' - ' . $escapeFn($league !== '' ? $league : 'Competition TBC');
+
+                $eid = (string) ($match['event_id'] ?? '');
+                if ($eid !== '' && isset($tvMap[$eid]) && $tvMap[$eid] !== []) {
+                    $labels = array_map('fb_tv_channel_label', $tvMap[$eid]);
+                    $tvFound += count($labels);
+                    $parts[] = '📺 ' . $escapeFn(implode(', ', $labels));
+                }
+            }
+
+            $parts[] = '';
+        }
+
+        $parts[] = 'Showing top ' . $shownCount . ' fixtures. Full list coming soon.';
+
+        return implode("\n", $parts);
+    };
+
+    $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound);
+    $textLength = static fn (string $value): int => function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+    $maxTelegramLength = 4096;
+
+    while ($textLength($text) > $maxTelegramLength) {
+        $trimmed = false;
+        for ($i = count($sections) - 1; $i >= 0; $i--) {
+            if (count($sections[$i]['matches']) > 0) {
+                array_pop($sections[$i]['matches']);
+                $trimmed = true;
+                break;
             }
         }
 
-        $parts[] = '';
-    }
+        if (!$trimmed) {
+            $text = 'No fixtures found today.';
+            break;
+        }
 
-    $text = implode("\n", $parts);
+        $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound);
+    }
     fb_log('info', 'fixtures_today.summary', [
         'fixtures_fetched' => count($rawEvents),
         'fixtures_skipped' => $skippedFixtures,

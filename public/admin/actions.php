@@ -713,6 +713,12 @@ try {
                     'fallback' => !empty($routeInfo['fallback']),
                 ],
             ]);
+            $isHtmlParseError = static function (array $result): bool {
+                $error = strtolower((string) ($result['error'] ?? ''));
+                return str_contains($error, 'parse') || str_contains($error, 'entity') || str_contains($error, 'tag');
+            };
+            $retryTargets = [];
+
             foreach ($targets as $target) {
                 $key = fb_telegram_target_key($target);
                 $result = $results[$key] ?? ['ok' => false, 'error' => 'Missing Telegram result'];
@@ -729,10 +735,69 @@ try {
                     fb_log('info', 'fixtures_today.target_send', $context);
                 } else {
                     fb_log('warning', 'fixtures_today.target_send_failed', $context);
+                    if ($isHtmlParseError($result)) {
+                        $retryTargets[$key] = $target;
+                    }
                 }
             }
+
+            if ($retryTargets !== []) {
+                $plainText = html_entity_decode(strip_tags((string) $msg['text']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $retryResults = fb_telegram_send_message_to_targets($config, $plainText, array_values($retryTargets), [
+                    'reply_markup' => $msg['reply_markup'],
+                    '_route_meta' => [
+                        'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                        'post_type' => 'FIXTURES_TODAY_RETRY_PLAIN',
+                        'event_id' => '',
+                        'fallback' => !empty($routeInfo['fallback']),
+                    ],
+                ]);
+                foreach ($retryTargets as $key => $target) {
+                    $retryResult = $retryResults[$key] ?? ['ok' => false, 'error' => 'Missing Telegram retry result'];
+                    $results[$key] = $retryResult;
+                    $retryContext = [
+                        'route' => (string) ($routeInfo['route'] ?? 'FIXTURES_TODAY'),
+                        'chat_id' => (string) ($target['chat_id'] ?? ''),
+                        'message_thread_id' => $target['message_thread_id'] ?? null,
+                        'post_type' => 'FIXTURES_TODAY_RETRY_PLAIN',
+                        'event_id' => '',
+                        'result' => $retryResult,
+                    ];
+                    if (!empty($retryResult['ok'])) {
+                        fb_log('info', 'fixtures_today.target_send_retry_success', $retryContext);
+                    } else {
+                        fb_log('warning', 'fixtures_today.target_send_retry_failed', $retryContext);
+                    }
+                }
+                admin_flash('info', sprintf('Retried %d target(s) without HTML parse mode.', count($retryTargets)));
+            }
+
             $ok = count(array_filter($results, static fn (array $r): bool => !empty($r['ok'])));
-            admin_flash('success', sprintf('Fixtures today sent to %d chat(s).', $ok));
+            $failed = [];
+            foreach ($targets as $target) {
+                $key = fb_telegram_target_key($target);
+                $result = $results[$key] ?? ['ok' => false, 'error' => 'Missing Telegram result'];
+                if (!empty($result['ok'])) {
+                    continue;
+                }
+                $failed[] = sprintf(
+                    '%s:%s -> %s',
+                    (string) ($target['chat_id'] ?? ''),
+                    ($target['message_thread_id'] ?? null) !== null ? (string) $target['message_thread_id'] : '-',
+                    (string) ($result['error'] ?? 'Unknown Telegram error')
+                );
+            }
+
+            if ($failed !== []) {
+                foreach (array_slice($failed, 0, 3) as $line) {
+                    admin_flash('error', 'Fixtures today send failed: ' . $line);
+                }
+            }
+            if ($ok > 0) {
+                admin_flash('success', sprintf('Fixtures today sent to %d chat(s).', $ok));
+            } else {
+                admin_flash('error', 'Fixtures today failed for all targets.');
+            }
 
             admin_redirect('publishing');
         }
