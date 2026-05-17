@@ -6757,7 +6757,8 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
     }
 
     $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $maxPerSport = 8;
+    $maxPerSport = 5;
+    $totalFixtures = count($matches);
     $sections = [];
     foreach ($grouped as $sport => $sportMatches) {
         $sections[] = [
@@ -6766,7 +6767,7 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
         ];
     }
 
-    $buildText = static function (array $sectionsInput, array $tvMap, callable $escapeFn, int &$tvFound): string {
+    $buildText = static function (array $sectionsInput, array $tvMap, callable $escapeFn, int &$tvFound, int $totalFixturesCount): string {
         $preferredUkChannelKeys = [
             'sky sports',
             'tnt sports',
@@ -6776,53 +6777,23 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
             'dazn uk',
             'amazon prime',
         ];
-        $selectChannels = static function (array $labels) use ($preferredUkChannelKeys): array {
+        $selectChannel = static function (array $labels) use ($preferredUkChannelKeys): string {
             $labels = array_values(array_filter(array_map(static fn (mixed $label): string => trim((string) $label), $labels), static fn (string $label): bool => $label !== ''));
             if ($labels === []) {
-                return [[], 0];
+                return '';
             }
 
             $normalized = array_map(static fn (string $label): string => strtolower($label), $labels);
-            $selectedIndexes = [];
 
             foreach ($preferredUkChannelKeys as $key) {
                 foreach ($normalized as $idx => $value) {
-                    if (isset($selectedIndexes[$idx])) {
-                        continue;
-                    }
                     if (str_contains($value, $key)) {
-                        $selectedIndexes[$idx] = true;
-                        break;
+                        return $labels[$idx];
                     }
                 }
             }
 
-            $selected = [];
-            if ($selectedIndexes !== []) {
-                foreach (array_keys($selectedIndexes) as $idx) {
-                    $selected[] = $labels[$idx];
-                    if (count($selected) >= 3) {
-                        break;
-                    }
-                }
-
-                if (count($selected) < 3) {
-                    foreach ($labels as $idx => $label) {
-                        if (isset($selectedIndexes[$idx])) {
-                            continue;
-                        }
-                        $selected[] = $label;
-                        if (count($selected) >= 3) {
-                            break;
-                        }
-                    }
-                }
-            } else {
-                $selected = array_slice($labels, 0, 2);
-            }
-
-            $moreCount = max(0, count($labels) - count($selected));
-            return [$selected, $moreCount];
+            return 'TV info available';
         };
 
         $parts = ['<b>📋 Today\'s Fixtures</b>', ''];
@@ -6862,13 +6833,9 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
                 if ($eid !== '' && isset($tvMap[$eid]) && $tvMap[$eid] !== []) {
                     $labels = array_map('fb_tv_channel_label', $tvMap[$eid]);
                     $tvFound += count($labels);
-                    [$selectedChannels, $moreCount] = $selectChannels($labels);
-                    if ($selectedChannels !== []) {
-                        $line = implode(', ', $selectedChannels);
-                        if ($moreCount > 0) {
-                            $line .= ' + ' . $moreCount . ' more channels';
-                        }
-                        $parts[] = '📺 ' . $escapeFn($line);
+                    $selectedChannel = $selectChannel($labels);
+                    if ($selectedChannel !== '') {
+                        $parts[] = '📺 ' . $escapeFn($selectedChannel);
                     }
                 }
             }
@@ -6876,12 +6843,12 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
             $parts[] = '';
         }
 
-        $parts[] = 'Showing top ' . $shownCount . ' fixtures. Full list coming soon.';
+        $parts[] = 'Showing ' . $shownCount . ' of ' . $totalFixturesCount . ' fixtures.';
 
         return implode("\n", $parts);
     };
 
-    $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound);
+    $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound, $totalFixtures);
     $textLength = static fn (string $value): int => function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
     $maxTelegramLength = 4096;
 
@@ -6900,7 +6867,7 @@ function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
             break;
         }
 
-        $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound);
+        $text = $buildText($sections, $tvChannels, $escape, $tvChannelsFound, $totalFixtures);
     }
     fb_log('info', 'fixtures_today.summary', [
         'fixtures_fetched' => count($rawEvents),
