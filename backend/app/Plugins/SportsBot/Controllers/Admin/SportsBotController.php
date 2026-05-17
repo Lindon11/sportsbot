@@ -278,7 +278,7 @@ class SportsBotController extends Controller
                 $results = $notifier->sendPhoto((string) $card['path'], $caption, [
                     'route_key' => $routeKey,
                     'type' => 'SEND_DIAGNOSTIC',
-                    'reply_markup' => \App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder::mainReplyMarkup(),
+                    'reply_markup' => \App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder::tvReplyMarkup(),
                 ]);
             } else {
                 $results = $notifier->send($caption, [

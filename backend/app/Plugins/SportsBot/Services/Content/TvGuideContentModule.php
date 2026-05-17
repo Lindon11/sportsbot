@@ -45,7 +45,7 @@ class TvGuideContentModule implements SportsBotContentModuleInterface
     {
         return [
             'parse_mode' => '',
-            'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+            'reply_markup' => SportsBotInlineKeyboardBuilder::tvReplyMarkup(),
             'payload' => [
                 'events_total' => (int) ($summary['events_total'] ?? 0),
                 'channels_count' => count((array) ($summary['channels'] ?? [])),

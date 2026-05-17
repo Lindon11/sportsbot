@@ -14,46 +14,11 @@ use Throwable;
 
 class TelegramCallbackService
 {
-    private const VALID_CALLBACK_DATA = [
-        'fixtures_today',
-        'football',
-        'basketball',
-        'tennis',
-        'mma',
-        'cricket',
-        'f1',
-        'fixtures_football',
-        'fixtures_basketball',
-        'fixtures_tennis',
-        'fixtures_mma',
-        'fixtures_cricket',
-        'fixtures_formula_1',
-        'tv_guide',
-        'live_now',
-        'my_teams',
-        'tables',
-        'league_table',
-        'news',
-        'match_stats',
-        'match_lineups',
-        'match_highlights',
-        'match_tv',
-        'top_teams',
-        'add_team',
-        'back_main',
-    ];
-
     public function __construct(
         private readonly TelegramNotifier $notifier = new TelegramNotifier(),
         private readonly FixturesTodayContentModule $fixturesModule = new FixturesTodayContentModule(),
         private readonly TvGuideContentModule $tvGuideModule = new TvGuideContentModule(),
         private readonly LiveNowContentModule $liveNowModule = new LiveNowContentModule(),
-        private readonly FixturesTodayService $fixturesService = new FixturesTodayService(),
-        private readonly FixturesTodayFormatter $fixturesFormatter = new FixturesTodayFormatter(),
-        private readonly TvGuideService $tvGuideService = new TvGuideService(),
-        private readonly TvGuideFormatter $tvGuideFormatter = new TvGuideFormatter(),
-        private readonly LiveNowService $liveNowService = new LiveNowService(),
-        private readonly LiveNowFormatter $liveNowFormatter = new LiveNowFormatter(),
         private readonly SportsBotRichContentService $richContent = new SportsBotRichContentService(),
         private readonly SportsBotFollowService $followService = new SportsBotFollowService(),
     ) {
@@ -61,11 +26,7 @@ class TelegramCallbackService
 
     public function isValidCallbackData(string $data): bool
     {
-        if (in_array($data, self::VALID_CALLBACK_DATA, true)) {
-            return true;
-        }
-
-        return preg_match('/^(match|stats|lineups|highlights|tv|match_stats|match_lineups|match_highlights|match_tv|league_table|team|follow_team|unfollow_team|follow_league|unfollow_league|table|scorers|team_next|team_prev|fixtures|live|tv_more|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$/', $data) === 1;
+        return preg_match('/^(match|stats|lineups|highlights|tv|table|scorers|team|follow_team|unfollow_team|follow_league|unfollow_league|team_next|team_prev|fixtures|live|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$|^(fixtures_today|tv_guide|live_now)$/', $data) === 1;
     }
 
     /**
@@ -170,116 +131,32 @@ class TelegramCallbackService
 
     private function processCallback(string $callbackData, string $chatId, mixed $messageId, mixed $messageThreadId, array $telegramUser = []): string
     {
+        // Topic-first: top-level menus route to content module responses
+        $topicHandler = match ($callbackData) {
+            'fixtures_today' => fn () => $this->sendFixturesTodayResponse($chatId, $messageId, $messageThreadId),
+            'tv_guide' => fn () => $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId),
+            'live_now' => fn () => $this->sendLiveNowResponse($chatId, $messageId, $messageThreadId),
+            default => null,
+        };
+
+        if ($topicHandler !== null) {
+            $topicHandler();
+            return $callbackData;
+        }
+
+        // Rich content: parameterised callbacks like match:xxx, stats:xxx, fixtures:xxx, etc.
         $richHandler = $this->processRichCallback($callbackData, $chatId, $messageId, $messageThreadId, $telegramUser);
         if ($richHandler !== null) {
             return $richHandler;
         }
 
-        switch ($callbackData) {
-            case 'football':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'football');
-                return 'sport_menu.football';
+        Log::warning('sportsbot.telegram.callback_unhandled', [
+            'callback_data' => $callbackData,
+        ]);
 
-            case 'basketball':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'basketball');
-                return 'sport_menu.basketball';
-
-            case 'tennis':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'tennis');
-                return 'sport_menu.tennis';
-
-            case 'mma':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'mma');
-                return 'sport_menu.mma';
-
-            case 'cricket':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'cricket');
-                return 'sport_menu.cricket';
-
-            case 'f1':
-                $this->sendSportMenu($chatId, $messageId, $messageThreadId, 'formula_1');
-                return 'sport_menu.f1';
-
-            case 'fixtures_today':
-                $this->sendFixturesTodayResponse($chatId, $messageId, $messageThreadId);
-                return 'fixtures_today';
-
-            case 'back_main':
-                $this->sendMainMenuResponse($chatId, $messageId, $messageThreadId);
-                return 'main_menu';
-
-            case 'fixtures_football':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Football');
-                return 'fixtures.football';
-
-            case 'fixtures_basketball':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Basketball');
-                return 'fixtures.basketball';
-
-            case 'fixtures_tennis':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Tennis');
-                return 'fixtures.tennis';
-
-            case 'fixtures_mma':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Fighting');
-                return 'fixtures.mma';
-
-            case 'fixtures_cricket':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Cricket');
-                return 'fixtures.cricket';
-
-            case 'fixtures_formula_1':
-                $this->sendSportFilteredFixtures($chatId, $messageId, $messageThreadId, 'Motorsport');
-                return 'fixtures.f1';
-
-            case 'tv_guide':
-                $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId);
-                return 'tv_guide';
-
-            case 'live_now':
-                $this->sendLiveNowResponse($chatId, $messageId, $messageThreadId);
-                return 'live_now';
-
-            case 'my_teams':
-                $this->sendMyTeamsResponse($chatId, $messageId, $messageThreadId, (string) ($telegramUser['id'] ?? ''));
-                return 'my_teams';
-
-            case 'tables':
-            case 'league_table':
-                $this->sendLeagueTablesResponse($chatId, $messageId, $messageThreadId);
-                return 'league_tables';
-
-            case 'news':
-                $this->deliverRich($chatId, $messageId, $this->richContent->newsPlaceholder(), $messageThreadId);
-                return 'news';
-
-            case 'match_stats':
-                $this->sendPlaceholder($chatId, $messageId, $messageThreadId, '📊 Match Stats', 'Open a match card first, then tap Match Stats to load event-specific stats.', SportsBotInlineKeyboardBuilder::backReplyMarkup());
-                return 'match_stats.placeholder';
-
-            case 'match_lineups':
-                $this->sendPlaceholder($chatId, $messageId, $messageThreadId, '👥 Lineups', 'Open a match card first, then tap Lineups to load confirmed teams.', SportsBotInlineKeyboardBuilder::backReplyMarkup());
-                return 'match_lineups.placeholder';
-
-            case 'match_highlights':
-                $this->sendPlaceholder($chatId, $messageId, $messageThreadId, '▶ Highlights', 'Highlights appear here when TheSportsDB has video data for the event.', SportsBotInlineKeyboardBuilder::backReplyMarkup());
-                return 'match_highlights.placeholder';
-
-            case 'match_tv':
-                $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId);
-                return 'match_tv.tv_guide';
-
-            case 'top_teams':
-                $this->sendPlaceholder($chatId, $messageId, $messageThreadId, '⭐ Top Teams', 'Team rankings are coming soon. Use Tables for the current league standings.', SportsBotInlineKeyboardBuilder::backReplyMarkup());
-                return 'top_teams.placeholder';
-
-            case 'add_team':
-                $this->sendPlaceholder($chatId, $messageId, $messageThreadId, '➕ Add Team', 'Team search/follow is ready for team pages. Search-driven add flow is coming next.', SportsBotInlineKeyboardBuilder::myTeamsReplyMarkup());
-                return 'add_team.placeholder';
-        }
-
-        $this->sendMainMenuResponse($chatId, $messageId, $messageThreadId);
-        return 'fallback.main_menu';
+        // Fallback: show TV guide (most general topic)
+        $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId);
+        return 'fallback.tv_guide';
     }
 
     private function processRichCallback(string $callbackData, string $chatId, mixed $messageId, mixed $messageThreadId, array $telegramUser): ?string
@@ -296,15 +173,10 @@ class TelegramCallbackService
         $payload = match ($action) {
             'match' => $this->richContent->match($id),
             'stats' => $this->richContent->stats($id),
-            'match_stats' => $this->richContent->stats($id),
             'lineups' => $this->richContent->lineups($id),
-            'match_lineups' => $this->richContent->lineups($id),
             'highlights' => $this->richContent->highlights($id),
-            'match_highlights' => $this->richContent->highlights($id),
             'tv' => $this->richContent->eventTv($id),
-            'match_tv' => $this->richContent->eventTv($id),
             'table' => $this->richContent->leagueTable($id, $page),
-            'league_table' => $this->richContent->leagueTable($id, $page),
             'scorers' => $this->richContent->topScorers($id, $page),
             'team' => $this->richContent->team($id),
             'team_next' => $this->richContent->teamSchedule($id, 'next', $page),
@@ -333,7 +205,7 @@ class TelegramCallbackService
             $this->followService->unfollow((string) ($telegramUser['id'] ?? ''), 'team', $id);
             $this->deliverRich($chatId, $messageId, [
                 'caption' => 'Removed that team from My Teams.',
-                'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+                'reply_markup' => SportsBotInlineKeyboardBuilder::tvReplyMarkup(),
                 'card' => null,
             ], $messageThreadId);
             return 'unfollow.team';
@@ -353,7 +225,7 @@ class TelegramCallbackService
         if ($action === 'live') {
             $this->deliverRich($chatId, $messageId, [
                 'caption' => "🔴 <b>Live Now</b>\n\nShowing live digest for " . e(SportsBotSports::label($id)) . '.',
-                'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+                'reply_markup' => SportsBotInlineKeyboardBuilder::liveReplyMarkup(),
                 'card' => null,
             ], $messageThreadId);
             return 'live.sport_placeholder';
@@ -362,7 +234,7 @@ class TelegramCallbackService
         if ($action === 'top_teams') {
             $this->deliverRich($chatId, $messageId, [
                 'caption' => '⭐ <b>Top Teams</b>' . "\n\nTop teams for " . e(SportsBotSports::label($id)) . " will use league standings as data becomes available.\n\nUse Tables for current standings.",
-                'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+                'reply_markup' => SportsBotInlineKeyboardBuilder::tvReplyMarkup(),
                 'card' => null,
             ], $messageThreadId);
             return 'top_teams.placeholder';
@@ -381,57 +253,12 @@ class TelegramCallbackService
         $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
     }
 
-    private function sendMainMenuResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
-    {
-        $message = "🏟 <b>SportsBot</b>\n\nChoose a sport or section:";
-        $this->deliverText($chatId, $messageId, $message, SportsBotInlineKeyboardBuilder::mainReplyMarkup(), $messageThreadId);
-    }
-
-    private function sendSportMenu(string $chatId, mixed $messageId, mixed $messageThreadId, string $sportKey): void
-    {
-        $label = SportsBotSports::label($sportKey);
-        $icon = SportsBotSports::icon($sportKey);
-
-        $message = implode("\n", [
-            $icon . ' <b>' . e($label) . '</b>',
-            '',
-            'Choose an option:',
-        ]);
-
-        $this->deliverText(
-            $chatId,
-            $messageId,
-            $message,
-            SportsBotInlineKeyboardBuilder::sportMenuReplyMarkup($sportKey),
-            $messageThreadId
-        );
-    }
-
-    private function sendSportFilteredFixtures(string $chatId, mixed $messageId, mixed $messageThreadId, string $sport): void
-    {
-        $summary = $this->fixturesService->buildSummary();
-        $grouped = (array) ($summary['grouped'] ?? []);
-        $sportFixtures = array_values(array_filter((array) ($grouped[$sport] ?? []), 'is_array'));
-
-        $filteredSummary = [
-            ...$summary,
-            'grouped' => [$sport => $sportFixtures],
-            'fixtures_total' => count($sportFixtures),
-            'sport_order' => [$sport],
-        ];
-
-        $message = $this->fixturesFormatter->format($filteredSummary);
-        $replyMarkup = SportsBotInlineKeyboardBuilder::fixturesTodayReplyMarkup();
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
-    }
-
     private function sendTvGuideResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
     {
         $summary = $this->tvGuideModule->buildSummary();
         $message = $this->tvGuideModule->format($summary);
         $options = $this->tvGuideModule->telegramOptions($summary);
-        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::backReplyMarkup());
+        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::tvReplyMarkup());
 
         $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
     }
@@ -441,48 +268,9 @@ class TelegramCallbackService
         $summary = $this->liveNowModule->buildSummary();
         $message = $this->liveNowModule->format($summary);
         $options = $this->liveNowModule->telegramOptions($summary);
-        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::backReplyMarkup());
+        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::liveReplyMarkup());
 
         $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
-    }
-
-    private function sendMyTeamsResponse(string $chatId, mixed $messageId, mixed $messageThreadId, string $telegramUserId = ''): void
-    {
-        $follows = $telegramUserId !== '' ? $this->followService->listForUser($telegramUserId) : [];
-        $lines = ["⭐ <b>My Teams</b>", ''];
-
-        if ($follows === []) {
-            $lines[] = 'No followed teams yet.';
-            $lines[] = 'Tap Add Team when team search is enabled, or follow from a Team Page.';
-        } else {
-            foreach ($follows as $follow) {
-                $lines[] = '• ' . e((string) $follow->name) . ' · ' . e((string) $follow->followable_type);
-            }
-        }
-
-        $message = implode("\n", $lines);
-        $replyMarkup = SportsBotInlineKeyboardBuilder::myTeamsReplyMarkup();
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
-    }
-
-    private function sendLeagueTablesResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
-    {
-        $leagueIds = array_values(array_filter((array) config('plugins.SportsBot.fixtures_today.default_league_ids', [])));
-        $keyboard = [];
-        foreach (array_slice($leagueIds, 0, 8) as $leagueId) {
-            $keyboard[] = [['text' => 'League ' . $leagueId, 'callback_data' => 'table:' . $leagueId . ':1']];
-        }
-        $keyboard[] = [['text' => '⬅ Back', 'callback_data' => 'back_main']];
-        $message = "🏆 <b>League Tables</b>\n\nPick a featured league.";
-        $replyMarkup = SportsBotInlineKeyboardBuilder::inlineKeyboardMarkup($keyboard);
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
-    }
-
-    private function sendPlaceholder(string $chatId, mixed $messageId, mixed $messageThreadId, string $title, string $body, array $replyMarkup): void
-    {
-        $this->deliverText($chatId, $messageId, '<b>' . e($title) . "</b>\n\n" . e($body), $replyMarkup, $messageThreadId);
     }
 
     /**
@@ -509,7 +297,7 @@ class TelegramCallbackService
     private function deliverRich(string $chatId, mixed $messageId, array $payload, mixed $messageThreadId = null): void
     {
         $caption = (string) ($payload['caption'] ?? '');
-        $replyMarkup = (array) ($payload['reply_markup'] ?? SportsBotInlineKeyboardBuilder::backReplyMarkup());
+        $replyMarkup = (array) ($payload['reply_markup'] ?? SportsBotInlineKeyboardBuilder::tvReplyMarkup());
         $card = is_array($payload['card'] ?? null) ? $payload['card'] : null;
 
         if ($messageId !== null && $card !== null && !empty($card['path'])) {

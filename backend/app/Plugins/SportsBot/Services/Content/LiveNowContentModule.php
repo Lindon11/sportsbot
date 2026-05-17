@@ -45,7 +45,7 @@ class LiveNowContentModule implements SportsBotContentModuleInterface
     {
         return [
             'parse_mode' => '',
-            'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+            'reply_markup' => SportsBotInlineKeyboardBuilder::liveReplyMarkup(),
             'payload' => [
                 'live_total' => (int) ($summary['live_total'] ?? 0),
                 'live_raw' => (int) ($summary['live_raw'] ?? 0),

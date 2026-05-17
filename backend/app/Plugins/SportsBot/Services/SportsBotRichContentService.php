@@ -219,7 +219,7 @@ class SportsBotRichContentService
     {
         return [
             'caption' => "<b>📰 News & Transfers</b>\n\nTransfer and breaking-news feeds are ready as placeholders. Connect a news provider to populate this topic.",
-            'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
+            'reply_markup' => SportsBotInlineKeyboardBuilder::tvReplyMarkup(),
             'card' => $this->tryCard(fn () => $this->cards->breakingNewsCard(['title' => 'News & Transfers', 'summary' => 'Provider feed placeholder ready.'])),
         ];
     }
