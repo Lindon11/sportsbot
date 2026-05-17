@@ -659,6 +659,20 @@ try {
             admin_flash('success', 'Match state and sent-alert history reset.');
             admin_redirect('system');
         }
+
+        if ($action === 'send_fixtures_today') {
+            fb_require_env($config, true);
+            $db = fb_open_db($config);
+            $msg = fb_format_fixtures_today_message($config, $db);
+            $results = fb_telegram_send_message_route($config, $msg['text'], 'FIXTURES_TODAY', [
+                'parse_mode' => 'HTML',
+                'reply_markup' => $msg['reply_markup'],
+            ]);
+            $ok = count(array_filter($results, static fn (array $r): bool => !empty($r['ok'])));
+            admin_flash('success', sprintf('Fixtures today sent to %d chat(s).', $ok));
+
+            admin_redirect('publishing');
+        }
     }
 } catch (Throwable $error) {
     admin_flash('error', $error->getMessage());

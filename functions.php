@@ -6573,3 +6573,127 @@ function fb_enrich_alert_assets(array $config, SQLite3 $db, array $alert): array
 
     return $alert;
 }
+
+function fb_format_fixtures_today_message(array $config, SQLite3 $db): array
+{
+    $tz = new DateTimeZone($config['app']['timezone']);
+    $now = new DateTimeImmutable('now', $tz);
+    $todayStart = $now->setTime(0, 0, 0);
+    $todayEnd = $now->setTime(23, 59, 59);
+
+    $rawEvents = fb_fetch_scheduled_matches_between($config, $db, $todayStart, $todayEnd);
+    $eventIds = [];
+    $matches = [];
+    $skippedFixtures = 0;
+
+    foreach ($rawEvents as $event) {
+        if (!is_array($event)) {
+            $skippedFixtures++;
+            continue;
+        }
+
+        $eventId = (string) ($event['idEvent'] ?? '');
+        if ($eventId !== '') {
+            $eventIds[] = $eventId;
+        }
+
+        $match = fb_normalize_match($event);
+        $title = trim((string) ($match['event_name'] ?? ''));
+        $league = trim((string) ($match['league_name'] ?? ''));
+
+        if ($title === '' && $league === '') {
+            $skippedFixtures++;
+            continue;
+        }
+
+        $matches[] = $match;
+    }
+
+    $tvChannels = fb_tv_channels_for_event_ids($config, $db, $eventIds);
+    $tvChannelsFound = 0;
+
+    $grouped = [];
+    foreach ($matches as $match) {
+        $sport = $match['sport'] !== '' ? $match['sport'] : 'Other';
+        $grouped[$sport][] = $match;
+    }
+
+    if ($matches === []) {
+        fb_log('info', 'fixtures_today.summary', [
+            'fixtures_fetched' => count($rawEvents),
+            'fixtures_skipped' => $skippedFixtures,
+            'tv_channels_found' => 0,
+        ]);
+
+        return [
+            'text' => 'No fixtures found today.',
+            'reply_markup' => [
+                'inline_keyboard' => [
+                    [
+                        fb_bot_menu_callback_button('⚽ Football', 'fixtures_football'),
+                        fb_bot_menu_callback_button('🏀 Basketball', 'fixtures_basketball'),
+                    ],
+                    [
+                        fb_bot_menu_callback_button('📺 TV Guide', 'tv_today'),
+                        fb_bot_menu_callback_button('⭐ My Teams', 'my_teams'),
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    $parts = ['<b>📋 Today\'s Fixtures</b>', ''];
+
+    foreach ($grouped as $sport => $sportMatches) {
+        $parts[] = '<b>' . htmlspecialchars($sport) . '</b>';
+
+        foreach ($sportMatches as $match) {
+            $time = trim((string) ($match['event_time'] ?? '')) !== '' ? (string) $match['event_time'] : 'TBC';
+            $homeTeam = trim((string) ($match['home_team'] ?? ''));
+            $awayTeam = trim((string) ($match['away_team'] ?? ''));
+            $eventName = trim((string) ($match['event_name'] ?? ''));
+            $league = trim((string) ($match['league_name'] ?? ''));
+            $hasNamedTeams = $homeTeam !== '' && $awayTeam !== '' && $homeTeam !== 'Home' && $awayTeam !== 'Away'
+                && strcasecmp($homeTeam, $eventName) !== 0
+                && strcasecmp($awayTeam, $eventName) !== 0;
+            $fixtureTitle = $hasNamedTeams
+                ? ($homeTeam . ' vs ' . $awayTeam)
+                : ($eventName !== '' ? $eventName : trim($homeTeam . ' ' . $awayTeam));
+            $parts[] = '🕐 ' . htmlspecialchars($time) . ' - ' . htmlspecialchars($fixtureTitle) . ' - ' . htmlspecialchars($league !== '' ? $league : 'Competition TBC');
+
+            $eid = $match['event_id'];
+            if (isset($tvChannels[$eid]) && $tvChannels[$eid] !== []) {
+                $labels = array_map('fb_tv_channel_label', $tvChannels[$eid]);
+                $parts[] = '📺 ' . htmlspecialchars(implode(', ', $labels));
+                $tvChannelsFound += count($labels);
+            }
+        }
+
+        $parts[] = '';
+    }
+
+    $text = implode("\n", $parts);
+    fb_log('info', 'fixtures_today.summary', [
+        'fixtures_fetched' => count($rawEvents),
+        'fixtures_skipped' => $skippedFixtures,
+        'tv_channels_found' => $tvChannelsFound,
+    ]);
+
+    $keyboard = [
+        'inline_keyboard' => [
+            [
+                fb_bot_menu_callback_button('⚽ Football', 'fixtures_football'),
+                fb_bot_menu_callback_button('🏀 Basketball', 'fixtures_basketball'),
+            ],
+            [
+                fb_bot_menu_callback_button('📺 TV Guide', 'tv_today'),
+                fb_bot_menu_callback_button('⭐ My Teams', 'my_teams'),
+            ],
+        ],
+    ];
+
+    return [
+        'text' => $text,
+        'reply_markup' => $keyboard,
+    ];
+}

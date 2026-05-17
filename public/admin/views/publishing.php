@@ -86,6 +86,7 @@ declare(strict_types=1);
     <form class="actions" method="post">
         <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf) ?>">
         <button name="action" value="send_customer_guide_test" type="submit">Send Guide Test</button>
+        <button class="secondary" name="action" value="send_fixtures_today" type="submit">Send Fixtures Today Now</button>
         <a class="button secondary" href="<?= htmlspecialchars(admin_view_url('settings')) ?>#customer-guide-settings">Guide Settings</a>
     </form>
     <?php if (($customerFollows['recent'] ?? []) === []): ?>
