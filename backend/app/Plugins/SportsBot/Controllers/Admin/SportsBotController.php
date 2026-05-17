@@ -492,6 +492,46 @@ class SportsBotController extends Controller
         }
     }
 
+    public function fixtureQueueItem(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        $item = $queue->find($id);
+        if (!$item) {
+            return response()->json(['error' => "Queue item {$id} not found"], 404);
+        }
+
+        return response()->json(['item' => $item->toArray()]);
+    }
+
+    public function fixtureQueueReRender(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->reRenderItem($id));
+    }
+
+    public function fixtureQueuePublishNow(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->publishNow($id));
+    }
+
+    public function fixtureQueueSkip(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->skipItem($id));
+    }
+
+    public function fixtureQueueDelete(int $id, FixtureQueueService $queue): JsonResponse
+    {
+        return response()->json($queue->deleteItem($id));
+    }
+
+    public function fixtureQueueCard(int $id, FixtureQueueService $queue): \Illuminate\Http\Response
+    {
+        $item = $queue->find($id);
+        if (!$item || !$item->card_path || !is_file($item->card_path)) {
+            abort(404);
+        }
+
+        return response()->file($item->card_path);
+    }
+
     private function resolveContentModule(string $sport): ?object
     {
         return match (SportsBotSports::normalize($sport)) {

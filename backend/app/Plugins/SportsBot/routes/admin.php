@@ -11,6 +11,12 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/fixture-queue/prefetch', [SportsBotController::class, 'fixtureQueuePrefetch'])->name('fixture-queue.prefetch');
     Route::post('/fixture-queue/render', [SportsBotController::class, 'fixtureQueueRender'])->name('fixture-queue.render');
     Route::post('/fixture-queue/publish', [SportsBotController::class, 'fixtureQueuePublish'])->name('fixture-queue.publish');
+    Route::get('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueItem'])->name('fixture-queue.item');
+    Route::post('/fixture-queue/{id}/re-render', [SportsBotController::class, 'fixtureQueueReRender'])->name('fixture-queue.re-render');
+    Route::post('/fixture-queue/{id}/publish', [SportsBotController::class, 'fixtureQueuePublishNow'])->name('fixture-queue.publish-now');
+    Route::post('/fixture-queue/{id}/skip', [SportsBotController::class, 'fixtureQueueSkip'])->name('fixture-queue.skip');
+    Route::delete('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueDelete'])->name('fixture-queue.delete');
+    Route::get('/fixture-queue/{id}/card', [SportsBotController::class, 'fixtureQueueCard'])->name('fixture-queue.card');
     Route::post('/fixtures-today/preview', [SportsBotController::class, 'fixturesTodayPreview'])->name('fixtures-today.preview');
     Route::post('/fixtures-today/send', [SportsBotController::class, 'fixturesTodaySend'])->name('fixtures-today.send');
     Route::post('/football-fixtures/preview', [SportsBotController::class, 'footballFixturesPreview'])->name('football-fixtures.preview');

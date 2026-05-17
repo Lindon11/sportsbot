@@ -471,6 +471,125 @@ class FixtureQueueService
         ];
     }
 
+    public function find(int $id): ?SportsBotFixtureQueue
+    {
+        return SportsBotFixtureQueue::query()->find($id);
+    }
+
+    public function reRenderItem(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        $sportKey = $entry->sport_key;
+        $config = SportsFixtureConfig::for($sportKey);
+        if (!$config) {
+            return ['error' => "Unknown sport: {$sportKey}"];
+        }
+
+        $fixture = (array) ($entry->fixture_data ?? []);
+        $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
+
+        try {
+            $this->cacheAssets($entry, $fixture);
+
+            $card = $this->cards->fixtureCard($fixture, $cardVersion);
+            $cardPath = (string) ($card['path'] ?? '');
+
+            if ($cardPath === '' || !is_file($cardPath)) {
+                throw new \RuntimeException('Card render returned no valid file');
+            }
+
+            $entry->card_path = $cardPath;
+            $entry->caption = $this->buildCaption($fixture, $config);
+            $entry->status = SportsBotFixtureQueue::STATUS_READY;
+            $entry->error = null;
+            $entry->save();
+
+            return ['re_rendered' => true, 'id' => $id, 'card_path' => $cardPath];
+        } catch (Throwable $error) {
+            $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
+            $entry->error = mb_substr($error->getMessage(), 0, 1000);
+            $entry->save();
+
+            return ['re_rendered' => false, 'id' => $id, 'error' => $error->getMessage()];
+        }
+    }
+
+    public function publishNow(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        $sportKey = $entry->sport_key;
+        $config = SportsFixtureConfig::for($sportKey);
+        if (!$config) {
+            return ['error' => "Unknown sport: {$sportKey}"];
+        }
+
+        if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
+            $result = $this->reRenderItem($id);
+            if (!($result['re_rendered'] ?? false)) {
+                return ['published' => false, 'error' => $result['error'] ?? 'Cannot publish item'];
+            }
+
+            $entry = $this->find($id);
+        }
+
+        try {
+            $verified = $this->verifyBeforePublish($entry, $config);
+            if (!$verified) {
+                return ['published' => false, 'error' => 'Event verification failed'];
+            }
+
+            $results = $this->sendToTelegram($entry, $config, []);
+
+            $entry->status = SportsBotFixtureQueue::STATUS_SENT;
+            $entry->sent_at = now();
+            $entry->telegram_message_id = $results['message_id'] ?? null;
+            $entry->topic_id = $results['topic_id'] ?? null;
+            $entry->payload = array_merge((array) $entry->payload, ['publish_results' => $results]);
+            $entry->save();
+
+            return ['published' => true, 'id' => $id, 'results' => $results];
+        } catch (Throwable $error) {
+            $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
+            $entry->error = mb_substr($error->getMessage(), 0, 1000);
+            $entry->save();
+
+            return ['published' => false, 'id' => $id, 'error' => $error->getMessage()];
+        }
+    }
+
+    public function skipItem(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        $entry->status = SportsBotFixtureQueue::STATUS_SKIPPED;
+        $entry->save();
+
+        return ['skipped' => true, 'id' => $id];
+    }
+
+    public function deleteItem(int $id): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['error' => "Queue item {$id} not found"];
+        }
+
+        $entry->delete();
+
+        return ['deleted' => true, 'id' => $id];
+    }
+
     private function cacheAssets(SportsBotFixtureQueue $entry, array $fixture): void
     {
         if ($entry->asset_status === SportsBotFixtureQueue::ASSET_CACHED) {
