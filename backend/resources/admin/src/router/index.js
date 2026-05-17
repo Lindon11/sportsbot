@@ -170,6 +170,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotFixturesTodayView.vue')
         },
         {
+          path: '/sportsbot/football-fixtures',
+          name: 'sportsbot-football-fixtures',
+          component: () => import('../views/SportsBotFootballFixturesView.vue')
+        },
+        {
           path: '/sportsbot/tv-guide',
           name: 'sportsbot-tv-guide',
           component: () => import('../views/SportsBotTvGuideView.vue')

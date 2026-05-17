@@ -9,6 +9,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/test-route', [SportsBotController::class, 'testRoute'])->name('test-route');
     Route::post('/fixtures-today/preview', [SportsBotController::class, 'fixturesTodayPreview'])->name('fixtures-today.preview');
     Route::post('/fixtures-today/send', [SportsBotController::class, 'fixturesTodaySend'])->name('fixtures-today.send');
+    Route::post('/football-fixtures/preview', [SportsBotController::class, 'footballFixturesPreview'])->name('football-fixtures.preview');
+    Route::post('/football-fixtures/send', [SportsBotController::class, 'footballFixturesSend'])->name('football-fixtures.send');
     Route::post('/tv-guide/preview', [SportsBotController::class, 'tvGuidePreview'])->name('tv-guide.preview');
     Route::post('/tv-guide/send', [SportsBotController::class, 'tvGuideSend'])->name('tv-guide.send');
     Route::post('/live-now/preview', [SportsBotController::class, 'liveNowPreview'])->name('live-now.preview');

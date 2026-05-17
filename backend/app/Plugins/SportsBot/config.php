@@ -12,21 +12,82 @@ $csv = static function (mixed $value): array {
 };
 
 $legacyDefaultLeagueIds = [
+    // England
     '4328', // English Premier League
     '4329', // EFL Championship
     '4396', // League One
     '4397', // League Two
+    '4590', // National League
+    '4681', // National League North
+    '4682', // National League South
+    '4646', // Northern Premier League Premier Division
+    '4647', // Isthmian League Premier Division
+    '4648', // Southern Premier League South Division
+    '5324', // Southern Premier League Central Division
     '4482', // FA Cup
     '4570', // EFL Cup
+    '4571', // FA Community Shield
+    '4847', // EFL Trophy
+    '4849', // Womens Super League
+    '5212', // Womens Championship
+    '5441', // FA Womens Challenge Cup
+    '4887', // FA Womens League Cup
+
+    // Scotland
     '4330', // Scottish Premiership
     '4395', // Scottish Championship
     '4669', // Scottish League One
     '4670', // Scottish League Two
+    '5095', // Scottish Highland League
+    '5096', // Scottish Lowland League
     '4723', // Scottish FA Cup
     '4888', // Scottish League Cup
+
+    // Wales
+    '4472', // Cymru Premier
+    '5315', // Cymru North/South
+    '5099', // Welsh League Cup
+
+    // Northern Ireland
+    '4659', // NIFL Premiership
+    '4755', // NIFL Championship
+    '5097', // NIFL Premier Intermediate League
+
+    // European competitions with frequent UK club coverage
     '4480', // UEFA Champions League
     '4481', // UEFA Europa League
     '4889', // UEFA Womens Champions League
+
+    // International football
+    '4429', // FIFA World Cup
+    '4502', // UEFA European Championships
+    '5518', // World Cup Qualifying UEFA
+    '5519', // UEFA European Championships Qualifying
+    '4490', // UEFA Nations League
+    '4562', // International Friendlies
+    '5819', // Finalissima
+    '4566', // UEFA European Under-21 Championship
+    '4565', // FIFA Womens World Cup
+    '4865', // UEFA Womens Euro
+    '5840', // Womens World Cup Qualifying UEFA
+    '5410', // UEFA Womens Nations League
+    '5400', // International Friendlies Women
+];
+
+$internationalFootballLeagueIds = [
+    '4429', // FIFA World Cup
+    '4502', // UEFA European Championships
+    '5518', // World Cup Qualifying UEFA
+    '5519', // UEFA European Championships Qualifying
+    '4490', // UEFA Nations League
+    '4562', // International Friendlies
+    '5819', // Finalissima
+    '4566', // UEFA European Under-21 Championship
+    '4565', // FIFA Womens World Cup
+    '4865', // UEFA Womens Euro
+    '5840', // Womens World Cup Qualifying UEFA
+    '5410', // UEFA Womens Nations League
+    '5400', // International Friendlies Women
 ];
 
 $defaultTvChannels = [
@@ -45,6 +106,10 @@ $defaultTvChannels = [
     'ITV1',
     'Channel 4',
     'Premier Sports 1',
+    'Premier Sports 2',
+    'Viaplay Sports 1 UK',
+    'Viaplay Sports 2 UK',
+    'Sky Sports+',
     'DAZN UK',
 ];
 
@@ -80,6 +145,8 @@ return [
         'enabled' => env('SPORTSBOT_CARDS_ENABLED', true),
         'width' => (int) env('SPORTSBOT_CARD_WIDTH', 1200),
         'height' => (int) env('SPORTSBOT_CARD_HEIGHT', 675),
+        'font_regular' => env('SPORTSBOT_CARD_FONT_REGULAR', ''),
+        'font_bold' => env('SPORTSBOT_CARD_FONT_BOLD', ''),
     ],
 
     'telegram' => [
@@ -105,7 +172,9 @@ return [
 
     'fixtures_today' => [
         'default_league_ids' => $legacyDefaultLeagueIds,
+        'international_league_ids' => $internationalFootballLeagueIds,
         'max_per_sport' => (int) env('SPORTSBOT_FIXTURES_TODAY_MAX_PER_SPORT', 5),
+        'timezone' => env('SPORTSBOT_FIXTURES_TIMEZONE', 'Europe/London'),
     ],
 
     'live_now' => [

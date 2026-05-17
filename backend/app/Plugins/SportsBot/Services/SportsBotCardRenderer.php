@@ -26,15 +26,31 @@ class SportsBotCardRenderer
     /**
      * @return array{path:string,type:string,width:int,height:int}
      */
-    public function fixtureCard(array $fixture): array
+    public function fixtureCard(array $fixture, string $variant = 'v1'): array
     {
-        return $this->render('fixture', function ($image, array $c) use ($fixture): void {
+        $variant = $this->normalizeCardVariant($variant);
+
+        return $this->render('fixture-' . $variant, function ($image, array $c) use ($fixture, $variant): void {
             $sport = (string) ($fixture['sport'] ?? $fixture['strSport'] ?? 'Sports');
+            if (SportsBotSports::normalize($sport) === 'football') {
+                if ($variant === 'v2') {
+                    $this->footballFixtureCardV2($image, $fixture);
+                } else {
+                    $this->footballFixtureCardV1($image, $fixture);
+                }
+                return;
+            }
+
             $this->header($image, $c, SportsBotSports::icon($sport) . ' Fixture', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
             $this->versusBlock($image, $c, $fixture, 'VS');
             $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC'), [20, 184, 166]);
             $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
         });
+    }
+
+    private function normalizeCardVariant(string $variant): string
+    {
+        return strtolower(trim($variant)) === 'v2' ? 'v2' : 'v1';
     }
 
     /**
@@ -219,6 +235,149 @@ class SportsBotCardRenderer
         $this->small($image, $points, 990, $y, $c['text'], true);
     }
 
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function footballFixtureCardV1($image, array $fixture): void
+    {
+        $white = imagecolorallocate($image, 248, 250, 252);
+        $panel = imagecolorallocate($image, 255, 255, 255);
+        $border = imagecolorallocate($image, 213, 218, 229);
+        $navy = imagecolorallocate($image, 10, 28, 64);
+        $purple = imagecolorallocate($image, 47, 21, 94);
+        $softPurple = imagecolorallocate($image, 238, 233, 248);
+
+        imagefilledrectangle($image, 0, 0, $this->width, $this->height, $white);
+        imagefilledrectangle($image, 0, 0, $this->width, 122, $panel);
+        imagefilledrectangle($image, 0, 0, 148, 122, $purple);
+        imagefilledrectangle($image, 0, 122, $this->width, 126, $border);
+        imagefilledrectangle($image, 0, 488, $this->width, 492, $border);
+        imagefilledrectangle($image, 0, 650, $this->width, 675, $purple);
+        imagefilledrectangle($image, 0, 126, $this->width, 488, $panel);
+        imagefilledellipse($image, 65, 205, 295, 295, $softPurple);
+        imagefilledellipse($image, 1145, 430, 330, 330, $softPurple);
+
+        $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
+        $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? 'Home'));
+        $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? 'Away'));
+        $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
+        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
+        $tv = trim((string) ($fixture['tv_channel'] ?? ''));
+        $tv = $tv !== '' ? $tv : 'TBC';
+
+        $this->textFitted($image, strtoupper($league), 220, 75, 820, 38, 24, $navy, true);
+        $this->drawCalendarIcon($image, 72, 528, 104, $purple, $softPurple);
+        $this->drawTvIcon($image, 690, 530, 116, $purple, $softPurple);
+        imagefilledrectangle($image, 620, 520, 624, 640, $border);
+        $this->text($image, 'DATE / KICKOFF', 215, 552, 22, $purple, true);
+        $this->textFitted($image, strtoupper($date), 215, 588, 370, 27, 20, $navy, true);
+        $this->textFitted($image, $kickoff, 215, 640, 370, 55, 34, $purple, true);
+        $this->text($image, 'UK TV', 840, 552, 25, $navy, true);
+        $tvY = 600;
+        foreach ($this->fitTextLines(strtoupper($tv), 320, 35, true, 2) as $line) {
+            $this->textFitted($image, $line, 840, $tvY, 320, 35, 24, $navy, true);
+            $tvY += 44;
+        }
+
+        $homeLogo = (string) ($fixture['home_badge'] ?? $fixture['strHomeTeamBadge'] ?? '');
+        $awayLogo = (string) ($fixture['away_badge'] ?? $fixture['strAwayTeamBadge'] ?? '');
+        if (!$this->drawRemoteLogoContain($image, $homeLogo, 290, 275, 250, 250)) {
+            $this->teamPlaceholder($image, $home, 165, 150, 250, $purple, $panel);
+        }
+        if (!$this->drawRemoteLogoContain($image, $awayLogo, 910, 275, 250, 250)) {
+            $this->teamPlaceholder($image, $away, 785, 150, 250, $navy, $panel);
+        }
+
+        imagefilledrectangle($image, 540, 255, 543, 350, $border);
+        imagefilledrectangle($image, 657, 255, 660, 350, $border);
+        $this->centerFittedText($image, 'VS', 600, 330, 110, 66, 52, $navy, true);
+        $this->centerFittedText($image, strtoupper($home), 290, 445, 410, 43, 28, $navy, true);
+        $this->centerFittedText($image, strtoupper($away), 910, 445, 410, 43, 28, $navy, true);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function footballFixtureCardV2($image, array $fixture): void
+    {
+        $white = imagecolorallocate($image, 252, 253, 255);
+        $panel = imagecolorallocate($image, 255, 255, 255);
+        $border = imagecolorallocate($image, 220, 224, 235);
+        $navy = imagecolorallocate($image, 8, 18, 40);
+        $muted = imagecolorallocate($image, 91, 98, 118);
+        $purple = imagecolorallocate($image, 55, 20, 94);
+        $purple2 = imagecolorallocate($image, 88, 20, 125);
+        $softPurple = imagecolorallocate($image, 242, 238, 250);
+        $shadow = imagecolorallocate($image, 234, 235, 242);
+
+        imagefilledrectangle($image, 0, 0, $this->width, $this->height, imagecolorallocate($image, 4, 6, 12));
+        $this->roundedRect($image, 24, 18, 1176, 650, 38, $shadow);
+        $this->roundedRect($image, 18, 12, 1170, 642, 38, $white);
+        imagefilledrectangle($image, 18, 626, 1170, 642, $purple2);
+
+        $this->filledPolygon($image, [[18, 12], [214, 12], [148, 642], [18, 642]], $purple);
+        $this->filledPolygon($image, [[64, 12], [214, 12], [148, 642], [18, 642]], $purple2);
+        $this->filledPolygon($image, [[975, 12], [1170, 12], [1170, 355], [860, 642], [805, 642], [1110, 12]], $softPurple);
+        $this->filledPolygon($image, [[1080, 12], [1170, 12], [1170, 210], [925, 642], [880, 642]], imagecolorallocate($image, 247, 244, 253));
+
+        $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
+        $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? 'Home'));
+        $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? 'Away'));
+        $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
+        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
+        $venue = trim((string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'));
+        $tv = trim((string) ($fixture['tv_channel'] ?? '')) ?: 'Not listed';
+
+        $this->drawLeagueLogoMark($image, $fixture, 108, 96, 116, $panel, $purple);
+        $this->textFitted($image, $this->displayTitle($this->shortLeagueName($league)), 258, 88, 620, 36, 22, $purple, true);
+
+        $homeLogo = (string) ($fixture['home_badge'] ?? $fixture['strHomeTeamBadge'] ?? '');
+        $awayLogo = (string) ($fixture['away_badge'] ?? $fixture['strAwayTeamBadge'] ?? '');
+        if (!$this->drawRemoteLogoContain($image, $homeLogo, 330, 278, 245, 245)) {
+            $this->teamPlaceholder($image, $home, 205, 153, 250, $purple, $panel);
+        }
+        if (!$this->drawRemoteLogoContain($image, $awayLogo, 890, 278, 245, 245)) {
+            $this->teamPlaceholder($image, $away, 765, 153, 250, $navy, $panel);
+        }
+
+        imagefilledrectangle($image, 542, 265, 670, 268, $border);
+        imagefilledrectangle($image, 542, 350, 670, 353, $border);
+        $this->centerFittedText($image, 'VS', 606, 335, 150, 70, 46, $purple, true);
+
+        $homeLines = $this->teamDisplayLines($home);
+        $awayLines = $this->teamDisplayLines($away);
+        $this->centerFittedText($image, $this->displayTitle($homeLines[0]), 330, 455, 330, 42, 28, $navy, true);
+        if (($homeLines[1] ?? '') !== '') {
+            $this->centerFittedText($image, $this->displayTitle($homeLines[1]), 330, 504, 330, 30, 20, $muted, true);
+        }
+        $this->centerFittedText($image, $this->displayTitle($awayLines[0]), 890, 455, 360, 42, 28, $navy, true);
+        if (($awayLines[1] ?? '') !== '') {
+            $this->centerFittedText($image, $this->displayTitle($awayLines[1]), 890, 504, 360, 30, 20, $muted, true);
+        }
+
+        $this->roundedRect($image, 82, 512, 1118, 620, 16, imagecolorallocate($image, 251, 252, 255));
+        imagerectangle($image, 82, 512, 1118, 620, $border);
+        imagefilledrectangle($image, 410, 530, 413, 602, $border);
+        imagefilledrectangle($image, 758, 530, 761, 602, $border);
+
+        $this->drawCalendarIcon($image, 106, 538, 42, $purple, $white);
+        $this->text($image, 'DATE & KICKOFF', 164, 548, 18, $purple, true);
+        $this->textFitted($image, $date, 164, 580, 232, 23, 16, $navy, true);
+        $this->textFitted($image, $kickoff, 164, 608, 232, 21, 16, $muted, true);
+
+        $this->drawTvIcon($image, 446, 538, 46, $purple, $white);
+        $this->text($image, 'BROADCAST', 508, 548, 18, $purple, true);
+        $tvLines = $this->fitTextLines($tv, 210, 24, true, 2);
+        $tvY = 580;
+        foreach ($tvLines as $index => $line) {
+            $this->textFitted($image, $line, 508, $tvY + ($index * 28), 210, 24, 17, $index === 0 ? $navy : $muted, true);
+        }
+
+        $this->drawVenueIcon($image, 792, 538, 46, $purple);
+        $this->text($image, 'VENUE', 854, 548, 18, $purple, true);
+        $this->textFitted($image, $venue !== '' ? $this->displayTitle($venue) : 'Venue TBC', 854, 582, 230, 25, 17, $navy, true);
+    }
+
     private function pill($image, array $c, int $x, int $y, string $text, array $rgb): void
     {
         $color = imagecolorallocate($image, $rgb[0], $rgb[1], $rgb[2]);
@@ -226,28 +385,379 @@ class SportsBotCardRenderer
         $this->text($image, $this->fit($text, 32), $x + 18, $y, 20, $c['bg'], true);
     }
 
-    private function drawRemoteLogo($image, string $url, int $x, int $y, int $size): void
+    private function roundedRect($image, int $x1, int $y1, int $x2, int $y2, int $radius, int $color): void
+    {
+        imagefilledrectangle($image, $x1 + $radius, $y1, $x2 - $radius, $y2, $color);
+        imagefilledrectangle($image, $x1, $y1 + $radius, $x2, $y2 - $radius, $color);
+        imagefilledellipse($image, $x1 + $radius, $y1 + $radius, $radius * 2, $radius * 2, $color);
+        imagefilledellipse($image, $x2 - $radius, $y1 + $radius, $radius * 2, $radius * 2, $color);
+        imagefilledellipse($image, $x1 + $radius, $y2 - $radius, $radius * 2, $radius * 2, $color);
+        imagefilledellipse($image, $x2 - $radius, $y2 - $radius, $radius * 2, $radius * 2, $color);
+    }
+
+    /**
+     * @param array<int, array{0:int,1:int}> $points
+     */
+    private function filledPolygon($image, array $points, int $color): void
+    {
+        $flat = [];
+        foreach ($points as $point) {
+            $flat[] = $point[0];
+            $flat[] = $point[1];
+        }
+
+        imagefilledpolygon($image, $flat, $color);
+    }
+
+    private function drawPremierLeagueMark($image, int $x, int $y, int $size, int $color): void
+    {
+        imagefilledellipse($image, $x + (int) ($size * 0.48), $y + (int) ($size * 0.52), (int) ($size * 0.82), (int) ($size * 0.82), $color);
+        imagefilledellipse($image, $x + (int) ($size * 0.64), $y + (int) ($size * 0.34), (int) ($size * 0.36), (int) ($size * 0.36), $color);
+        imagefilledpolygon($image, [
+            $x + (int) ($size * 0.22), $y + (int) ($size * 0.12),
+            $x + (int) ($size * 0.34), $y - (int) ($size * 0.12),
+            $x + (int) ($size * 0.44), $y + (int) ($size * 0.16),
+            $x + (int) ($size * 0.56), $y - (int) ($size * 0.10),
+            $x + (int) ($size * 0.66), $y + (int) ($size * 0.18),
+            $x + (int) ($size * 0.78), $y,
+            $x + (int) ($size * 0.78), $y + (int) ($size * 0.28),
+            $x + (int) ($size * 0.22), $y + (int) ($size * 0.30),
+        ], $color);
+        imagefilledellipse($image, $x + (int) ($size * 0.78), $y + (int) ($size * 0.24), 8, 8, imagecolorallocate($image, 55, 20, 94));
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function drawLeagueLogoMark($image, array $fixture, int $centerX, int $centerY, int $size, int $bg, int $ink): void
+    {
+        $badge = trim((string) ($fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? ''));
+        $logo = trim((string) ($fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? ''));
+
+        foreach (array_filter([$badge, $logo]) as $url) {
+            $logoImage = $this->remoteLogoImage($url);
+            if (!$logoImage) {
+                continue;
+            }
+
+            imagefilledellipse($image, $centerX, $centerY, $size, $size, $this->logoNeedsDarkBackground($logoImage) ? $ink : $bg);
+            if ($this->drawLogoImageContain($image, $logoImage, $centerX, $centerY, (int) ($size * 0.74), (int) ($size * 0.74))) {
+                imagedestroy($logoImage);
+                return;
+            }
+
+            imagedestroy($logoImage);
+        }
+
+        imagefilledellipse($image, $centerX, $centerY, $size, $size, $bg);
+        $initials = $this->leagueInitials((string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'League'));
+        $textSize = $this->fittedTextSize($initials, (int) ($size * 0.7), 30, 18, true);
+        $this->text(
+            $image,
+            $initials,
+            $centerX - (int) floor($this->textWidth($initials, $textSize, true) / 2),
+            $centerY + (int) floor($textSize / 2),
+            $textSize,
+            $ink,
+            true
+        );
+    }
+
+    private function leagueInitials(string $league): string
+    {
+        $words = array_values(array_filter(preg_split('/\s+/', preg_replace('/[^A-Za-z0-9 ]+/', ' ', $this->shortLeagueName($league)) ?? $league) ?: []));
+        $initials = '';
+
+        foreach ($words as $word) {
+            if (in_array(strtolower($word), ['the', 'and', 'of'], true)) {
+                continue;
+            }
+
+            $initials .= strtoupper(substr($word, 0, 1));
+            if (strlen($initials) >= 3) {
+                break;
+            }
+        }
+
+        return $initials !== '' ? $initials : 'TV';
+    }
+
+    private function shortLeagueName(string $league): string
+    {
+        $league = trim($league);
+
+        return match ($league) {
+            'English Premier League' => 'Premier League',
+            'Scottish Premiership', 'Scottish Premier League' => 'Scottish Premiership',
+            default => $league !== '' ? $league : 'Competition TBC',
+        };
+    }
+
+    private function displayTitle(string $value): string
+    {
+        $value = strtolower(trim(preg_replace('/\s+/', ' ', $value) ?? $value));
+        if ($value === '') {
+            return '';
+        }
+
+        return ucwords($value);
+    }
+
+    private function compactDateLabel(string $date): string
+    {
+        $date = trim(preg_replace('/\s+/', ' ', $date) ?? $date);
+        $upper = strtoupper($date);
+        $replacements = [
+            'MONDAY' => 'MON',
+            'TUESDAY' => 'TUE',
+            'WEDNESDAY' => 'WED',
+            'THURSDAY' => 'THU',
+            'FRIDAY' => 'FRI',
+            'SATURDAY' => 'SAT',
+            'SUNDAY' => 'SUN',
+        ];
+
+        return strtr($upper, $replacements);
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function teamDisplayLines(string $team): array
+    {
+        $team = strtoupper(trim(preg_replace('/\s+/', ' ', $team) ?? $team));
+        foreach ([' UNITED', ' CITY', ' WANDERERS', ' ROVERS', ' ATHLETIC'] as $suffix) {
+            if (str_ends_with($team, $suffix)) {
+                return [trim(substr($team, 0, -strlen($suffix))), trim($suffix)];
+            }
+        }
+
+        $words = preg_split('/\s+/', $team) ?: [];
+        if (count($words) >= 3) {
+            return [implode(' ', array_slice($words, 0, -1)), (string) end($words)];
+        }
+
+        return [$team, ''];
+    }
+
+    private function drawVenueIcon($image, int $x, int $y, int $size, int $ink): void
+    {
+        imagesetthickness($image, max(3, (int) round($size * 0.1)));
+        imagearc($image, $x + (int) ($size / 2), $y + (int) ($size / 2), $size, (int) ($size * 0.55), 0, 360, $ink);
+        imagearc($image, $x + (int) ($size / 2), $y + (int) ($size / 2) + 3, (int) ($size * 0.72), (int) ($size * 0.36), 0, 360, $ink);
+        imageline($image, $x + 8, $y + (int) ($size / 2), $x + $size - 8, $y + (int) ($size / 2), $ink);
+        imageline($image, $x + 16, $y + 7, $x + 16, $y + 22, $ink);
+        imageline($image, $x + (int) ($size / 2), $y + 4, $x + (int) ($size / 2), $y + 20, $ink);
+        imageline($image, $x + $size - 16, $y + 7, $x + $size - 16, $y + 22, $ink);
+        imagesetthickness($image, 1);
+    }
+
+    private function drawRemoteLogo($image, string $url, int $x, int $y, int $size): bool
+    {
+        $logo = $this->remoteLogoImage($url);
+        if (!$logo) {
+            return false;
+        }
+
+        imagecopyresampled($image, $logo, $x, $y, 0, 0, $size, $size, imagesx($logo), imagesy($logo));
+        imagedestroy($logo);
+
+        return true;
+    }
+
+    private function drawRemoteLogoContain($image, string $url, int $centerX, int $centerY, int $maxWidth, int $maxHeight): bool
+    {
+        $logo = $this->remoteLogoImage($url);
+        if (!$logo) {
+            return false;
+        }
+
+        $drawn = $this->drawLogoImageContain($image, $logo, $centerX, $centerY, $maxWidth, $maxHeight);
+        imagedestroy($logo);
+
+        return $drawn;
+    }
+
+    private function remoteLogoImage(string $url)
     {
         if ($url === '') {
-            return;
+            return null;
         }
 
         try {
             $response = Http::timeout(5)->get($url);
             if (!$response->successful()) {
-                return;
+                return null;
             }
 
             $logo = @imagecreatefromstring($response->body());
             if (!$logo) {
-                return;
+                return null;
             }
 
-            imagecopyresampled($image, $logo, $x, $y, 0, 0, $size, $size, imagesx($logo), imagesy($logo));
-            imagedestroy($logo);
+            return $logo;
         } catch (Throwable $error) {
             Log::debug('sportsbot.card.logo_failed', ['url' => $url, 'error' => $error->getMessage()]);
         }
+
+        return null;
+    }
+
+    private function drawLogoImageContain($image, $logo, int $centerX, int $centerY, int $maxWidth, int $maxHeight): bool
+    {
+        $sourceWidth = imagesx($logo);
+        $sourceHeight = imagesy($logo);
+        if ($sourceWidth <= 0 || $sourceHeight <= 0) {
+            return false;
+        }
+
+        $scale = min($maxWidth / $sourceWidth, $maxHeight / $sourceHeight);
+        $targetWidth = max(1, (int) round($sourceWidth * $scale));
+        $targetHeight = max(1, (int) round($sourceHeight * $scale));
+        $targetX = $centerX - (int) floor($targetWidth / 2);
+        $targetY = $centerY - (int) floor($targetHeight / 2);
+
+        imagecopyresampled($image, $logo, $targetX, $targetY, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+
+        return true;
+    }
+
+    private function logoNeedsDarkBackground($logo): bool
+    {
+        $width = imagesx($logo);
+        $height = imagesy($logo);
+        if ($width <= 0 || $height <= 0) {
+            return false;
+        }
+
+        $stepX = max(1, (int) floor($width / 24));
+        $stepY = max(1, (int) floor($height / 24));
+        $total = 0.0;
+        $count = 0;
+
+        for ($y = 0; $y < $height; $y += $stepY) {
+            for ($x = 0; $x < $width; $x += $stepX) {
+                $color = imagecolorsforindex($logo, imagecolorat($logo, $x, $y));
+                if (($color['alpha'] ?? 0) > 100) {
+                    continue;
+                }
+
+                $total += (0.2126 * $color['red']) + (0.7152 * $color['green']) + (0.0722 * $color['blue']);
+                $count++;
+            }
+        }
+
+        return $count > 0 && ($total / $count) > 190;
+    }
+
+    private function teamPlaceholder($image, string $team, int $x, int $y, int $size, int $bg, int $fg): void
+    {
+        imagefilledellipse($image, $x + (int) ($size / 2), $y + (int) ($size / 2), $size, $size, $bg);
+        $initials = $this->teamInitials($team);
+        $textWidth = $this->textWidth($initials, 42, true);
+        $this->text($image, $initials, $x + (int) (($size - $textWidth) / 2), $y + 108, 42, $fg, true);
+    }
+
+    private function teamInitials(string $team): string
+    {
+        $words = array_values(array_filter(preg_split('/\s+/', preg_replace('/[^A-Za-z0-9 ]+/', ' ', $team) ?? $team) ?: []));
+        $initials = '';
+
+        foreach (array_slice($words, 0, 2) as $word) {
+            $initials .= strtoupper(substr($word, 0, 1));
+        }
+
+        return $initials !== '' ? $initials : 'FC';
+    }
+
+    private function centerFittedText($image, string $text, int $centerX, int $y, int $maxWidth, int $maxSize, int $minSize, int $color, bool $bold = false): void
+    {
+        $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+        $size = $this->fittedTextSize($text, $maxWidth, $maxSize, $minSize, $bold);
+        $this->text($image, $text, $centerX - (int) floor($this->textWidth($text, $size, $bold) / 2), $y, $size, $color, $bold);
+    }
+
+    private function textFitted($image, string $text, int $x, int $y, int $maxWidth, int $maxSize, int $minSize, int $color, bool $bold = false): void
+    {
+        $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+        $size = $this->fittedTextSize($text, $maxWidth, $maxSize, $minSize, $bold);
+
+        while ($this->textWidth($text, $size, $bold) > $maxWidth && mb_strlen($text) > 1) {
+            $text = rtrim(mb_substr($text, 0, -4)) . '...';
+        }
+
+        $this->text($image, $text, $x, $y, $size, $color, $bold);
+    }
+
+    private function fittedTextSize(string $text, int $maxWidth, int $maxSize, int $minSize, bool $bold = false): int
+    {
+        for ($size = $maxSize; $size > $minSize; $size--) {
+            if ($this->textWidth($text, $size, $bold) <= $maxWidth) {
+                return $size;
+            }
+        }
+
+        return $minSize;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function fitTextLines(string $text, int $maxWidth, int $size, bool $bold, int $maxLines): array
+    {
+        $words = preg_split('/\s+/', trim($text)) ?: [];
+        $lines = [];
+        $current = '';
+
+        foreach ($words as $word) {
+            $candidate = trim($current . ' ' . $word);
+            if ($current !== '' && $this->textWidth($candidate, $size, $bold) > $maxWidth) {
+                $lines[] = $current;
+                $current = $word;
+                continue;
+            }
+
+            $current = $candidate;
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+
+        if ($lines === []) {
+            $lines = [$text];
+        }
+
+        if (count($lines) > $maxLines) {
+            $head = array_slice($lines, 0, $maxLines - 1);
+            $tail = implode(' ', array_slice($lines, $maxLines - 1));
+            $lines = array_merge($head, [$tail]);
+        }
+
+        return array_slice($lines, 0, $maxLines);
+    }
+
+    private function drawCalendarIcon($image, int $x, int $y, int $size, int $ink, int $fill): void
+    {
+        imagefilledrectangle($image, $x, $y + 16, $x + $size, $y + $size, $fill);
+        imagesetthickness($image, max(3, (int) round($size * 0.067)));
+        imagerectangle($image, $x + 6, $y + 22, $x + $size - 6, $y + $size - 6, $ink);
+        imageline($image, $x + 6, $y + 48, $x + $size - 6, $y + 48, $ink);
+        imageline($image, $x + 28, $y + 2, $x + 28, $y + 34, $ink);
+        imageline($image, $x + $size - 28, $y + 2, $x + $size - 28, $y + 34, $ink);
+        imagesetthickness($image, 1);
+    }
+
+    private function drawTvIcon($image, int $x, int $y, int $size, int $ink, int $fill): void
+    {
+        imagefilledrectangle($image, $x, $y + 28, $x + $size, $y + $size - 12, $fill);
+        imagesetthickness($image, max(3, (int) round($size * 0.067)));
+        imagerectangle($image, $x + 8, $y + 34, $x + $size - 8, $y + $size - 20, $ink);
+        imageline($image, $x + 35, $y + 6, $x + (int) ($size / 2), $y + 34, $ink);
+        imageline($image, $x + $size - 35, $y + 6, $x + (int) ($size / 2), $y + 34, $ink);
+        imageline($image, $x + (int) ($size / 2), $y + $size - 20, $x + (int) ($size / 2), $y + $size - 2, $ink);
+        imageline($image, $x + 36, $y + $size - 2, $x + $size - 36, $y + $size - 2, $ink);
+        imagesetthickness($image, 1);
     }
 
     private function muted($image, string $text, int $x, int $y, int $size, int $limit = 88): void
@@ -268,7 +778,7 @@ class SportsBotCardRenderer
             return;
         }
 
-        imagestring($image, 5, $x, $y - $size, $text, $color);
+        $this->scaledBuiltinText($image, $text, $x, $y, $size, $color);
     }
 
     private function centerText($image, string $text, int $size, int $y, int $color, bool $bold = false): void
@@ -290,7 +800,42 @@ class SportsBotCardRenderer
             return abs(($box[2] ?? 0) - ($box[0] ?? 0));
         }
 
-        return strlen($text) * imagefontwidth(5);
+        return (int) ceil(strlen($text) * imagefontwidth(5) * $this->builtinFontScale($size));
+    }
+
+    private function scaledBuiltinText($image, string $text, int $x, int $baselineY, int $size, int $color): void
+    {
+        if ($text === '') {
+            return;
+        }
+
+        $font = 5;
+        $sourceWidth = max(1, imagefontwidth($font) * strlen($text));
+        $sourceHeight = imagefontheight($font);
+        $scale = $this->builtinFontScale($size);
+        $targetWidth = max(1, (int) ceil($sourceWidth * $scale));
+        $targetHeight = max(1, (int) ceil($sourceHeight * $scale));
+
+        $source = imagecreatetruecolor($sourceWidth, $sourceHeight);
+        if (!$source) {
+            return;
+        }
+
+        imagealphablending($source, false);
+        imagesavealpha($source, true);
+        $transparent = imagecolorallocatealpha($source, 0, 0, 0, 127);
+        imagefilledrectangle($source, 0, 0, $sourceWidth, $sourceHeight, $transparent);
+        $rgb = imagecolorsforindex($image, $color);
+        $sourceColor = imagecolorallocate($source, $rgb['red'], $rgb['green'], $rgb['blue']);
+        imagestring($source, $font, 0, 0, $text, $sourceColor);
+
+        imagecopyresampled($image, $source, $x, $baselineY - $targetHeight, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+        imagedestroy($source);
+    }
+
+    private function builtinFontScale(int $size): float
+    {
+        return max(1.0, $size / 13.0);
     }
 
     /**
@@ -341,17 +886,42 @@ class SportsBotCardRenderer
             return $text;
         }
 
-        return rtrim(mb_substr($text, 0, max(1, $limit - 1))) . '…';
+        return rtrim(mb_substr($text, 0, max(1, $limit - 3))) . '...';
     }
 
     private function findFont(bool $bold): string
     {
+        $configured = trim((string) config($bold ? 'plugins.SportsBot.cards.font_bold' : 'plugins.SportsBot.cards.font_regular', ''));
         $candidates = $bold
-            ? ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf']
-            : ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/dejavu/DejaVuSans.ttf'];
+            ? [
+                $configured,
+                '/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf',
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                '/usr/share/fonts/dejavu/DejaVuSansCondensed-Bold.ttf',
+                '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+                '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf',
+                '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+                '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+                '/System/Library/Fonts/SFNS.ttf',
+                '/System/Library/Fonts/HelveticaNeue.ttc',
+                '/Library/Fonts/Arial Bold.ttf',
+            ]
+            : [
+                $configured,
+                '/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf',
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/dejavu/DejaVuSansCondensed.ttf',
+                '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+                '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+                '/System/Library/Fonts/SFNS.ttf',
+                '/System/Library/Fonts/HelveticaNeue.ttc',
+                '/Library/Fonts/Arial.ttf',
+            ];
 
         foreach ($candidates as $candidate) {
-            if (is_file($candidate)) {
+            if ($candidate !== '' && is_file($candidate)) {
                 return $candidate;
             }
         }

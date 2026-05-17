@@ -22,7 +22,7 @@ class TheSportsDbClient implements SportsDataProviderInterface
      */
     public function allLeagues(): array
     {
-        return $this->fetch('/all/leagues', (int) config('plugins.SportsBot.cache.metadata', 86400), ['leagues']);
+        return $this->fetch('/all/leagues', (int) config('plugins.SportsBot.cache.metadata', 86400), ['all', 'leagues']);
     }
 
     /**
@@ -46,7 +46,7 @@ class TheSportsDbClient implements SportsDataProviderInterface
      */
     public function lookupTeam(string $teamId): ?array
     {
-        return $this->first('/lookup/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.team', 86400), ['teams', 'team']);
+        return $this->first('/lookup/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.team', 86400), ['lookup', 'teams', 'team']);
     }
 
     /**
@@ -86,7 +86,7 @@ class TheSportsDbClient implements SportsDataProviderInterface
      */
     public function lookupLeague(string $leagueId): ?array
     {
-        return $this->first('/lookup/league/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.metadata', 86400), ['leagues', 'league']);
+        return $this->first('/lookup/league/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.metadata', 86400), ['lookup', 'leagues', 'league']);
     }
 
     /**

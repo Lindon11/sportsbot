@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
+use App\Plugins\SportsBot\Support\SportsBotSports;
 use Carbon\CarbonImmutable;
 use DateTimeZone;
 use Illuminate\Support\Facades\Log;
@@ -46,6 +47,21 @@ class FixturesTodayService
         'premier sports',
         'dazn uk',
         'amazon prime',
+        'prime video',
+    ];
+
+    /**
+     * @var array<int, string>
+     */
+    private const UK_COUNTRY_KEYS = [
+        'united kingdom',
+        'uk',
+        'great britain',
+        'gb',
+        'england',
+        'scotland',
+        'wales',
+        'northern ireland',
     ];
 
     public function __construct(
@@ -57,11 +73,14 @@ class FixturesTodayService
     /**
      * @return array<string, mixed>
      */
-    public function buildSummary(): array
+    public function buildSummary(?string $sportKey = null): array
     {
-        $timezoneName = (string) config('app.timezone', 'UTC');
+        $timezoneName = (string) config('plugins.SportsBot.fixtures_today.timezone', 'Europe/London');
         $tz = new DateTimeZone($timezoneName);
         $today = CarbonImmutable::now($tz)->toDateString();
+        $requestedSport = $sportKey !== null && trim($sportKey) !== ''
+            ? $this->normalizeSportLabel(SportsBotSports::providerSport($sportKey))
+            : null;
 
         $leagueIds = array_values(array_unique(array_filter(
             array_map('strval', (array) $this->settings->get('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', []))),
@@ -74,6 +93,7 @@ class FixturesTodayService
                 static fn (string $id): bool => trim($id) !== ''
             )));
         }
+        $leagueOrder = array_flip($leagueIds);
 
         $rawFixturesCount = 0;
         $skippedFixtures = 0;
@@ -90,6 +110,16 @@ class FixturesTodayService
                     'error' => $error->getMessage(),
                 ]);
                 continue;
+            }
+
+            $leagueMeta = [];
+            try {
+                $leagueMeta = $this->provider->lookupLeague($leagueId) ?? [];
+            } catch (Throwable $error) {
+                Log::debug('sportsbot.fixtures_today.league_lookup_failed', [
+                    'league_id' => $leagueId,
+                    'error' => $error->getMessage(),
+                ]);
             }
 
             $rawFixturesCount += count($rows);
@@ -109,6 +139,10 @@ class FixturesTodayService
                 $sport = $this->normalizeSportLabel((string) ($row['strSport'] ?? ''));
 
                 if ($sport === null) {
+                    continue;
+                }
+
+                if ($requestedSport !== null && $sport !== $requestedSport) {
                     continue;
                 }
 
@@ -134,16 +168,23 @@ class FixturesTodayService
                 $eventName = trim((string) ($row['strEvent'] ?? ''));
                 $leagueName = trim((string) ($row['strLeague'] ?? ''));
 
+                if ($requestedSport === 'Football' && !$this->isUkFootballFixture($row, $leagueMeta)) {
+                    $skippedFixtures++;
+                    continue;
+                }
+
                 if ($eventName === '' && $homeTeam === '' && $awayTeam === '') {
                     $skippedFixtures++;
                     continue;
                 }
 
                 $tvChannel = '';
+                $tvChannels = [];
                 if ($eventId !== '') {
                     try {
-                        $tvChannels = $this->provider->fetchEventTvChannels($eventId);
-                        $tvChannelsFound += count($tvChannels);
+                        $tvRows = $this->provider->lookupEventTv($eventId);
+                        $tvChannelsFound += count($tvRows);
+                        $tvChannels = $this->selectUkTvChannels($tvRows);
                         $tvChannel = $this->selectPreferredChannel($tvChannels);
                     } catch (Throwable $error) {
                         Log::warning('sportsbot.fixtures_today.tv_lookup_failed', [
@@ -161,8 +202,19 @@ class FixturesTodayService
                     'away_team' => $awayTeam,
                     'event_name' => $eventName,
                     'time' => $kickoffAt->format('H:i'),
+                    'date_label' => $kickoffAt->format('l j F Y'),
+                    'kickoff_label' => $kickoffAt->format('H:i T'),
                     'kickoff_at' => $kickoffAt,
                     'tv_channel' => $tvChannel,
+                    'tv_channels' => $tvChannels,
+                    'home_badge' => trim((string) ($row['strHomeTeamBadge'] ?? $row['strHomeBadge'] ?? '')),
+                    'away_badge' => trim((string) ($row['strAwayTeamBadge'] ?? $row['strAwayBadge'] ?? '')),
+                    'league_badge' => $this->leagueArtworkUrl($row, $leagueMeta, ['strLeagueBadge', 'strBadge']),
+                    'league_logo' => $this->leagueArtworkUrl($row, $leagueMeta, ['strLeagueLogo', 'strLogo']),
+                    'venue' => trim((string) ($row['strVenue'] ?? '')),
+                    'league_id' => trim((string) ($row['idLeague'] ?? '')),
+                    'home_team_id' => trim((string) ($row['idHomeTeam'] ?? '')),
+                    'away_team_id' => trim((string) ($row['idAwayTeam'] ?? '')),
                 ];
             }
         }
@@ -177,7 +229,7 @@ class FixturesTodayService
         }
 
         foreach ($grouped as $sport => $sportFixtures) {
-            usort($sportFixtures, static fn (array $a, array $b): int => $a['kickoff_at']->timestamp <=> $b['kickoff_at']->timestamp);
+            usort($sportFixtures, fn (array $a, array $b): int => $this->compareFixtures($a, $b, (string) $sport, $leagueOrder));
             $grouped[$sport] = $sportFixtures;
         }
 
@@ -187,20 +239,23 @@ class FixturesTodayService
         )));
 
         $summary = [
-            'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
+            'route_key' => $requestedSport !== null && $sportKey !== null ? SportsBotSports::routeKey($sportKey) : TelegramRouteKeys::FIXTURES_TODAY,
+            'title' => $requestedSport !== null ? $requestedSport . ' Fixtures TV' : "Today's Fixtures",
+            'sport_filter' => $sportKey !== null ? SportsBotSports::normalize($sportKey) : null,
             'date' => $today,
             'timezone' => $timezoneName,
             'fixtures_total' => count($fixtures),
             'fixtures_raw' => $rawFixturesCount,
             'fixtures_skipped' => $skippedFixtures,
             'tv_channels_found' => $tvChannelsFound,
+            'max_per_sport' => $requestedSport !== null ? max(1, count($fixtures)) : max(1, (int) config('plugins.SportsBot.fixtures_today.max_per_sport', 5)),
             'grouped' => $grouped,
             'sports_grouped' => $sportsGrouped,
             'sport_order' => self::SPORT_ORDER,
         ];
 
         Log::info('sportsbot.fixtures_today.summary', [
-            'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
+            'route_key' => $summary['route_key'],
             'fixtures_total' => $summary['fixtures_total'],
             'fixtures_raw' => $rawFixturesCount,
             'fixtures_skipped' => $skippedFixtures,
@@ -210,6 +265,108 @@ class FixturesTodayService
         ]);
 
         return $summary;
+    }
+
+    /**
+     * @param array<string, mixed> $a
+     * @param array<string, mixed> $b
+     * @param array<string, int> $leagueOrder
+     */
+    private function compareFixtures(array $a, array $b, string $sport, array $leagueOrder): int
+    {
+        if ($sport === 'Football') {
+            $aLeague = (string) ($a['league_id'] ?? '');
+            $bLeague = (string) ($b['league_id'] ?? '');
+            $aLeagueOrder = $leagueOrder[$aLeague] ?? PHP_INT_MAX;
+            $bLeagueOrder = $leagueOrder[$bLeague] ?? PHP_INT_MAX;
+
+            if ($aLeagueOrder !== $bLeagueOrder) {
+                return $aLeagueOrder <=> $bLeagueOrder;
+            }
+
+            $leagueCompare = strcmp((string) ($a['league'] ?? ''), (string) ($b['league'] ?? ''));
+            if ($leagueCompare !== 0) {
+                return $leagueCompare;
+            }
+        }
+
+        $timeCompare = ($a['kickoff_at']->timestamp ?? 0) <=> ($b['kickoff_at']->timestamp ?? 0);
+        if ($timeCompare !== 0) {
+            return $timeCompare;
+        }
+
+        return strcmp((string) ($a['event_name'] ?? ''), (string) ($b['event_name'] ?? ''));
+    }
+
+    /**
+     * @param array<string, mixed> $event
+     * @param array<string, mixed> $league
+     * @param array<int, string> $keys
+     */
+    private function leagueArtworkUrl(array $event, array $league, array $keys): string
+    {
+        foreach ($keys as $key) {
+            $value = trim((string) ($event[$key] ?? $league[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $event
+     * @param array<string, mixed> $league
+     */
+    private function isUkFootballFixture(array $event, array $league): bool
+    {
+        $leagueId = trim((string) ($event['idLeague'] ?? $league['idLeague'] ?? ''));
+        if ($leagueId !== '' && in_array($leagueId, array_map('strval', (array) config('plugins.SportsBot.fixtures_today.international_league_ids', [])), true)) {
+            return true;
+        }
+
+        $eventCountry = trim((string) ($event['strCountry'] ?? $event['strCountryCode'] ?? ''));
+        if ($eventCountry !== '') {
+            return $this->isUkCountry($eventCountry);
+        }
+
+        $leagueCountry = trim((string) ($league['strCountry'] ?? ''));
+        $teamCountries = [];
+
+        foreach (['idHomeTeam', 'idAwayTeam'] as $teamIdKey) {
+            $teamId = trim((string) ($event[$teamIdKey] ?? ''));
+            if ($teamId === '') {
+                continue;
+            }
+
+            try {
+                $team = $this->provider->lookupTeam($teamId);
+            } catch (Throwable $error) {
+                Log::debug('sportsbot.fixtures_today.team_lookup_failed', [
+                    'team_id' => $teamId,
+                    'error' => $error->getMessage(),
+                ]);
+                continue;
+            }
+
+            $country = trim((string) ($team['strCountry'] ?? ''));
+            if ($country !== '') {
+                $teamCountries[] = $country;
+            }
+        }
+
+        if ($teamCountries !== []) {
+            foreach ($teamCountries as $country) {
+                if ($this->isUkCountry($country)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return $leagueCountry === '' || $this->isUkCountry($leagueCountry);
     }
 
     private function normalizeSportLabel(string $sport): ?string
@@ -273,6 +430,59 @@ class FixturesTodayService
         }
 
         return $labels[0];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, string>
+     */
+    private function selectUkTvChannels(array $rows): array
+    {
+        $channels = [];
+
+        foreach ($rows as $row) {
+            $channel = trim((string) ($row['strChannel'] ?? $row['strChannelName'] ?? ''));
+            if ($channel === '') {
+                continue;
+            }
+
+            $country = trim((string) ($row['strCountry'] ?? $row['strCountryCode'] ?? ''));
+            if ($this->isUkCountry($country) || ($country === '' && $this->isConfiguredUkChannel($channel))) {
+                $channels[$channel] = true;
+            }
+        }
+
+        return array_keys($channels);
+    }
+
+    private function isUkCountry(string $country): bool
+    {
+        $key = $this->normalizeKey($country);
+
+        return $key !== '' && in_array($key, self::UK_COUNTRY_KEYS, true);
+    }
+
+    private function isConfiguredUkChannel(string $channel): bool
+    {
+        $key = $this->normalizeKey($channel);
+        if ($key === '') {
+            return false;
+        }
+
+        foreach (self::PREFERRED_UK_CHANNEL_KEYS as $preferredKey) {
+            if (str_contains($key, $preferredKey)) {
+                return true;
+            }
+        }
+
+        foreach ((array) $this->settings->get('tv_channels', config('plugins.SportsBot.tv.channels', [])) as $configured) {
+            $configuredKey = $this->normalizeKey((string) $configured);
+            if ($configuredKey !== '' && (str_contains($key, $configuredKey) || str_contains($configuredKey, $key))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeKey(string $value): string

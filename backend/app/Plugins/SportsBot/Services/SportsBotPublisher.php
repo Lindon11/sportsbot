@@ -62,20 +62,24 @@ class SportsBotPublisher
         ]);
 
         try {
-            $card = $this->renderCard($module->key(), $summary);
-            if ($module->key() === 'LIVE_NOW') {
-                $edited = $this->editLiveNowInPlace($preview, $message, $options, $card);
-                if ($edited !== null) {
-                    $results = $edited;
+            if ($module->key() === 'FOOTBALL_FIXTURES') {
+                $results = $this->sendFixtureCards($summary, $message, $options);
+            } else {
+                $card = $this->renderCard($module->key(), $summary);
+                if ($module->key() === 'LIVE_NOW') {
+                    $edited = $this->editLiveNowInPlace($preview, $message, $options, $card);
+                    if ($edited !== null) {
+                        $results = $edited;
+                    } elseif ($card !== null) {
+                        $results = $this->notifier->sendPhoto((string) $card['path'], $this->captionFor($module, $summary, $message), $options);
+                    } else {
+                        $results = $this->notifier->send($message, $options);
+                    }
                 } elseif ($card !== null) {
                     $results = $this->notifier->sendPhoto((string) $card['path'], $this->captionFor($module, $summary, $message), $options);
                 } else {
                     $results = $this->notifier->send($message, $options);
                 }
-            } elseif ($card !== null) {
-                $results = $this->notifier->sendPhoto((string) $card['path'], $this->captionFor($module, $summary, $message), $options);
-            } else {
-                $results = $this->notifier->send($message, $options);
             }
         } catch (Throwable $error) {
             Log::error('sportsbot.publisher.send_failed', [
@@ -98,6 +102,126 @@ class SportsBotPublisher
             'sent' => true,
             'results' => $results,
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $options
+     * @return array<int, array<string, mixed>>
+     */
+    private function sendFixtureCards(array $summary, string $message, array $options): array
+    {
+        $fixtures = $this->flattenFixtures($summary);
+
+        if ($fixtures === []) {
+            return $this->notifier->send($message, $options);
+        }
+
+        $cardsEnabled = (bool) $this->settings->get('cards_enabled', config('plugins.SportsBot.cards.enabled', true))
+            && (bool) $this->settings->get('rich_cards_enabled', config('plugins.SportsBot.features.rich_cards', true));
+
+        if (!$cardsEnabled) {
+            return $this->notifier->send($message, $options);
+        }
+
+        $results = [];
+        $cardVersion = $this->footballFixtureCardVersion($options);
+
+        foreach ($fixtures as $fixture) {
+            $card = $this->cards->fixtureCard($fixture, $cardVersion);
+            $fixtureOptions = $options;
+            unset($fixtureOptions['reply_markup']);
+            $fixtureOptions['payload'] = array_merge((array) ($options['payload'] ?? []), [
+                'event_id' => (string) ($fixture['event_id'] ?? ''),
+                'card_version' => $cardVersion,
+                'fixture' => [
+                    'time' => (string) ($fixture['time'] ?? ''),
+                    'league' => (string) ($fixture['league'] ?? ''),
+                    'home_team' => (string) ($fixture['home_team'] ?? ''),
+                    'away_team' => (string) ($fixture['away_team'] ?? ''),
+                    'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
+                ],
+            ]);
+
+            $caption = $this->footballFixtureCaptionsEnabled($options) ? $this->fixtureCaption($fixture) : '';
+            foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
+                $results[] = $result;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function footballFixtureCardVersion(array $options): string
+    {
+        $payload = (array) ($options['payload'] ?? []);
+        $version = (string) ($payload['card_version'] ?? $this->settings->get('football_fixture_card_version', 'v1'));
+
+        return strtolower(trim($version)) === 'v2' ? 'v2' : 'v1';
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function footballFixtureCaptionsEnabled(array $options): bool
+    {
+        $payload = (array) ($options['payload'] ?? []);
+
+        if (array_key_exists('captions_enabled', $payload)) {
+            return (bool) $payload['captions_enabled'];
+        }
+
+        return (bool) $this->settings->get('football_fixture_captions_enabled', false);
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<int, array<string, mixed>>
+     */
+    private function flattenFixtures(array $summary): array
+    {
+        $fixtures = [];
+        foreach ((array) ($summary['grouped'] ?? []) as $rows) {
+            foreach ((array) $rows as $fixture) {
+                if (is_array($fixture)) {
+                    $fixtures[] = $fixture;
+                }
+            }
+        }
+
+        return $fixtures;
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fixtureCaption(array $fixture): string
+    {
+        $primary = $this->normalizeChannel((string) ($fixture['tv_channel'] ?? ''));
+        $channels = [];
+
+        foreach ((array) ($fixture['tv_channels'] ?? []) as $channel) {
+            $label = $this->normalizeChannel((string) $channel);
+            if ($label === '' || strcasecmp($label, $primary) === 0) {
+                continue;
+            }
+
+            $channels[strtolower($label)] = $label;
+        }
+
+        if ($channels === []) {
+            return '';
+        }
+
+        return mb_substr('Other UK channels: ' . implode(', ', array_values($channels)), 0, 1000);
+    }
+
+    private function normalizeChannel(string $channel): string
+    {
+        return trim(preg_replace('/\s+/', ' ', $channel) ?? $channel);
     }
 
     /**

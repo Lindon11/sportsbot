@@ -10,6 +10,7 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
 use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
+use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
@@ -151,6 +152,130 @@ class SportsBotController extends Controller
                 'error' => $error->getMessage(),
             ], 422);
         }
+    }
+
+    public function footballFixturesPreview(
+        Request $request,
+        FootballFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotCardRenderer $cards,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+        $preview = $publisher->preview($module);
+        $summary = (array) ($preview['summary'] ?? []);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('football_fixture_card_version', 'v1'));
+
+        return response()->json(array_merge($preview, [
+            'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'captions_enabled' => (bool) $settings->get('football_fixture_captions_enabled', false),
+            'card_version' => $cardVersion,
+        ]));
+    }
+
+    public function footballFixturesSend(
+        Request $request,
+        FootballFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'captions_enabled' => ['sometimes', 'boolean'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        if (array_key_exists('captions_enabled', $validated)) {
+            $settings->set('football_fixture_captions_enabled', (bool) $validated['captions_enabled']);
+        }
+        if (array_key_exists('card_version', $validated)) {
+            $settings->set('football_fixture_card_version', $this->footballFixtureCardVersion($validated['card_version']));
+        }
+
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.football_fixtures_send_failed', [
+                'route_key' => TelegramRouteKeys::FOOTBALL,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::FOOTBALL,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<int, array<string, mixed>>
+     */
+    private function fixtureCardPreviews(array $summary, SportsBotCardRenderer $cards, string $cardVersion = 'v1'): array
+    {
+        $previews = [];
+        $cardVersion = $this->footballFixtureCardVersion($cardVersion);
+
+        foreach ((array) ($summary['grouped'] ?? []) as $fixtures) {
+            foreach ((array) $fixtures as $fixture) {
+                if (!is_array($fixture)) {
+                    continue;
+                }
+
+                try {
+                    $card = $cards->fixtureCard($fixture, $cardVersion);
+                    $path = (string) ($card['path'] ?? '');
+                    if ($path === '' || !is_file($path)) {
+                        continue;
+                    }
+
+                    $previews[] = [
+                        'event_id' => (string) ($fixture['event_id'] ?? ''),
+                        'title' => $this->fixtureTitle($fixture),
+                        'league' => (string) ($fixture['league'] ?? ''),
+                        'time' => (string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? ''),
+                        'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
+                        'card_version' => $cardVersion,
+                        'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
+                    ];
+                } catch (Throwable $error) {
+                    Log::warning('sportsbot.admin.fixture_card_preview_failed', [
+                        'event_id' => (string) ($fixture['event_id'] ?? ''),
+                        'error' => $error->getMessage(),
+                    ]);
+                }
+
+                if (count($previews) >= 3) {
+                    return $previews;
+                }
+            }
+        }
+
+        return $previews;
+    }
+
+    private function footballFixtureCardVersion(mixed $version): string
+    {
+        return strtolower(trim((string) $version)) === 'v2' ? 'v2' : 'v1';
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fixtureTitle(array $fixture): string
+    {
+        $home = trim((string) ($fixture['home_team'] ?? ''));
+        $away = trim((string) ($fixture['away_team'] ?? ''));
+
+        if ($home !== '' && $away !== '') {
+            return $home . ' vs ' . $away;
+        }
+
+        return trim((string) ($fixture['event_name'] ?? 'Fixture TBC')) ?: 'Fixture TBC';
     }
 
     public function tvGuidePreview(TvGuideContentModule $module, SportsBotPublisher $publisher): JsonResponse

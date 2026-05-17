@@ -28,16 +28,21 @@ class FixturesTodayFormatter
      */
     public function format(array $summary): string
     {
+        $title = trim((string) ($summary['title'] ?? "Today's Fixtures"));
+        $date = trim((string) ($summary['date'] ?? ''));
         $parts = [
-            "📋 Today's Fixtures",
-            '🕒 Times shown in local timezone',
-            '',
+            '📋 ' . ($title !== '' ? $title : "Today's Fixtures"),
         ];
+        if ($date !== '') {
+            $parts[] = '📅 ' . $date;
+        }
+        $parts[] = '🕒 Times shown in local timezone';
+        $parts[] = '';
 
         $grouped = (array) ($summary['grouped'] ?? []);
         $order = (array) ($summary['sport_order'] ?? array_keys($grouped));
         $shownCount = 0;
-        $maxPerSport = max(1, (int) config('plugins.SportsBot.fixtures_today.max_per_sport', 5));
+        $maxPerSport = max(1, (int) ($summary['max_per_sport'] ?? config('plugins.SportsBot.fixtures_today.max_per_sport', 5)));
 
         foreach ($order as $sport) {
             $sportName = (string) $sport;
@@ -58,15 +63,11 @@ class FixturesTodayFormatter
                 $awayTeam = trim((string) ($fixture['away_team'] ?? ''));
                 $eventName = trim((string) ($fixture['event_name'] ?? ''));
                 $tvChannel = trim((string) ($fixture['tv_channel'] ?? ''));
-
                 $fixtureTitle = $homeTeam !== '' && $awayTeam !== '' ? ($homeTeam . ' vs ' . $awayTeam) : ($eventName !== '' ? $eventName : 'Fixture TBC');
 
                 $parts[] = '🕐 ' . $time . ' — ' . $fixtureTitle;
                 $parts[] = '🏆 ' . $league;
-
-                if ($tvChannel !== '') {
-                    $parts[] = '📺 ' . $tvChannel;
-                }
+                $parts[] = '📺 UK TV: ' . ($tvChannel !== '' ? $tvChannel : 'Not listed');
 
                 $parts[] = '';
             }

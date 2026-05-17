@@ -416,6 +416,7 @@ const pageTitle = computed(() => {
     '/announcements': 'Announcements',
     '/sportsbot/dashboard': 'SportsBot Dashboard',
     '/sportsbot/fixtures-today': 'SportsBot Fixtures Today',
+    '/sportsbot/football-fixtures': 'SportsBot Football Fixtures TV',
     '/sportsbot/tv-guide': 'SportsBot TV Guide',
     '/sportsbot/live-now': 'SportsBot Live Now',
     '/sportsbot/routing': 'SportsBot Telegram Routes',

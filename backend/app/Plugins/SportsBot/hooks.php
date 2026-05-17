@@ -49,6 +49,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/football-fixtures',
+                'label' => 'Football Fixtures TV',
+                'icon' => 'TvIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/tv-guide',
                 'label' => 'TV Guide',
                 'icon' => 'TvIcon',
