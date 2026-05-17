@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
@@ -34,7 +35,7 @@ class AuthController extends Controller
         $firstLocation = null;
 
         try {
-            if (\Schema::hasTable('ranks')) {
+            if (Schema::hasTable('ranks')) {
                 $firstRank = \App\Core\Models\Rank::orderBy('required_exp')->first();
             }
         } catch (\Exception $e) {
@@ -42,7 +43,7 @@ class AuthController extends Controller
         }
 
         try {
-            if (\Schema::hasTable('locations')) {
+            if (Schema::hasTable('locations')) {
                 $firstLocation = \App\Core\Models\Location::orderBy('id')->first();
             }
         } catch (\Exception $e) {
@@ -62,11 +63,7 @@ class AuthController extends Controller
 
             // User::booted() auto-creates a profile with column defaults.
             // Seed the game-specific starting values on top of those defaults.
-            $user->profile()->update([
-                'rank_id'     => $firstRank?->id,
-                'rank'        => $firstRank?->name ?? 'Thug',
-                'location_id' => $firstLocation?->id,
-                'location'    => $firstLocation?->name ?? 'Detroit',
+            $profileValues = [
                 'level'       => 1,
                 'experience'  => 0,
                 'energy'      => 100,
@@ -77,7 +74,25 @@ class AuthController extends Controller
                 'bank'        => 0,
                 'bullets'     => 50,
                 'respect'     => 0,
-            ]);
+            ];
+
+            if (Schema::hasColumn('player_profiles', 'rank_id')) {
+                $profileValues['rank_id'] = $firstRank?->id;
+            }
+
+            if (Schema::hasColumn('player_profiles', 'rank')) {
+                $profileValues['rank'] = $firstRank?->name ?? 'Thug';
+            }
+
+            if (Schema::hasColumn('player_profiles', 'location_id')) {
+                $profileValues['location_id'] = $firstLocation?->id;
+            }
+
+            if (Schema::hasColumn('player_profiles', 'location')) {
+                $profileValues['location'] = $firstLocation?->name ?? 'Detroit';
+            }
+
+            $user->profile()->update($profileValues);
 
             // Assign default player role
             if (\Spatie\Permission\Models\Role::where('name', 'user')->exists()) {
@@ -245,4 +260,3 @@ class AuthController extends Controller
         ]);
     }
 }
-

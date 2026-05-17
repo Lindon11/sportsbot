@@ -26,19 +26,6 @@ Schedule::command('errors:auto-resolve --days=7')
     ->withoutOverlapping()
     ->onOneServer();
 
-if ((bool) config('footballbot.enabled') && (bool) config('footballbot.schedule.enabled')) {
-    $footballBot = Schedule::command('footballbot:run')
-        ->withoutOverlapping()
-        ->onOneServer()
-        ->appendOutputTo(storage_path('logs/footballbot-scheduler.log'));
-
-    match ((string) config('footballbot.schedule.frequency')) {
-        'everyMinute' => $footballBot->everyMinute(),
-        'everyFiveMinutes' => $footballBot->everyFiveMinutes(),
-        default => $footballBot->everyTwoMinutes(),
-    };
-}
-
 if ((bool) config('plugins.SportsBot.enabled') && (bool) config('plugins.SportsBot.schedule.enabled')) {
     $sportsBot = Schedule::command('sportsbot:run-native')
         ->withoutOverlapping()
