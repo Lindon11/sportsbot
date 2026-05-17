@@ -9,6 +9,9 @@ use RuntimeException;
 
 class TheSportsDbClient implements SportsDataProviderInterface
 {
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchLiveScores(): array
     {
         try {
@@ -26,12 +29,74 @@ class TheSportsDbClient implements SportsDataProviderInterface
         }
     }
 
-    private function fetch(string $path): array
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchNextLeagueSchedule(string $leagueId): array
     {
-        $ttl = max(0, (int) config('plugins.SportsBot.provider.live_score_cache_ttl', 75));
-        $cacheKey = 'sportsbot:provider:thesportsdb:' . sha1($path);
+        $leagueId = trim($leagueId);
 
-        $callback = fn (): array => $this->fetchFresh($path);
+        if ($leagueId === '') {
+            return [];
+        }
+
+        return $this->fetch('/schedule/next/league/' . rawurlencode($leagueId), 180, ['schedule', 'events', 'next']);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function fetchEventTvChannels(string $eventId): array
+    {
+        $eventId = trim($eventId);
+
+        if ($eventId === '') {
+            return [];
+        }
+
+        $rows = $this->fetch('/lookup/event_tv/' . rawurlencode($eventId), 300, ['lookup', 'tv', 'tvevents', 'events']);
+        $channels = [];
+
+        foreach ($rows as $row) {
+            $channel = trim((string) ($row['strChannel'] ?? $row['strChannelName'] ?? ''));
+
+            if ($channel !== '') {
+                $channels[$channel] = true;
+            }
+        }
+
+        return array_keys($channels);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchTvByChannel(string $channelSlug): array
+    {
+        $channelSlug = trim($channelSlug);
+
+        if ($channelSlug === '') {
+            return [];
+        }
+
+        return $this->fetch(
+            '/filter/tv/channel/' . rawurlencode($channelSlug),
+            (int) config('plugins.SportsBot.tv.cache_ttl', 900),
+            ['filter', 'tvevents', 'tv', 'events']
+        );
+    }
+
+    /**
+     * @param array<int, string> $extractKeys
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetch(string $path, ?int $ttlOverride = null, array $extractKeys = ['livescore', 'livescores', 'events', 'event', 'matches', 'results', 'data']): array
+    {
+        $ttl = $ttlOverride ?? max(0, (int) config('plugins.SportsBot.provider.live_score_cache_ttl', 75));
+        $ttl = max(0, $ttl);
+        $cacheKey = 'sportsbot:provider:thesportsdb:' . sha1($path . '|' . implode(',', $extractKeys));
+
+        $callback = fn (): array => $this->fetchFresh($path, $extractKeys);
 
         if ($ttl <= 0) {
             return $callback();
@@ -40,7 +105,11 @@ class TheSportsDbClient implements SportsDataProviderInterface
         return Cache::remember($cacheKey, $ttl, $callback);
     }
 
-    private function fetchFresh(string $path): array
+    /**
+     * @param array<int, string> $extractKeys
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchFresh(string $path, array $extractKeys): array
     {
         $apiKey = trim((string) config('plugins.SportsBot.provider.api_key', ''));
         $baseUrl = rtrim((string) config('plugins.SportsBot.provider.base_url'), '/');
@@ -65,9 +134,13 @@ class TheSportsDbClient implements SportsDataProviderInterface
             throw new RuntimeException('TheSportsDB returned invalid JSON.');
         }
 
-        return $this->extractList($payload, ['livescore', 'livescores', 'events', 'event', 'matches', 'results', 'data']);
+        return $this->extractList($payload, $extractKeys);
     }
 
+    /**
+     * @param array<int, string> $keys
+     * @return array<int, array<string, mixed>>
+     */
     private function extractList(array $payload, array $keys): array
     {
         foreach ($keys as $key) {

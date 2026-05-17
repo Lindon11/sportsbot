@@ -37,6 +37,43 @@ $csv = static function (mixed $value): array {
     ));
 };
 
+$legacyDefaultLeagueIds = [
+    '4328', // English Premier League
+    '4329', // EFL Championship
+    '4396', // League One
+    '4397', // League Two
+    '4482', // FA Cup
+    '4570', // EFL Cup
+    '4330', // Scottish Premiership
+    '4395', // Scottish Championship
+    '4669', // Scottish League One
+    '4670', // Scottish League Two
+    '4723', // Scottish FA Cup
+    '4888', // Scottish League Cup
+    '4480', // UEFA Champions League
+    '4481', // UEFA Europa League
+    '4889', // UEFA Womens Champions League
+];
+
+$defaultTvChannels = [
+    'Sky Sports Main Event',
+    'Sky Sports Premier League',
+    'Sky Sports Football',
+    'Sky Sports Cricket',
+    'Sky Sports Golf',
+    'Sky Sports F1',
+    'TNT Sports 1',
+    'TNT Sports 2',
+    'TNT Sports 3',
+    'TNT Sports 4',
+    'BBC One',
+    'BBC Two',
+    'ITV1',
+    'Channel 4',
+    'Premier Sports 1',
+    'DAZN UK',
+];
+
 return [
     'enabled' => env('SPORTSBOT_ENABLED', true),
     'send_messages' => env('SPORTSBOT_SEND_MESSAGES', false),
@@ -64,10 +101,49 @@ return [
         'disable_notification' => env('SPORTSBOT_TELEGRAM_DISABLE_NOTIFICATION', $legacyEnv('BOT_TELEGRAM_DISABLE_NOTIFICATION', false)),
     ],
 
+    'legacy' => [
+        'state_db' => env('SPORTSBOT_LEGACY_STATE_DB', base_path('footballbot/cache/state.sqlite')),
+    ],
+
     'coverage' => [
         'enabled_sports' => $csv(env('SPORTSBOT_ENABLED_SPORTS', 'Soccer')),
         'allowed_league_ids' => $csv(env('SPORTSBOT_ALLOWED_LEAGUE_IDS', $legacyEnv('BOT_ALLOWED_LEAGUE_IDS', ''))),
         'max_live_matches_per_run' => (int) env('SPORTSBOT_MAX_LIVE_MATCHES_PER_RUN', $legacyEnv('BOT_MAX_LIVE_MATCHES_PER_RUN', 75)),
+    ],
+
+    'fixtures_today' => [
+        'default_league_ids' => $legacyDefaultLeagueIds,
+        'max_per_sport' => (int) env('SPORTSBOT_FIXTURES_TODAY_MAX_PER_SPORT', 5),
+    ],
+
+    'live_now' => [
+        'max_per_sport' => (int) env('SPORTSBOT_LIVE_NOW_MAX_PER_SPORT', 8),
+    ],
+
+    'tv' => [
+        'enabled' => env('SPORTSBOT_TV_ENABLED', $legacyEnv('BOT_TV_ENABLED', true)),
+        'channels' => $csv(env('SPORTSBOT_TV_CHANNELS', $legacyEnv('BOT_TV_CHANNELS', implode(',', $defaultTvChannels)))),
+        'sports' => $csv(env('SPORTSBOT_TV_SPORTS', $legacyEnv('BOT_TV_SPORTS', 'Soccer,Basketball,Baseball,MMA,Tennis,Rugby'))),
+        'lookahead_hours' => (int) env('SPORTSBOT_TV_LOOKAHEAD_HOURS', $legacyEnv('BOT_TV_LOOKAHEAD_HOURS', 24)),
+        'max_events_per_channel' => (int) env('SPORTSBOT_TV_MAX_EVENTS_PER_CHANNEL', $legacyEnv('BOT_TV_MAX_EVENTS_PER_CHANNEL', 20)),
+        'max_per_channel' => (int) env('SPORTSBOT_TV_GUIDE_MAX_PER_CHANNEL', 8),
+        'show_empty_channels' => env('SPORTSBOT_TV_GUIDE_SHOW_EMPTY_CHANNELS', false),
+        'cache_ttl' => (int) env('SPORTSBOT_TV_CACHE_TTL', $legacyEnv('BOT_TV_CACHE_TTL', 900)),
+    ],
+
+    'publishing' => [
+        'fixtures_today' => [
+            'enabled' => env('SPORTSBOT_FIXTURES_TODAY_SCHEDULE_ENABLED', false),
+            'time' => env('SPORTSBOT_FIXTURES_TODAY_SCHEDULE_TIME', $legacyEnv('BOT_DAILY_CARD_TIME', '08:00')),
+        ],
+        'tv_guide' => [
+            'enabled' => env('SPORTSBOT_TV_GUIDE_SCHEDULE_ENABLED', false),
+            'time' => env('SPORTSBOT_TV_GUIDE_SCHEDULE_TIME', $legacyEnv('BOT_TV_DAILY_ALERT_TIME', '08:00')),
+        ],
+        'live_now' => [
+            'enabled' => env('SPORTSBOT_LIVE_NOW_SCHEDULE_ENABLED', false),
+            'frequency' => env('SPORTSBOT_LIVE_NOW_SCHEDULE_FREQUENCY', 'everyFiveMinutes'),
+        ],
     ],
 
     'features' => [

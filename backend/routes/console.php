@@ -51,3 +51,35 @@ if ((bool) config('plugins.SportsBot.enabled') && (bool) config('plugins.SportsB
         default => $sportsBot->everyTwoMinutes(),
     };
 }
+
+if ((bool) config('plugins.SportsBot.enabled')) {
+    if ((bool) config('plugins.SportsBot.publishing.fixtures_today.enabled')) {
+        Schedule::command('sportsbot:fixtures-today --send')
+            ->dailyAt((string) config('plugins.SportsBot.publishing.fixtures_today.time', '08:00'))
+            ->withoutOverlapping()
+            ->onOneServer()
+            ->appendOutputTo(storage_path('logs/sportsbot-fixtures-today.log'));
+    }
+
+    if ((bool) config('plugins.SportsBot.publishing.tv_guide.enabled')) {
+        Schedule::command('sportsbot:tv-guide --send')
+            ->dailyAt((string) config('plugins.SportsBot.publishing.tv_guide.time', '08:00'))
+            ->withoutOverlapping()
+            ->onOneServer()
+            ->appendOutputTo(storage_path('logs/sportsbot-tv-guide.log'));
+    }
+
+    if ((bool) config('plugins.SportsBot.publishing.live_now.enabled')) {
+        $liveNow = Schedule::command('sportsbot:live-now --send')
+            ->withoutOverlapping()
+            ->onOneServer()
+            ->appendOutputTo(storage_path('logs/sportsbot-live-now.log'));
+
+        match ((string) config('plugins.SportsBot.publishing.live_now.frequency')) {
+            'everyMinute' => $liveNow->everyMinute(),
+            'everyTwoMinutes' => $liveNow->everyTwoMinutes(),
+            'everyTenMinutes' => $liveNow->everyTenMinutes(),
+            default => $liveNow->everyFiveMinutes(),
+        };
+    }
+}

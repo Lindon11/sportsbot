@@ -158,6 +158,26 @@ const router = createRouter({
           path: '/api-keys',
           name: 'api-keys',
           component: () => import('../views/ApiKeysView.vue')
+        },
+        {
+          path: '/sportsbot/fixtures-today',
+          name: 'sportsbot-fixtures-today',
+          component: () => import('../views/SportsBotFixturesTodayView.vue')
+        },
+        {
+          path: '/sportsbot/tv-guide',
+          name: 'sportsbot-tv-guide',
+          component: () => import('../views/SportsBotTvGuideView.vue')
+        },
+        {
+          path: '/sportsbot/live-now',
+          name: 'sportsbot-live-now',
+          component: () => import('../views/SportsBotLiveNowView.vue')
+        },
+        {
+          path: '/sportsbot/routing',
+          name: 'sportsbot-routing',
+          component: () => import('../views/SportsBotRoutingView.vue')
         }
       ]
     }

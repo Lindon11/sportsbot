@@ -5,20 +5,44 @@ namespace App\Plugins\SportsBot\Controllers\Admin;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
+use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
+use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
+use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
+use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
+use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
+use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
+use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
+use App\Plugins\SportsBot\Services\TelegramNotifier;
+use App\Plugins\SportsBot\Services\TelegramRoutingService;
+use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
+use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class SportsBotController extends Controller
 {
-    public function status(SportsBotRunner $runner): JsonResponse
+    public function status(SportsBotRunner $runner, TelegramRoutingService $routingService): JsonResponse
     {
+        $fixturesRouteStatus = $routingService->resolveTargets(TelegramRouteKeys::FIXTURES_TODAY);
         $latestRun = SportsBotRun::latest('id')->first();
 
         return response()->json([
             'health' => $runner->health(),
             'latest_run' => $latestRun,
+            'route_status' => [
+                'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
+                'resolved_route_key' => $fixturesRouteStatus['resolved_route_key'] ?? TelegramRouteKeys::DEFAULT,
+                'fallback' => (bool) ($fixturesRouteStatus['fallback'] ?? false),
+                'target_count' => (int) ($fixturesRouteStatus['target_count'] ?? 0),
+                'targets' => $fixturesRouteStatus['targets'] ?? [],
+                'source' => $fixturesRouteStatus['source'] ?? null,
+            ],
+            'route_statuses' => $this->routeStatuses($routingService),
             'counts' => [
                 'runs' => SportsBotRun::count(),
                 'tracked_matches' => SportsBotMatchState::count(),
@@ -26,6 +50,8 @@ class SportsBotController extends Controller
             ],
             'recent_runs' => SportsBotRun::latest('id')->limit(10)->get(),
             'recent_alerts' => SportsBotSentAlert::latest('id')->limit(10)->get(),
+            'recent_telegram_messages' => $this->recentTelegramMessages(TelegramRouteKeys::FIXTURES_TODAY),
+            'recent_telegram_topics' => $this->recentTelegramTopics(),
         ]);
     }
 
@@ -43,5 +69,451 @@ class SportsBotController extends Controller
         return response()->json([
             'summary' => $summary,
         ]);
+    }
+
+    public function testRoute(Request $request, TelegramRoutingService $routingService, TelegramNotifier $notifier): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['sometimes', 'string', 'max:100'],
+            'send' => ['sometimes', 'boolean'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) ($validated['route_key'] ?? TelegramRouteKeys::FIXTURES_TODAY));
+        $send = (bool) ($validated['send'] ?? false);
+        $resolved = $routingService->resolveTargets($routeKey);
+
+        $response = [
+            'route_key' => $routeKey,
+            'resolved' => $resolved,
+        ];
+
+        if ($send) {
+            $message = implode("\n", [
+                'SportsBot route test',
+                'Route: ' . $routeKey,
+                'Resolved: ' . (string) ($resolved['resolved_route_key'] ?? TelegramRouteKeys::DEFAULT),
+                'Time: ' . now()->toDateTimeString(),
+            ]);
+
+            try {
+                $results = $notifier->send($message, [
+                    'route_key' => $routeKey,
+                    'type' => 'ROUTE_TEST',
+                    'payload' => [
+                        'source' => 'admin_api',
+                    ],
+                ]);
+            } catch (Throwable $error) {
+                Log::error('sportsbot.admin.test_route_failed', [
+                    'route_key' => $routeKey,
+                    'error' => $error->getMessage(),
+                ]);
+
+                return response()->json([
+                    'route_key' => $routeKey,
+                    'resolved' => $resolved,
+                    'sent' => false,
+                    'error' => $error->getMessage(),
+                ], 422);
+            }
+
+            $response['sent'] = true;
+            $response['results'] = $results;
+        }
+
+        return response()->json($response);
+    }
+
+    public function fixturesTodayPreview(FixturesTodayContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        return response()->json($publisher->preview($module));
+    }
+
+    public function fixturesTodaySend(FixturesTodayContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.fixtures_today_send_failed', [
+                'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function tvGuidePreview(TvGuideContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        return response()->json($publisher->preview($module));
+    }
+
+    public function tvGuideSend(TvGuideContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.tv_guide_send_failed', [
+                'route_key' => TelegramRouteKeys::TV_GUIDE,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::TV_GUIDE,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function liveNowPreview(LiveNowContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        return response()->json($publisher->preview($module));
+    }
+
+    public function liveNowSend(LiveNowContentModule $module, SportsBotPublisher $publisher): JsonResponse
+    {
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.live_now_send_failed', [
+                'route_key' => TelegramRouteKeys::LIVE_NOW,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::LIVE_NOW,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function telegramTopics(): JsonResponse
+    {
+        $service = app(TelegramTopicDiscoveryService::class);
+
+        return response()->json([
+            'topics' => $this->recentTelegramTopics(100),
+            'routes' => $this->telegramRoutes(),
+            'diagnostics' => $service->diagnostics(),
+        ]);
+    }
+
+    public function telegramMessages(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $routeKey = array_key_exists('route_key', $validated) && $validated['route_key'] !== null
+            ? TelegramRouteKeys::normalize((string) $validated['route_key'])
+            : null;
+
+        return response()->json([
+            'messages' => $this->recentTelegramMessages($routeKey, (int) ($validated['limit'] ?? 20)),
+        ]);
+    }
+
+    public function telegramRoutesIndex(TelegramRoutingService $routingService): JsonResponse
+    {
+        return response()->json([
+            'route_keys' => TelegramRouteKeys::all(),
+            'routes' => $this->telegramRoutes(),
+            'topics' => $this->recentTelegramTopics(100),
+            'route_statuses' => $this->routeStatuses($routingService),
+            'diagnostics' => app(TelegramTopicDiscoveryService::class)->diagnostics(),
+        ]);
+    }
+
+    public function saveTelegramTopic(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'chat_id' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'topic_url' => ['sometimes', 'nullable', 'string', 'max:255'],
+        ]);
+
+        $chatId = trim((string) ($validated['chat_id'] ?? ''));
+        $threadId = $validated['message_thread_id'] ?? null;
+        $topicUrl = trim((string) ($validated['topic_url'] ?? ''));
+
+        $target = $this->normalizeTelegramTarget($topicUrl !== '' ? $topicUrl : $chatId, $threadId);
+        if ($target === null) {
+            return response()->json([
+                'saved' => false,
+                'error' => 'Could not parse target. Use chat_id + thread_id, chat_id:thread_id, or https://t.me/c/1234567890/777.',
+            ], 422);
+        }
+
+        $chatId = $target['chat_id'];
+        $threadId = $target['message_thread_id'];
+
+        $topic = SportsBotTelegramTopic::query()
+            ->where('chat_id', $chatId)
+            ->where('message_thread_id', (int) $threadId)
+            ->first();
+
+        if (!$topic instanceof SportsBotTelegramTopic) {
+            $topic = new SportsBotTelegramTopic([
+                'chat_id' => $chatId,
+                'message_thread_id' => (int) $threadId,
+                'first_seen_at' => now(),
+            ]);
+        }
+
+        $topic->title = trim((string) ($validated['title'] ?? '')) ?: $topic->title;
+        $topic->source = $topicUrl !== '' ? 'manual_topic_url' : 'manual_admin';
+        $topic->last_seen_at = now();
+        $topic->save();
+
+        return response()->json([
+            'saved' => true,
+            'topic' => $topic,
+            'topics' => $this->recentTelegramTopics(100),
+        ]);
+    }
+
+    public function saveTelegramRoute(Request $request, TelegramRoutingService $routingService): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['required', 'string', 'max:100'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'chat_id' => ['required', 'string', 'max:255'],
+            'message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'enabled' => ['sometimes', 'boolean'],
+            'fallback' => ['sometimes', 'boolean'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) $validated['route_key']);
+
+        if (!in_array($routeKey, TelegramRouteKeys::all(), true)) {
+            return response()->json([
+                'saved' => false,
+                'error' => 'Unsupported SportsBot route key.',
+            ], 422);
+        }
+
+        $target = $this->normalizeTelegramTarget(
+            (string) $validated['chat_id'],
+            $validated['message_thread_id'] ?? null,
+            false
+        );
+
+        if ($target === null) {
+            return response()->json([
+                'saved' => false,
+                'error' => 'Could not parse Telegram target. Use chat_id, chat_id:thread_id, or a Telegram topic URL.',
+            ], 422);
+        }
+
+        $route = SportsBotTelegramRoute::query()->updateOrCreate(
+            ['route_key' => $routeKey],
+            [
+                'label' => trim((string) ($validated['label'] ?? '')) ?: $routeKey,
+                'chat_id' => $target['chat_id'],
+                'message_thread_id' => $target['message_thread_id'],
+                'enabled' => (bool) ($validated['enabled'] ?? true),
+                'fallback' => (bool) ($validated['fallback'] ?? ($routeKey === TelegramRouteKeys::DEFAULT)),
+            ]
+        );
+
+        Log::info('sportsbot.admin.telegram_route_saved', [
+            'route_key' => $routeKey,
+            'chat_id' => $route->chat_id,
+            'message_thread_id' => $route->message_thread_id,
+            'enabled' => $route->enabled,
+            'fallback' => $route->fallback,
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'route' => $route,
+            'routes' => $this->telegramRoutes(),
+            'route_statuses' => $this->routeStatuses($routingService),
+        ]);
+    }
+
+    public function deleteTelegramRoute(string $routeKey, TelegramRoutingService $routingService): JsonResponse
+    {
+        $normalized = TelegramRouteKeys::normalize($routeKey);
+        SportsBotTelegramRoute::query()
+            ->where('route_key', $normalized)
+            ->delete();
+
+        return response()->json([
+            'deleted' => true,
+            'routes' => $this->telegramRoutes(),
+            'route_statuses' => $this->routeStatuses($routingService),
+        ]);
+    }
+
+    public function syncTelegramTopics(Request $request, TelegramTopicDiscoveryService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'timeout' => ['sometimes', 'integer', 'min:0', 'max:50'],
+            'reset_offset' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            $summary = $service->sync(
+                (int) ($validated['limit'] ?? 100),
+                (int) ($validated['timeout'] ?? 0),
+                (bool) ($validated['reset_offset'] ?? false)
+            );
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.telegram_topics_sync_failed', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'synced' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'synced' => true,
+            'summary' => $summary,
+            'topics' => $this->recentTelegramTopics(100),
+            'diagnostics' => $service->diagnostics(),
+        ]);
+    }
+
+    public function importLegacyTelegramTopics(TelegramTopicDiscoveryService $service, TelegramRoutingService $routingService): JsonResponse
+    {
+        try {
+            $summary = $service->importLegacyTopics();
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.telegram_topics_legacy_import_failed', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'imported' => false,
+                'error' => $error->getMessage(),
+                'diagnostics' => $service->diagnostics(),
+            ], 422);
+        }
+
+        return response()->json([
+            'imported' => true,
+            'summary' => $summary,
+            'topics' => $this->recentTelegramTopics(100),
+            'routes' => $this->telegramRoutes(),
+            'route_statuses' => $this->routeStatuses($routingService),
+            'diagnostics' => $service->diagnostics(),
+        ]);
+    }
+
+    private function recentTelegramMessages(?string $routeKey = null, int $limit = 20): array
+    {
+        if (!Schema::hasTable('sportsbot_telegram_messages')) {
+            return [];
+        }
+
+        $query = SportsBotTelegramMessage::query()
+            ->latest('id')
+            ->limit(max(1, min(100, $limit)));
+
+        if ($routeKey !== null) {
+            $query->where('route_key', TelegramRouteKeys::normalize($routeKey));
+        }
+
+        return $query->get()->all();
+    }
+
+    private function recentTelegramTopics(int $limit = 20): array
+    {
+        if (!Schema::hasTable('sportsbot_telegram_topics')) {
+            return [];
+        }
+
+        return SportsBotTelegramTopic::query()
+            ->latest('last_seen_at')
+            ->limit(max(1, min(100, $limit)))
+            ->get()
+            ->all();
+    }
+
+    private function telegramRoutes(): array
+    {
+        if (!Schema::hasTable('sportsbot_telegram_routes')) {
+            return [];
+        }
+
+        return SportsBotTelegramRoute::query()
+            ->orderBy('route_key')
+            ->get()
+            ->all();
+    }
+
+    private function routeStatuses(TelegramRoutingService $routingService): array
+    {
+        $statuses = [];
+
+        foreach (TelegramRouteKeys::all() as $routeKey) {
+            $statuses[$routeKey] = $routingService->resolveTargets($routeKey);
+        }
+
+        return $statuses;
+    }
+
+    /**
+     * @return array{chat_id:string,message_thread_id:int|null}|null
+     */
+    private function normalizeTelegramTarget(string $target, mixed $messageThreadId = null, bool $requireThread = true): ?array
+    {
+        $target = trim($target);
+        $threadId = $this->normalizeThreadId($messageThreadId);
+
+        if ($target === '') {
+            return null;
+        }
+
+        if (preg_match('#https?://t\.me/c/(\d+)/(\d+)(?:/\d+)?#i', $target, $matches) === 1) {
+            return [
+                'chat_id' => '-100' . $matches[1],
+                'message_thread_id' => (int) $matches[2],
+            ];
+        }
+
+        if (preg_match('/^(-?\d+)[|:](\d+)$/', $target, $matches) === 1) {
+            return [
+                'chat_id' => $matches[1],
+                'message_thread_id' => (int) $matches[2],
+            ];
+        }
+
+        if (!preg_match('/^-?\d+$/', $target)) {
+            return null;
+        }
+
+        if ($requireThread && $threadId === null) {
+            return null;
+        }
+
+        return [
+            'chat_id' => $target,
+            'message_thread_id' => $threadId,
+        ];
+    }
+
+    private function normalizeThreadId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $threadId = is_numeric((string) $value) ? (int) $value : 0;
+
+        return $threadId > 0 ? $threadId : null;
     }
 }

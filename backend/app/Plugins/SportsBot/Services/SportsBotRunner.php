@@ -9,6 +9,7 @@ use App\Plugins\SportsBot\Contracts\SportsDataProviderInterface;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
+use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -91,7 +92,16 @@ class SportsBotRunner
                     $message = $this->renderMessage($alert);
 
                     if ($shouldSend) {
-                        $results = $this->notifier->send($message, ['alert' => $alert]);
+                        $results = $this->notifier->send($message, [
+                            'route_key' => TelegramRouteKeys::LIVE_NOW,
+                            'type' => 'LIVE_ALERT',
+                            'alert' => $alert,
+                            'payload' => [
+                                'source' => 'sportsbot:run-native',
+                                'alert_type' => $alert['type'] ?? 'update',
+                                'event_id' => $alert['match']['event_id'] ?? null,
+                            ],
+                        ]);
                         $this->markAlertSent($alert, $results, now());
                         GameHooks::apply('sportsbot.alert.sent', ['alert' => $alert, 'results' => $results]);
                         $summary['sent_alerts']++;

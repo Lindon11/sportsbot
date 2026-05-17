@@ -286,6 +286,7 @@ import {
   IdentificationIcon,
   TagIcon,
   BellIcon,
+  TvIcon,
 } from '@heroicons/vue/24/outline'
 
 const iconMap = {
@@ -300,7 +301,7 @@ const iconMap = {
   ExclamationTriangleIcon, NoSymbolIcon, PuzzlePieceIcon, FlagIcon, CommandLineIcon,
   BeakerIcon, ShoppingBagIcon, ShoppingCartIcon, RocketLaunchIcon, StarIcon,
   UserCircleIcon, EnvelopeIcon, CircleStackIcon, HeartIcon, KeyIcon,
-  BriefcaseIcon, LifebuoyIcon, ServerIcon, CubeIcon, IdentificationIcon, TagIcon, BellIcon,
+  BriefcaseIcon, LifebuoyIcon, ServerIcon, CubeIcon, IdentificationIcon, TagIcon, BellIcon, TvIcon,
 }
 
 const normalizeSidebar = (sections) => {
@@ -413,6 +414,10 @@ const pageTitle = computed(() => {
     '/security': 'Security Settings',
     '/license': 'License Management',
     '/announcements': 'Announcements',
+    '/sportsbot/fixtures-today': 'SportsBot Fixtures Today',
+    '/sportsbot/tv-guide': 'SportsBot TV Guide',
+    '/sportsbot/live-now': 'SportsBot Live Now',
+    '/sportsbot/routing': 'SportsBot Telegram Routing',
   }
 
   // Check overrides first

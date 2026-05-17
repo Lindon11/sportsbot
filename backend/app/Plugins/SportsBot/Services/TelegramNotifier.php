@@ -56,9 +56,16 @@ class TelegramNotifier implements NotifierInterface
             $payload = [
                 'chat_id' => $chatId,
                 'text' => $message,
-                'parse_mode' => (string) ($options['parse_mode'] ?? config('plugins.SportsBot.telegram.parse_mode', 'HTML')),
                 'disable_notification' => (bool) ($options['disable_notification'] ?? config('plugins.SportsBot.telegram.disable_notification', false)),
             ];
+
+            $parseMode = array_key_exists('parse_mode', $options)
+                ? (string) $options['parse_mode']
+                : (string) config('plugins.SportsBot.telegram.parse_mode', 'HTML');
+
+            if (trim($parseMode) !== '') {
+                $payload['parse_mode'] = $parseMode;
+            }
 
             if ($messageThreadId !== null) {
                 $payload['message_thread_id'] = (string) $messageThreadId;
