@@ -213,6 +213,12 @@ const router = createRouter({
           path: '/sportsbot/fixture-queue',
           name: 'sportsbot-fixture-queue',
           component: () => import('../views/SportsBotFixtureQueueView.vue')
+        },
+        {
+          path: '/sportsbot/motorsport-fixtures',
+          name: 'sportsbot-motorsport-fixtures',
+          component: () => import('../views/SportsBotSportFixturesView.vue'),
+          props: { sport: 'formula_1', label: 'Motorsport Fixtures TV', routeKey: 'MOTORSPORT', emoji: '🏎', description: 'Formula 1, MotoGP, NASCAR, WRC and more motorsport events.' }
         }
       ]
     }
