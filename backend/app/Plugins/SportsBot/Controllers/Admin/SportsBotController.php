@@ -14,9 +14,12 @@ use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
+use App\Plugins\SportsBot\Services\SportsBotSettingsService;
+use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
+use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -194,6 +197,106 @@ class SportsBotController extends Controller
                 'error' => $error->getMessage(),
             ], 422);
         }
+    }
+
+    public function coverageSettings(SportsBotSettingsService $settings, TelegramRoutingService $routingService): JsonResponse
+    {
+        $cardDir = storage_path('app/sportsbot/cards');
+        $cardFiles = is_dir($cardDir) ? glob($cardDir . '/*.png') ?: [] : [];
+
+        return response()->json([
+            'sports' => SportsBotSports::all(),
+            'settings' => array_merge([
+                'enabled_sports' => config('plugins.SportsBot.coverage.enabled_sports', []),
+                'featured_league_ids' => config('plugins.SportsBot.fixtures_today.default_league_ids', []),
+                'tv_channels' => config('plugins.SportsBot.tv.channels', []),
+                'live_update_frequency' => config('plugins.SportsBot.publishing.live_now.frequency', 'everyFiveMinutes'),
+                'cards_enabled' => (bool) config('plugins.SportsBot.cards.enabled', true),
+                'rich_cards_enabled' => (bool) config('plugins.SportsBot.features.rich_cards', true),
+                'send_messages' => (bool) config('plugins.SportsBot.send_messages', false),
+            ], $settings->all()),
+            'route_statuses' => $this->routeStatuses($routingService),
+            'card_generation' => [
+                'gd_loaded' => extension_loaded('gd'),
+                'directory' => $cardDir,
+                'recent_cards' => count($cardFiles),
+                'last_card_at' => $cardFiles !== [] ? date('c', max(array_map('filemtime', $cardFiles))) : null,
+            ],
+            'telegram_send_diagnostics' => [
+                'configured' => app(TelegramNotifier::class)->configured(),
+                'recent_messages' => $this->recentTelegramMessages(null, 10),
+            ],
+        ]);
+    }
+
+    public function saveCoverageSettings(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled_sports' => ['sometimes', 'array'],
+            'enabled_sports.*' => ['string', 'max:80'],
+            'featured_league_ids' => ['sometimes', 'array'],
+            'featured_league_ids.*' => ['string', 'max:40'],
+            'tv_channels' => ['sometimes', 'array'],
+            'tv_channels.*' => ['string', 'max:120'],
+            'live_update_frequency' => ['sometimes', 'string', 'max:80'],
+            'cards_enabled' => ['sometimes', 'boolean'],
+            'rich_cards_enabled' => ['sometimes', 'boolean'],
+            'send_messages' => ['sometimes', 'boolean'],
+        ]);
+
+        foreach ($validated as $key => $value) {
+            $settings->set($key, $value);
+        }
+
+        Log::info('sportsbot.admin.coverage_settings_saved', [
+            'keys' => array_keys($validated),
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'settings' => $settings->all(),
+        ]);
+    }
+
+    public function sendTelegramDiagnostics(Request $request, TelegramNotifier $notifier, SportsBotCardRenderer $cards): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['sometimes', 'string', 'max:100'],
+            'media' => ['sometimes', 'boolean'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) ($validated['route_key'] ?? TelegramRouteKeys::DEFAULT));
+        $caption = 'SportsBot rich media diagnostic · ' . now()->toDateTimeString();
+
+        try {
+            if ((bool) ($validated['media'] ?? true)) {
+                $card = $cards->breakingNewsCard([
+                    'title' => 'SportsBot Diagnostics',
+                    'summary' => 'Rich card generation and Telegram sendPhoto are working.',
+                    'source' => 'LaravelCP Admin',
+                ]);
+                $results = $notifier->sendPhoto((string) $card['path'], $caption, [
+                    'route_key' => $routeKey,
+                    'type' => 'SEND_DIAGNOSTIC',
+                    'reply_markup' => \App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder::mainReplyMarkup(),
+                ]);
+            } else {
+                $results = $notifier->send($caption, [
+                    'route_key' => $routeKey,
+                    'type' => 'SEND_DIAGNOSTIC',
+                ]);
+            }
+        } catch (Throwable $error) {
+            return response()->json([
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'sent' => true,
+            'results' => $results,
+        ]);
     }
 
     public function telegramTopics(): JsonResponse

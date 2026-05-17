@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services\Content;
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Services\FixturesTodayFormatter;
 use App\Plugins\SportsBot\Services\FixturesTodayService;
+use App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 
 class FixturesTodayContentModule implements SportsBotContentModuleInterface
@@ -44,6 +45,7 @@ class FixturesTodayContentModule implements SportsBotContentModuleInterface
     {
         return [
             'parse_mode' => '',
+            'reply_markup' => SportsBotInlineKeyboardBuilder::fixturesTodayReplyMarkup(),
             'payload' => [
                 'fixtures_total' => (int) ($summary['fixtures_total'] ?? 0),
                 'sports_grouped' => (array) ($summary['sports_grouped'] ?? []),

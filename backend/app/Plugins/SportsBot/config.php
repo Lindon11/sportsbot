@@ -66,6 +66,22 @@ return [
         'live_score_cache_ttl' => (int) env('SPORTSBOT_LIVE_SCORE_CACHE_TTL', 75),
     ],
 
+    'cache' => [
+        'live_scores' => (int) env('SPORTSBOT_CACHE_LIVE_SCORES', 60),
+        'fixtures' => (int) env('SPORTSBOT_CACHE_FIXTURES', 900),
+        'league_table' => (int) env('SPORTSBOT_CACHE_LEAGUE_TABLE', 3600),
+        'tv_guide' => (int) env('SPORTSBOT_CACHE_TV_GUIDE', 1800),
+        'team' => (int) env('SPORTSBOT_CACHE_TEAM', 86400),
+        'player' => (int) env('SPORTSBOT_CACHE_PLAYER', 86400),
+        'metadata' => (int) env('SPORTSBOT_CACHE_METADATA', 86400),
+    ],
+
+    'cards' => [
+        'enabled' => env('SPORTSBOT_CARDS_ENABLED', true),
+        'width' => (int) env('SPORTSBOT_CARD_WIDTH', 1200),
+        'height' => (int) env('SPORTSBOT_CARD_HEIGHT', 675),
+    ],
+
     'telegram' => [
         'bot_token' => env('SPORTSBOT_TELEGRAM_BOT_TOKEN'),
         'chat_id' => env('SPORTSBOT_TELEGRAM_CHAT_ID'),
@@ -82,7 +98,7 @@ return [
     ],
 
     'coverage' => [
-        'enabled_sports' => $csv(env('SPORTSBOT_ENABLED_SPORTS', 'Soccer')),
+        'enabled_sports' => $csv(env('SPORTSBOT_ENABLED_SPORTS', 'Soccer,Basketball,Baseball,American Football,Tennis,Fighting,Rugby,Cricket,Motorsport,Ice Hockey,Golf')),
         'allowed_league_ids' => $csv(env('SPORTSBOT_ALLOWED_LEAGUE_IDS', '')),
         'max_live_matches_per_run' => (int) env('SPORTSBOT_MAX_LIVE_MATCHES_PER_RUN', 75),
     ],
@@ -126,5 +142,7 @@ return [
         'send_score_updates' => env('SPORTSBOT_SEND_SCORE_UPDATES', true),
         'send_status_updates' => env('SPORTSBOT_SEND_STATUS_UPDATES', true),
         'send_first_seen_live_alerts' => env('SPORTSBOT_SEND_FIRST_SEEN_LIVE_ALERTS', false),
+        'rich_cards' => env('SPORTSBOT_RICH_CARDS_ENABLED', true),
+        'callback_throttle_seconds' => (int) env('SPORTSBOT_CALLBACK_THROTTLE_SECONDS', 2),
     ],
 ];

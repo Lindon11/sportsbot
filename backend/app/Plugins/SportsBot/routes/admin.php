@@ -13,6 +13,9 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/tv-guide/send', [SportsBotController::class, 'tvGuideSend'])->name('tv-guide.send');
     Route::post('/live-now/preview', [SportsBotController::class, 'liveNowPreview'])->name('live-now.preview');
     Route::post('/live-now/send', [SportsBotController::class, 'liveNowSend'])->name('live-now.send');
+    Route::get('/coverage', [SportsBotController::class, 'coverageSettings'])->name('coverage');
+    Route::post('/coverage', [SportsBotController::class, 'saveCoverageSettings'])->name('coverage.save');
+    Route::post('/telegram/send-diagnostics', [SportsBotController::class, 'sendTelegramDiagnostics'])->name('telegram.send-diagnostics');
     Route::get('/telegram/messages', [SportsBotController::class, 'telegramMessages'])->name('telegram.messages');
     Route::get('/telegram/topics', [SportsBotController::class, 'telegramTopics'])->name('telegram.topics');
     Route::post('/telegram/topics', [SportsBotController::class, 'saveTelegramTopic'])->name('telegram.topics.save');

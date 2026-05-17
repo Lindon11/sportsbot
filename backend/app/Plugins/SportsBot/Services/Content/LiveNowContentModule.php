@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services\Content;
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Services\LiveNowFormatter;
 use App\Plugins\SportsBot\Services\LiveNowService;
+use App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 
 class LiveNowContentModule implements SportsBotContentModuleInterface
@@ -44,6 +45,7 @@ class LiveNowContentModule implements SportsBotContentModuleInterface
     {
         return [
             'parse_mode' => '',
+            'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
             'payload' => [
                 'live_total' => (int) ($summary['live_total'] ?? 0),
                 'live_raw' => (int) ($summary['live_raw'] ?? 0),

@@ -12,6 +12,112 @@ class TheSportsDbClient implements SportsDataProviderInterface
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function allSports(): array
+    {
+        return $this->fetch('/all/sports', (int) config('plugins.SportsBot.cache.metadata', 86400), ['sports']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function allLeagues(): array
+    {
+        return $this->fetch('/all/leagues', (int) config('plugins.SportsBot.cache.metadata', 86400), ['leagues']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function allCountries(): array
+    {
+        return $this->fetch('/all/countries', (int) config('plugins.SportsBot.cache.metadata', 86400), ['countries']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listTeams(string $leagueId): array
+    {
+        return $this->fetch('/list/teams/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.team', 86400), ['teams']);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupTeam(string $teamId): ?array
+    {
+        return $this->first('/lookup/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.team', 86400), ['teams', 'team']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function searchTeam(string $query): array
+    {
+        return $this->fetch('/search/team/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.team', 86400), ['teams']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listPlayers(string $teamId): array
+    {
+        return $this->fetch('/list/players/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.player', 86400), ['players', 'player']);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupPlayer(string $playerId): ?array
+    {
+        return $this->first('/lookup/player/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function searchPlayer(string $query): array
+    {
+        return $this->fetch('/search/player/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.player', 86400), ['players', 'player']);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupLeague(string $leagueId): ?array
+    {
+        return $this->first('/lookup/league/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.metadata', 86400), ['leagues', 'league']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function leagueTable(string $leagueId, ?string $season = null): array
+    {
+        $path = '/lookup/table/' . rawurlencode($leagueId);
+        if ($season !== null && trim($season) !== '') {
+            $path .= '/' . rawurlencode(trim($season));
+        }
+
+        return $this->fetch($path, (int) config('plugins.SportsBot.cache.league_table', 3600), ['table', 'tables', 'standings']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function topScorers(string $leagueId, ?string $season = null): array
+    {
+        $path = '/lookup/topscorers/' . rawurlencode($leagueId);
+        if ($season !== null && trim($season) !== '') {
+            $path .= '/' . rawurlencode(trim($season));
+        }
+
+        return $this->fetch($path, (int) config('plugins.SportsBot.cache.league_table', 3600), ['topscorers', 'scorers', 'players']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchLiveScores(): array
     {
         try {
@@ -32,6 +138,30 @@ class TheSportsDbClient implements SportsDataProviderInterface
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function liveScoresAll(): array
+    {
+        return $this->fetchLiveScores();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function liveScoresBySport(string $sport): array
+    {
+        return $this->fetch('/livescore/' . rawurlencode($this->slug($sport)), (int) config('plugins.SportsBot.cache.live_scores', 60));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function liveScoresByLeague(string $leagueId): array
+    {
+        return $this->fetch('/livescore/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.live_scores', 60));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchNextLeagueSchedule(string $leagueId): array
     {
         $leagueId = trim($leagueId);
@@ -41,6 +171,107 @@ class TheSportsDbClient implements SportsDataProviderInterface
         }
 
         return $this->fetch('/schedule/next/league/' . rawurlencode($leagueId), 180, ['schedule', 'events', 'next']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function nextLeagueEvents(string $leagueId): array
+    {
+        return $this->fetch('/schedule/next/league/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'next']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function previousLeagueEvents(string $leagueId): array
+    {
+        return $this->fetch('/schedule/previous/league/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'previous']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function nextTeamEvents(string $teamId): array
+    {
+        return $this->fetch('/schedule/next/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'next']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function previousTeamEvents(string $teamId): array
+    {
+        return $this->fetch('/schedule/previous/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'previous']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fullLeagueSchedule(string $leagueId, ?string $season = null): array
+    {
+        $path = '/schedule/league/' . rawurlencode($leagueId);
+        if ($season !== null && trim($season) !== '') {
+            $path .= '/' . rawurlencode(trim($season));
+        }
+
+        return $this->fetch($path, (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fullTeamSchedule(string $teamId): array
+    {
+        return $this->fetch('/schedule/full/team/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events']);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupEvent(string $eventId): ?array
+    {
+        return $this->first('/lookup/event/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['events', 'event']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventStats(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_stats/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['stats', 'statistics', 'eventstats']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventTimeline(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_timeline/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['timeline', 'timelines', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventLineup(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_lineup/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['lineup', 'lineups', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventHighlights(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_highlights/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['highlights', 'tv', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventTv(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_tv/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.tv_guide', 1800), ['lookup', 'tv', 'tvevents', 'events']);
     }
 
     /**
@@ -71,6 +302,38 @@ class TheSportsDbClient implements SportsDataProviderInterface
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function tvByDay(string $date): array
+    {
+        return $this->fetch('/filter/tv/day/' . rawurlencode($date), (int) config('plugins.SportsBot.cache.tv_guide', 1800), ['filter', 'tvevents', 'tv', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function tvBySport(string $sport): array
+    {
+        return $this->fetch('/filter/tv/sport/' . rawurlencode($this->slug($sport)), (int) config('plugins.SportsBot.cache.tv_guide', 1800), ['filter', 'tvevents', 'tv', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function tvByCountry(string $country): array
+    {
+        return $this->fetch('/filter/tv/country/' . rawurlencode($this->slug($country)), (int) config('plugins.SportsBot.cache.tv_guide', 1800), ['filter', 'tvevents', 'tv', 'events']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function tvByChannel(string $channel): array
+    {
+        return $this->fetchTvByChannel($this->slug($channel));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchTvByChannel(string $channelSlug): array
     {
         $channelSlug = trim($channelSlug);
@@ -84,6 +347,25 @@ class TheSportsDbClient implements SportsDataProviderInterface
             (int) config('plugins.SportsBot.tv.cache_ttl', 900),
             ['filter', 'tvevents', 'tv', 'events']
         );
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function eventHighlights(?string $date = null, ?string $leagueId = null, ?string $sport = null): array
+    {
+        $query = array_filter([
+            'date' => $date,
+            'league' => $leagueId,
+            'sport' => $sport !== null ? $this->slug($sport) : null,
+        ], static fn ($value): bool => $value !== null && trim((string) $value) !== '');
+
+        $path = '/filter/highlights';
+        if ($query !== []) {
+            $path .= '?' . http_build_query($query);
+        }
+
+        return $this->fetch($path, (int) config('plugins.SportsBot.cache.fixtures', 900), ['highlights', 'events']);
     }
 
     /**
@@ -103,6 +385,17 @@ class TheSportsDbClient implements SportsDataProviderInterface
         }
 
         return Cache::remember($cacheKey, $ttl, $callback);
+    }
+
+    /**
+     * @param array<int, string> $extractKeys
+     * @return array<string, mixed>|null
+     */
+    private function first(string $path, ?int $ttlOverride = null, array $extractKeys = ['events', 'event', 'data']): ?array
+    {
+        $rows = $this->fetch($path, $ttlOverride, $extractKeys);
+
+        return $rows[0] ?? null;
     }
 
     /**
@@ -152,5 +445,13 @@ class TheSportsDbClient implements SportsDataProviderInterface
         }
 
         return [];
+    }
+
+    private function slug(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? $value;
+
+        return trim($value, '_');
     }
 }

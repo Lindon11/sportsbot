@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services\Content;
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Services\TvGuideFormatter;
 use App\Plugins\SportsBot\Services\TvGuideService;
+use App\Plugins\SportsBot\Services\SportsBotInlineKeyboardBuilder;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 
 class TvGuideContentModule implements SportsBotContentModuleInterface
@@ -44,6 +45,7 @@ class TvGuideContentModule implements SportsBotContentModuleInterface
     {
         return [
             'parse_mode' => '',
+            'reply_markup' => SportsBotInlineKeyboardBuilder::backReplyMarkup(),
             'payload' => [
                 'events_total' => (int) ($summary['events_total'] ?? 0),
                 'channels_count' => count((array) ($summary['channels'] ?? [])),

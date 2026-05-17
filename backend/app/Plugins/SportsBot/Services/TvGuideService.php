@@ -12,6 +12,7 @@ class TvGuideService
 {
     public function __construct(
         private readonly TheSportsDbClient $provider = new TheSportsDbClient(),
+        private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
     ) {
     }
 
@@ -125,7 +126,7 @@ class TvGuideService
     {
         $channels = [];
 
-        foreach ((array) config('plugins.SportsBot.tv.channels', []) as $channel) {
+        foreach ((array) $this->settings->get('tv_channels', config('plugins.SportsBot.tv.channels', [])) as $channel) {
             $label = $this->channelLabel((string) $channel);
             $slug = $this->channelSlug((string) $channel);
 
@@ -149,7 +150,7 @@ class TvGuideService
     {
         $sports = [];
 
-        foreach ((array) config('plugins.SportsBot.tv.sports', []) as $sport) {
+        foreach ((array) $this->settings->get('enabled_sports', config('plugins.SportsBot.tv.sports', [])) as $sport) {
             $key = $this->normalizeKey((string) $sport);
             if ($key !== '') {
                 $sports[$key] = true;

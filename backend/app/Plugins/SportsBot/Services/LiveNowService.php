@@ -39,6 +39,7 @@ class LiveNowService
 
     public function __construct(
         private readonly TheSportsDbClient $provider = new TheSportsDbClient(),
+        private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
     ) {
     }
 
@@ -53,7 +54,7 @@ class LiveNowService
         $allowedSports = $this->allowedSports();
         $allowedLeagueIds = array_values(array_filter(array_map(
             'strval',
-            (array) config('plugins.SportsBot.coverage.allowed_league_ids', [])
+            (array) $this->settings->get('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', []))
         )));
 
         $matches = [];
@@ -149,7 +150,7 @@ class LiveNowService
     {
         $allowed = [];
 
-        foreach ((array) config('plugins.SportsBot.coverage.enabled_sports', []) as $sport) {
+        foreach ((array) $this->settings->get('enabled_sports', config('plugins.SportsBot.coverage.enabled_sports', [])) as $sport) {
             $key = $this->normalizeKey((string) $sport);
 
             if ($key === '') {

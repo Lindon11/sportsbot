@@ -185,6 +185,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotRoutingView.vue')
         },
         {
+          path: '/sportsbot/coverage',
+          name: 'sportsbot-coverage',
+          component: () => import('../views/SportsBotCoverageView.vue')
+        },
+        {
           path: '/sportsbot/webhook-diagnostics',
           name: 'sportsbot-webhook-diagnostics',
           component: () => import('../views/SportsBotWebhookDiagnosticsView.vue')

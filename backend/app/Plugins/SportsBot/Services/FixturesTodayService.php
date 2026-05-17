@@ -50,6 +50,7 @@ class FixturesTodayService
 
     public function __construct(
         private readonly TheSportsDbClient $provider = new TheSportsDbClient(),
+        private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
     ) {
     }
 
@@ -63,7 +64,7 @@ class FixturesTodayService
         $today = CarbonImmutable::now($tz)->toDateString();
 
         $leagueIds = array_values(array_unique(array_filter(
-            array_map('strval', (array) config('plugins.SportsBot.coverage.allowed_league_ids', [])),
+            array_map('strval', (array) $this->settings->get('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', []))),
             static fn (string $id): bool => trim($id) !== ''
         )));
 

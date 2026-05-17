@@ -67,6 +67,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/coverage',
+                'label' => 'Coverage Settings',
+                'icon' => 'Cog6ToothIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/webhook-diagnostics',
                 'label' => 'Webhook Diagnostics',
                 'icon' => 'CommandLineIcon',
