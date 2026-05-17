@@ -424,6 +424,7 @@ const pageTitle = computed(() => {
     '/sportsbot/routing': 'SportsBot Telegram Routes',
     '/sportsbot/coverage': 'SportsBot Coverage Settings',
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
+    '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
   }
 
   // Check overrides first

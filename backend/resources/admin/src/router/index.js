@@ -208,6 +208,11 @@ const router = createRouter({
           path: '/sportsbot/webhook-diagnostics',
           name: 'sportsbot-webhook-diagnostics',
           component: () => import('../views/SportsBotWebhookDiagnosticsView.vue')
+        },
+        {
+          path: '/sportsbot/fixture-queue',
+          name: 'sportsbot-fixture-queue',
+          component: () => import('../views/SportsBotFixtureQueueView.vue')
         }
       ]
     }

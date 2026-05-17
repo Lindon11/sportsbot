@@ -96,6 +96,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'icon' => 'CommandLineIcon',
                 'plugin' => 'sportsbot',
             ],
+            [
+                'route' => '/sportsbot/fixture-queue',
+                'label' => 'Fixture Queue',
+                'icon' => 'QueueListIcon',
+                'plugin' => 'sportsbot',
+            ],
         ],
     ];
 
