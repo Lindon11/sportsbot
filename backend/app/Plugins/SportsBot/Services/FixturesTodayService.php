@@ -12,6 +12,11 @@ use Throwable;
 class FixturesTodayService
 {
     /**
+     * @var array<string, array<string, mixed>|null>
+     */
+    private array $teamCache = [];
+
+    /**
      * @var array<string, string>
      */
     private const SPORT_LABELS = [
@@ -22,7 +27,13 @@ class FixturesTodayService
         'mma' => 'MMA',
         'mixed martial arts' => 'MMA',
         'ufc' => 'MMA',
+        'fights' => 'Fights',
+        'fighting' => 'Fights',
+        'boxing' => 'Fights',
         'tennis' => 'Tennis',
+        'rugby' => 'Rugby',
+        'rugby union' => 'Rugby',
+        'rugby league' => 'Rugby',
     ];
 
     /**
@@ -32,8 +43,10 @@ class FixturesTodayService
         'Football',
         'Basketball',
         'Baseball',
+        'Fights',
         'MMA',
         'Tennis',
+        'Rugby',
     ];
 
     /**
@@ -73,19 +86,17 @@ class FixturesTodayService
     /**
      * @return array<string, mixed>
      */
-    public function buildSummary(?string $sportKey = null): array
+    public function buildSummary(?string $sportKey = null, ?int $lookaheadDays = null): array
     {
         $timezoneName = (string) config('plugins.SportsBot.fixtures_today.timezone', 'Europe/London');
         $tz = new DateTimeZone($timezoneName);
         $today = CarbonImmutable::now($tz)->toDateString();
+        $endDate = CarbonImmutable::now($tz)->addDays(max(0, (int) ($lookaheadDays ?? 0)))->toDateString();
         $requestedSport = $sportKey !== null && trim($sportKey) !== ''
             ? $this->normalizeSportLabel(SportsBotSports::providerSport($sportKey))
             : null;
 
-        $leagueIds = array_values(array_unique(array_filter(
-            array_map('strval', (array) $this->settings->get('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', []))),
-            static fn (string $id): bool => trim($id) !== ''
-        )));
+        $leagueIds = $this->leagueIdsForSport($sportKey);
 
         if ($leagueIds === []) {
             $leagueIds = array_values(array_unique(array_filter(
@@ -132,7 +143,7 @@ class FixturesTodayService
 
                 $kickoffAt = $this->eventKickoffLocal($row, $tz);
 
-                if ($kickoffAt === null || $kickoffAt->toDateString() !== $today) {
+                if ($kickoffAt === null || $kickoffAt->toDateString() < $today || $kickoffAt->toDateString() > $endDate) {
                     continue;
                 }
 
@@ -194,6 +205,8 @@ class FixturesTodayService
                     }
                 }
 
+                $homeTeamMeta = $this->lookupTeamMeta(trim((string) ($row['idHomeTeam'] ?? '')));
+
                 $fixtures[] = [
                     'event_id' => $eventId,
                     'sport' => $sport,
@@ -207,11 +220,14 @@ class FixturesTodayService
                     'kickoff_at' => $kickoffAt,
                     'tv_channel' => $tvChannel,
                     'tv_channels' => $tvChannels,
+                    'event_thumb' => trim((string) ($row['strThumb'] ?? '')),
+                    'event_poster' => trim((string) ($row['strPoster'] ?? '')),
                     'home_badge' => trim((string) ($row['strHomeTeamBadge'] ?? $row['strHomeBadge'] ?? '')),
                     'away_badge' => trim((string) ($row['strAwayTeamBadge'] ?? $row['strAwayBadge'] ?? '')),
                     'league_badge' => $this->leagueArtworkUrl($row, $leagueMeta, ['strLeagueBadge', 'strBadge']),
                     'league_logo' => $this->leagueArtworkUrl($row, $leagueMeta, ['strLeagueLogo', 'strLogo']),
-                    'venue' => trim((string) ($row['strVenue'] ?? '')),
+                    'venue' => $this->fixtureVenue($row, $homeTeamMeta),
+                    'venue_source' => trim((string) ($row['strVenue'] ?? '')) !== '' ? 'event' : 'home_team',
                     'league_id' => trim((string) ($row['idLeague'] ?? '')),
                     'home_team_id' => trim((string) ($row['idHomeTeam'] ?? '')),
                     'away_team_id' => trim((string) ($row['idAwayTeam'] ?? '')),
@@ -243,6 +259,8 @@ class FixturesTodayService
             'title' => $requestedSport !== null ? $requestedSport . ' Fixtures TV' : "Today's Fixtures",
             'sport_filter' => $sportKey !== null ? SportsBotSports::normalize($sportKey) : null,
             'date' => $today,
+            'date_to' => $endDate,
+            'lookahead_days' => max(0, (int) ($lookaheadDays ?? 0)),
             'timezone' => $timezoneName,
             'fixtures_total' => count($fixtures),
             'fixtures_raw' => $rawFixturesCount,
@@ -268,13 +286,35 @@ class FixturesTodayService
     }
 
     /**
+     * @return array<int, string>
+     */
+    private function leagueIdsForSport(?string $sportKey): array
+    {
+        $normalizedSport = $sportKey !== null ? SportsBotSports::normalize($sportKey) : null;
+        $settingKey = $normalizedSport === 'rugby' ? 'rugby_fixture_league_ids' : 'featured_league_ids';
+        if ($normalizedSport === 'fights') {
+            $settingKey = 'fight_fixture_league_ids';
+            $default = config('plugins.SportsBot.fixtures_today.fight_league_ids', []);
+        } elseif ($normalizedSport === 'rugby') {
+            $default = config('plugins.SportsBot.fixtures_today.rugby_league_ids', []);
+        } else {
+            $default = config('plugins.SportsBot.coverage.allowed_league_ids', []);
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('strval', (array) $this->settings->get($settingKey, $default)),
+            static fn (string $id): bool => trim($id) !== ''
+        )));
+    }
+
+    /**
      * @param array<string, mixed> $a
      * @param array<string, mixed> $b
      * @param array<string, int> $leagueOrder
      */
     private function compareFixtures(array $a, array $b, string $sport, array $leagueOrder): int
     {
-        if ($sport === 'Football') {
+        if (in_array($sport, ['Football', 'Rugby', 'Fights'], true)) {
             $aLeague = (string) ($a['league_id'] ?? '');
             $bLeague = (string) ($b['league_id'] ?? '');
             $aLeagueOrder = $leagueOrder[$aLeague] ?? PHP_INT_MAX;
@@ -317,6 +357,50 @@ class FixturesTodayService
 
     /**
      * @param array<string, mixed> $event
+     * @param array<string, mixed>|null $homeTeam
+     */
+    private function fixtureVenue(array $event, ?array $homeTeam): string
+    {
+        $eventVenue = trim((string) ($event['strVenue'] ?? ''));
+        if ($eventVenue !== '') {
+            return $eventVenue;
+        }
+
+        $homeVenue = trim((string) ($homeTeam['strStadium'] ?? ''));
+        if ($homeVenue !== '') {
+            return $homeVenue;
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function lookupTeamMeta(string $teamId): ?array
+    {
+        if ($teamId === '') {
+            return null;
+        }
+
+        if (array_key_exists($teamId, $this->teamCache)) {
+            return $this->teamCache[$teamId];
+        }
+
+        try {
+            return $this->teamCache[$teamId] = $this->provider->lookupTeam($teamId);
+        } catch (Throwable $error) {
+            Log::debug('sportsbot.fixtures_today.team_lookup_failed', [
+                'team_id' => $teamId,
+                'error' => $error->getMessage(),
+            ]);
+        }
+
+        return $this->teamCache[$teamId] = null;
+    }
+
+    /**
+     * @param array<string, mixed> $event
      * @param array<string, mixed> $league
      */
     private function isUkFootballFixture(array $event, array $league): bool
@@ -340,15 +424,7 @@ class FixturesTodayService
                 continue;
             }
 
-            try {
-                $team = $this->provider->lookupTeam($teamId);
-            } catch (Throwable $error) {
-                Log::debug('sportsbot.fixtures_today.team_lookup_failed', [
-                    'team_id' => $teamId,
-                    'error' => $error->getMessage(),
-                ]);
-                continue;
-            }
+            $team = $this->lookupTeamMeta($teamId);
 
             $country = trim((string) ($team['strCountry'] ?? ''));
             if ($country !== '') {

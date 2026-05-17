@@ -15,6 +15,7 @@ class SportsBotSports
             'baseball' => ['label' => 'Baseball', 'sport' => 'Baseball', 'icon' => '⚾', 'route_key' => TelegramRouteKeys::BASEBALL, 'aliases' => ['baseball', 'mlb']],
             'american_football' => ['label' => 'American Football', 'sport' => 'American Football', 'icon' => '🏈', 'route_key' => TelegramRouteKeys::AMERICAN_FOOTBALL, 'aliases' => ['american football', 'nfl']],
             'tennis' => ['label' => 'Tennis', 'sport' => 'Tennis', 'icon' => '🎾', 'route_key' => TelegramRouteKeys::TENNIS, 'aliases' => ['tennis']],
+            'fights' => ['label' => 'Fights', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::FIGHTS, 'aliases' => ['fights', 'fight', 'fighting', 'combat', 'ppv']],
             'mma' => ['label' => 'MMA / UFC', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::MMA, 'aliases' => ['mma', 'ufc', 'fighting']],
             'rugby' => ['label' => 'Rugby', 'sport' => 'Rugby', 'icon' => '🏉', 'route_key' => TelegramRouteKeys::RUGBY, 'aliases' => ['rugby']],
             'cricket' => ['label' => 'Cricket', 'sport' => 'Cricket', 'icon' => '🏏', 'route_key' => TelegramRouteKeys::CRICKET, 'aliases' => ['cricket']],

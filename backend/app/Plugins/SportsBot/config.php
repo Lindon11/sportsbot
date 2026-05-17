@@ -90,6 +90,38 @@ $internationalFootballLeagueIds = [
     '5400', // International Friendlies Women
 ];
 
+$rugbyLeagueIds = [
+    '4414', // English Premiership Rugby
+    '5695', // Premiership Rugby Cup
+    '4722', // English RFU Championship
+    '4415', // Rugby League Super League
+    '4589', // RFL Championship
+    '4416', // Australian National Rugby League
+    '4446', // United Rugby Championship
+    '4550', // European Rugby Champions Cup
+    '5418', // European Rugby Challenge Cup
+    '4714', // Six Nations Championship
+    '5563', // Six Nations Women
+    '5082', // Six Nations Under 20s
+    '4984', // Autumn Nations Series
+    '5479', // Rugby Union International Friendlies
+    '5512', // British and Irish Lions Tours
+    '4574', // Rugby World Cup
+    '5682', // Womens Rugby World Cup
+    '5806', // Rugby League World Cup
+    '5807', // Rugby League Pacific Cup
+    '5808', // Rugby League Pacific Bowl
+    '5834', // World Club Challenge
+    '5835', // State of Origin
+    '5173', // Scottish Premiership Rugby
+];
+
+$fightLeagueIds = [
+    '4443', // UFC
+    '4445', // Boxing
+    '4567', // BKFC
+];
+
 $defaultTvChannels = [
     'Sky Sports Main Event',
     'Sky Sports Premier League',
@@ -147,6 +179,8 @@ return [
         'height' => (int) env('SPORTSBOT_CARD_HEIGHT', 675),
         'font_regular' => env('SPORTSBOT_CARD_FONT_REGULAR', ''),
         'font_bold' => env('SPORTSBOT_CARD_FONT_BOLD', ''),
+        'image_cache_ttl' => (int) env('SPORTSBOT_CARD_IMAGE_CACHE_TTL', 604800),
+        'fight_art_url_cache_ttl' => (int) env('SPORTSBOT_FIGHT_ART_URL_CACHE_TTL', 2592000),
     ],
 
     'telegram' => [
@@ -173,6 +207,9 @@ return [
     'fixtures_today' => [
         'default_league_ids' => $legacyDefaultLeagueIds,
         'international_league_ids' => $internationalFootballLeagueIds,
+        'rugby_league_ids' => $rugbyLeagueIds,
+        'fight_league_ids' => $fightLeagueIds,
+        'fight_lookahead_days' => (int) env('SPORTSBOT_FIGHT_FIXTURES_LOOKAHEAD_DAYS', 30),
         'max_per_sport' => (int) env('SPORTSBOT_FIXTURES_TODAY_MAX_PER_SPORT', 5),
         'timezone' => env('SPORTSBOT_FIXTURES_TIMEZONE', 'Europe/London'),
     ],

@@ -10,8 +10,10 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
 use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
+use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
+use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
@@ -205,6 +207,120 @@ class SportsBotController extends Controller
 
             return response()->json([
                 'route_key' => TelegramRouteKeys::FOOTBALL,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function rugbyFixturesPreview(
+        Request $request,
+        RugbyFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotCardRenderer $cards,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+        $preview = $publisher->preview($module);
+        $summary = (array) ($preview['summary'] ?? []);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('rugby_fixture_card_version', 'v2'));
+
+        return response()->json(array_merge($preview, [
+            'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'captions_enabled' => (bool) $settings->get('rugby_fixture_captions_enabled', false),
+            'card_version' => $cardVersion,
+        ]));
+    }
+
+    public function rugbyFixturesSend(
+        Request $request,
+        RugbyFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'captions_enabled' => ['sometimes', 'boolean'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        if (array_key_exists('captions_enabled', $validated)) {
+            $settings->set('rugby_fixture_captions_enabled', (bool) $validated['captions_enabled']);
+        }
+        if (array_key_exists('card_version', $validated)) {
+            $settings->set('rugby_fixture_card_version', $this->footballFixtureCardVersion($validated['card_version']));
+        }
+
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.rugby_fixtures_send_failed', [
+                'route_key' => TelegramRouteKeys::RUGBY,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::RUGBY,
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function fightFixturesPreview(
+        Request $request,
+        FightFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotCardRenderer $cards,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+        $preview = $publisher->preview($module);
+        $summary = (array) ($preview['summary'] ?? []);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('fight_fixture_card_version', 'v2'));
+
+        return response()->json(array_merge($preview, [
+            'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'captions_enabled' => (bool) $settings->get('fight_fixture_captions_enabled', false),
+            'card_version' => $cardVersion,
+        ]));
+    }
+
+    public function fightFixturesSend(
+        Request $request,
+        FightFixturesContentModule $module,
+        SportsBotPublisher $publisher,
+        SportsBotSettingsService $settings,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'captions_enabled' => ['sometimes', 'boolean'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+        ]);
+
+        if (array_key_exists('captions_enabled', $validated)) {
+            $settings->set('fight_fixture_captions_enabled', (bool) $validated['captions_enabled']);
+        }
+        if (array_key_exists('card_version', $validated)) {
+            $settings->set('fight_fixture_card_version', $this->footballFixtureCardVersion($validated['card_version']));
+        }
+
+        try {
+            return response()->json($publisher->send($module, 'admin_api'));
+        } catch (Throwable $error) {
+            Log::error('sportsbot.admin.fight_fixtures_send_failed', [
+                'route_key' => TelegramRouteKeys::FIGHTS,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'route_key' => TelegramRouteKeys::FIGHTS,
                 'sent' => false,
                 'error' => $error->getMessage(),
             ], 422);

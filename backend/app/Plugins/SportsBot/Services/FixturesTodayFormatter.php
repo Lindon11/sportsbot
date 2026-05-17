@@ -11,8 +11,10 @@ class FixturesTodayFormatter
         'Football' => '⚽',
         'Basketball' => '🏀',
         'Baseball' => '⚾',
+        'Fights' => '🥊',
         'MMA' => '🥊',
         'Tennis' => '🎾',
+        'Rugby' => '🏉',
     ];
 
     /**
@@ -30,10 +32,13 @@ class FixturesTodayFormatter
     {
         $title = trim((string) ($summary['title'] ?? "Today's Fixtures"));
         $date = trim((string) ($summary['date'] ?? ''));
+        $dateTo = trim((string) ($summary['date_to'] ?? ''));
         $parts = [
             '📋 ' . ($title !== '' ? $title : "Today's Fixtures"),
         ];
-        if ($date !== '') {
+        if ($date !== '' && $dateTo !== '' && $dateTo !== $date) {
+            $parts[] = '📅 ' . $date . ' to ' . $dateTo;
+        } elseif ($date !== '') {
             $parts[] = '📅 ' . $date;
         }
         $parts[] = '🕒 Times shown in local timezone';

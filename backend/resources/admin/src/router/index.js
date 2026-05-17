@@ -175,6 +175,16 @@ const router = createRouter({
           component: () => import('../views/SportsBotFootballFixturesView.vue')
         },
         {
+          path: '/sportsbot/rugby-fixtures',
+          name: 'sportsbot-rugby-fixtures',
+          component: () => import('../views/SportsBotRugbyFixturesView.vue')
+        },
+        {
+          path: '/sportsbot/fight-fixtures',
+          name: 'sportsbot-fight-fixtures',
+          component: () => import('../views/SportsBotFightFixturesView.vue')
+        },
+        {
           path: '/sportsbot/tv-guide',
           name: 'sportsbot-tv-guide',
           component: () => import('../views/SportsBotTvGuideView.vue')

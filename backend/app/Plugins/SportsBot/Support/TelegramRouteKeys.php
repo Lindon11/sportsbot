@@ -15,6 +15,7 @@ class TelegramRouteKeys
     public const AMERICAN_FOOTBALL = 'AMERICAN_FOOTBALL';
     public const TENNIS = 'TENNIS';
     public const MMA = 'MMA';
+    public const FIGHTS = 'FIGHTS';
     public const RUGBY = 'RUGBY';
     public const CRICKET = 'CRICKET';
     public const FORMULA_1 = 'FORMULA_1';
@@ -42,6 +43,7 @@ class TelegramRouteKeys
             self::AMERICAN_FOOTBALL,
             self::TENNIS,
             self::MMA,
+            self::FIGHTS,
             self::RUGBY,
             self::CRICKET,
             self::FORMULA_1,

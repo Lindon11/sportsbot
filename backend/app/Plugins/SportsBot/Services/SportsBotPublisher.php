@@ -62,7 +62,7 @@ class SportsBotPublisher
         ]);
 
         try {
-            if ($module->key() === 'FOOTBALL_FIXTURES') {
+            if (in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES'], true)) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
             } else {
                 $card = $this->renderCard($module->key(), $summary);
@@ -143,7 +143,8 @@ class SportsBotPublisher
                 ],
             ]);
 
-            $caption = $this->footballFixtureCaptionsEnabled($options) ? $this->fixtureCaption($fixture) : '';
+            $contentKey = (string) (($fixtureOptions['payload']['content_key'] ?? $options['payload']['content_key'] ?? '') ?: '');
+            $caption = $this->footballFixtureCaptionsEnabled($options) ? $this->fixtureCaption($fixture, $contentKey) : '';
             foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
                 $results[] = $result;
             }
@@ -198,8 +199,12 @@ class SportsBotPublisher
     /**
      * @param array<string, mixed> $fixture
      */
-    private function fixtureCaption(array $fixture): string
+    private function fixtureCaption(array $fixture, string $contentKey = ''): string
     {
+        if (strtoupper($contentKey) === 'FIGHT_FIXTURES') {
+            return $this->fightFixtureCaption($fixture);
+        }
+
         $primary = $this->normalizeChannel((string) ($fixture['tv_channel'] ?? ''));
         $channels = [];
 
@@ -212,11 +217,36 @@ class SportsBotPublisher
             $channels[strtolower($label)] = $label;
         }
 
-        if ($channels === []) {
-            return '';
+        $parts = [];
+
+        if ($channels !== []) {
+            $parts[] = 'Other UK channels: ' . implode(', ', array_values($channels));
         }
 
-        return mb_substr('Other UK channels: ' . implode(', ', array_values($channels)), 0, 1000);
+        return mb_substr(implode("\n\n", $parts), 0, 1000);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fightFixtureCaption(array $fixture): string
+    {
+        $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'));
+        if ($title === '') {
+            $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? ''));
+            $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? ''));
+            $title = trim($home . ($home !== '' && $away !== '' ? ' vs ' : '') . $away);
+        }
+
+        $date = trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC'));
+        $time = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
+
+        return mb_substr(implode("\n", [
+            $title !== '' ? $title : 'Fight event',
+            trim($date . ' ' . $time),
+            '',
+            'PPV: Check the PPV folders for this event.',
+        ]), 0, 1000);
     }
 
     private function normalizeChannel(string $channel): string

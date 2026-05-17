@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -32,11 +33,31 @@ class SportsBotCardRenderer
 
         return $this->render('fixture-' . $variant, function ($image, array $c) use ($fixture, $variant): void {
             $sport = (string) ($fixture['sport'] ?? $fixture['strSport'] ?? 'Sports');
-            if (SportsBotSports::normalize($sport) === 'football') {
+            $normalizedSport = SportsBotSports::normalize($sport);
+            if ($normalizedSport === 'fights') {
+                if ($variant === 'v2') {
+                    $this->fightFixtureCardV2($image, $fixture);
+                } else {
+                    $this->header($image, $c, SportsBotSports::icon($sport) . ' Fight Night', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Fights'));
+                    $this->centerText($image, (string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'), 42, 325, $c['text'], true);
+                    $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Time TBC'), [20, 184, 166]);
+                    $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
+                }
+                return;
+            }
+
+            if (in_array($normalizedSport, ['football', 'rugby'], true)) {
                 if ($variant === 'v2') {
                     $this->footballFixtureCardV2($image, $fixture);
                 } else {
-                    $this->footballFixtureCardV1($image, $fixture);
+                    if ($normalizedSport === 'football') {
+                        $this->footballFixtureCardV1($image, $fixture);
+                    } else {
+                        $this->header($image, $c, SportsBotSports::icon($sport) . ' Fixture', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
+                        $this->versusBlock($image, $c, $fixture, 'VS');
+                        $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC'), [20, 184, 166]);
+                        $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
+                    }
                 }
                 return;
             }
@@ -281,10 +302,10 @@ class SportsBotCardRenderer
 
         $homeLogo = (string) ($fixture['home_badge'] ?? $fixture['strHomeTeamBadge'] ?? '');
         $awayLogo = (string) ($fixture['away_badge'] ?? $fixture['strAwayTeamBadge'] ?? '');
-        if (!$this->drawRemoteLogoContain($image, $homeLogo, 290, 275, 250, 250)) {
+        if (!$this->drawTeamLogoContain($image, $homeLogo, 290, 275, 250, 250, $purple)) {
             $this->teamPlaceholder($image, $home, 165, 150, 250, $purple, $panel);
         }
-        if (!$this->drawRemoteLogoContain($image, $awayLogo, 910, 275, 250, 250)) {
+        if (!$this->drawTeamLogoContain($image, $awayLogo, 910, 275, 250, 250, $purple)) {
             $this->teamPlaceholder($image, $away, 785, 150, 250, $navy, $panel);
         }
 
@@ -333,10 +354,10 @@ class SportsBotCardRenderer
 
         $homeLogo = (string) ($fixture['home_badge'] ?? $fixture['strHomeTeamBadge'] ?? '');
         $awayLogo = (string) ($fixture['away_badge'] ?? $fixture['strAwayTeamBadge'] ?? '');
-        if (!$this->drawRemoteLogoContain($image, $homeLogo, 330, 278, 245, 245)) {
+        if (!$this->drawTeamLogoContain($image, $homeLogo, 330, 278, 245, 245, $purple)) {
             $this->teamPlaceholder($image, $home, 205, 153, 250, $purple, $panel);
         }
-        if (!$this->drawRemoteLogoContain($image, $awayLogo, 890, 278, 245, 245)) {
+        if (!$this->drawTeamLogoContain($image, $awayLogo, 890, 278, 245, 245, $purple)) {
             $this->teamPlaceholder($image, $away, 765, 153, 250, $navy, $panel);
         }
 
@@ -367,15 +388,42 @@ class SportsBotCardRenderer
 
         $this->drawTvIcon($image, 446, 538, 46, $purple, $white);
         $this->text($image, 'BROADCAST', 508, 548, 18, $purple, true);
-        $tvLines = $this->fitTextLines($tv, 210, 24, true, 2);
+        $tvLines = $this->fitTextLines($tv, 235, 22, true, 2);
         $tvY = 580;
         foreach ($tvLines as $index => $line) {
-            $this->textFitted($image, $line, 508, $tvY + ($index * 28), 210, 24, 17, $index === 0 ? $navy : $muted, true);
+            $this->textFitted($image, $line, 508, $tvY + ($index * 28), 235, 23, 16, $index === 0 ? $navy : $muted, true);
         }
 
         $this->drawVenueIcon($image, 792, 538, 46, $purple);
         $this->text($image, 'VENUE', 854, 548, 18, $purple, true);
-        $this->textFitted($image, $venue !== '' ? $this->displayTitle($venue) : 'Venue TBC', 854, 582, 230, 25, 17, $navy, true);
+        $venueLines = $this->fitTextLines($venue !== '' ? $this->displayTitle($venue) : 'Venue TBC', 245, 18, true, 2);
+        foreach ($venueLines as $index => $line) {
+            $this->textFitted($image, $line, 854, 582 + ($index * 25), 245, 18, 14, $index === 0 ? $navy : $muted, true);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fightFixtureCardV2($image, array $fixture): void
+    {
+        $white = imagecolorallocate($image, 255, 255, 255);
+        $black = imagecolorallocate($image, 4, 6, 12);
+
+        $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'));
+
+        $poster = $this->fightArtworkUrl($fixture);
+        if ($poster !== '') {
+            $this->drawRemoteImageCover($image, $poster, 0, 0, $this->width, $this->height);
+        } else {
+            imagefilledrectangle($image, 0, 0, $this->width, $this->height, $black);
+        }
+
+        if ($poster === '') {
+            foreach ($this->fitTextLines($title, 900, 54, true, 2) as $index => $line) {
+                $this->centerFittedText($image, $line, 600, 265 + ($index * 62), 900, 52, 28, $white, true);
+            }
+        }
     }
 
     private function pill($image, array $c, int $x, int $y, string $text, array $rgb): void
@@ -578,6 +626,24 @@ class SportsBotCardRenderer
         return $drawn;
     }
 
+    private function drawTeamLogoContain($image, string $url, int $centerX, int $centerY, int $maxWidth, int $maxHeight, int $contrast): bool
+    {
+        $logo = $this->remoteLogoImage($url);
+        if (!$logo) {
+            return false;
+        }
+
+        if ($this->logoNeedsDarkBackground($logo)) {
+            $backingSize = max($maxWidth, $maxHeight) + 24;
+            imagefilledellipse($image, $centerX, $centerY, $backingSize, $backingSize, $contrast);
+        }
+
+        $drawn = $this->drawLogoImageContain($image, $logo, $centerX, $centerY, $maxWidth, $maxHeight);
+        imagedestroy($logo);
+
+        return $drawn;
+    }
+
     private function remoteLogoImage(string $url)
     {
         if ($url === '') {
@@ -585,12 +651,12 @@ class SportsBotCardRenderer
         }
 
         try {
-            $response = Http::timeout(5)->get($url);
-            if (!$response->successful()) {
+            $body = $this->cachedRemoteImageBody($url);
+            if ($body === null) {
                 return null;
             }
 
-            $logo = @imagecreatefromstring($response->body());
+            $logo = @imagecreatefromstring($body);
             if (!$logo) {
                 return null;
             }
@@ -601,6 +667,96 @@ class SportsBotCardRenderer
         }
 
         return null;
+    }
+
+    private function cachedRemoteImageBody(string $url): ?string
+    {
+        $ttl = max(0, (int) config('plugins.SportsBot.cards.image_cache_ttl', 604800));
+        $dir = storage_path('app/sportsbot/image-cache');
+        $path = $dir . '/' . sha1($url) . '.img';
+
+        if (is_file($path) && ($ttl === 0 || (time() - (int) filemtime($path)) <= $ttl)) {
+            $body = @file_get_contents($path);
+            if (is_string($body) && $body !== '') {
+                return $body;
+            }
+        }
+
+        try {
+            $response = Http::timeout(8)->get($url);
+            if ($response->successful()) {
+                $body = $response->body();
+                if ($body !== '') {
+                    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+                        return $body;
+                    }
+
+                    @file_put_contents($path, $body, LOCK_EX);
+
+                    return $body;
+                }
+            }
+        } catch (Throwable $error) {
+            Log::debug('sportsbot.card.image_fetch_failed', ['url' => $url, 'error' => $error->getMessage()]);
+        }
+
+        if (is_file($path)) {
+            $body = @file_get_contents($path);
+            if (is_string($body) && $body !== '') {
+                return $body;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fightArtworkUrl(array $fixture): string
+    {
+        $candidates = [
+            $fixture['event_thumb'] ?? null,
+            $fixture['strThumb'] ?? null,
+            $fixture['event_poster'] ?? null,
+            $fixture['strPoster'] ?? null,
+        ];
+
+        $cacheKey = $this->fightArtworkCacheKey($fixture);
+        foreach ($candidates as $candidate) {
+            $url = trim((string) $candidate);
+            if ($url === '') {
+                continue;
+            }
+
+            if ($cacheKey !== '') {
+                Cache::put($cacheKey, $url, max(60, (int) config('plugins.SportsBot.cards.fight_art_url_cache_ttl', 2592000)));
+            }
+
+            return $url;
+        }
+
+        return $cacheKey !== '' ? trim((string) Cache::get($cacheKey, '')) : '';
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private function fightArtworkCacheKey(array $fixture): string
+    {
+        $eventId = trim((string) ($fixture['event_id'] ?? $fixture['idEvent'] ?? ''));
+        if ($eventId !== '') {
+            return 'sportsbot:card:fight_art_url:event:' . $eventId;
+        }
+
+        $identity = json_encode([
+            $fixture['league'] ?? $fixture['strLeague'] ?? '',
+            $fixture['event_name'] ?? $fixture['strEvent'] ?? '',
+            $fixture['date_label'] ?? $fixture['dateEvent'] ?? '',
+            $fixture['kickoff_label'] ?? $fixture['strTime'] ?? '',
+        ]);
+
+        return is_string($identity) ? 'sportsbot:card:fight_art_url:fallback:' . sha1($identity) : '';
     }
 
     private function drawLogoImageContain($image, $logo, int $centerX, int $centerY, int $maxWidth, int $maxHeight): bool
@@ -618,6 +774,34 @@ class SportsBotCardRenderer
         $targetY = $centerY - (int) floor($targetHeight / 2);
 
         imagecopyresampled($image, $logo, $targetX, $targetY, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+
+        return true;
+    }
+
+    private function drawRemoteImageCover($image, string $url, int $x1, int $y1, int $x2, int $y2): bool
+    {
+        $source = $this->remoteLogoImage($url);
+        if (!$source) {
+            return false;
+        }
+
+        $sourceWidth = imagesx($source);
+        $sourceHeight = imagesy($source);
+        $targetWidth = max(1, $x2 - $x1);
+        $targetHeight = max(1, $y2 - $y1);
+        if ($sourceWidth <= 0 || $sourceHeight <= 0) {
+            imagedestroy($source);
+            return false;
+        }
+
+        $scale = max($targetWidth / $sourceWidth, $targetHeight / $sourceHeight);
+        $cropWidth = (int) floor($targetWidth / $scale);
+        $cropHeight = (int) floor($targetHeight / $scale);
+        $cropX = max(0, (int) floor(($sourceWidth - $cropWidth) / 2));
+        $cropY = max(0, (int) floor(($sourceHeight - $cropHeight) / 2));
+
+        imagecopyresampled($image, $source, $x1, $y1, $cropX, $cropY, $targetWidth, $targetHeight, $cropWidth, $cropHeight);
+        imagedestroy($source);
 
         return true;
     }
