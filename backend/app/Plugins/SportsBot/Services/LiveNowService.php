@@ -23,6 +23,9 @@ class LiveNowService
         'rugby' => 'Rugby',
         'rugby union' => 'Rugby',
         'rugby league' => 'Rugby',
+        'ice hockey' => 'Ice Hockey',
+        'hockey' => 'Ice Hockey',
+        'nhl' => 'Ice Hockey',
     ];
 
     /**
@@ -32,6 +35,7 @@ class LiveNowService
         'Football',
         'Basketball',
         'Baseball',
+        'Ice Hockey',
         'MMA',
         'Tennis',
         'Rugby',

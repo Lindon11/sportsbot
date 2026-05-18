@@ -130,7 +130,7 @@ class SportsBotPublisher
         ]);
 
         try {
-            $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES'], true);
+            $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES', 'ICE_HOCKEY_FIXTURES'], true);
             if ($isFixtureModule) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
             } else {
@@ -248,6 +248,7 @@ class SportsBotPublisher
             'RUGBY_FIXTURES' => 'rugby',
             'FIGHT_FIXTURES' => 'fights',
             'MOTORSPORT_FIXTURES' => 'formula_1',
+            'ICE_HOCKEY_FIXTURES' => 'ice_hockey',
             default => (string) ($payload['sport_key'] ?? $summary['sport_filter'] ?? 'sports'),
         };
 
@@ -318,6 +319,7 @@ class SportsBotPublisher
             'MMA_FIXTURES' => 'mma',
             'BOXING_FIXTURES' => 'boxing',
             'MOTORSPORT_FIXTURES' => 'formula_1',
+            'ICE_HOCKEY_FIXTURES' => 'ice_hockey',
         ];
 
         $sportKey = $sportMap[$key] ?? null;

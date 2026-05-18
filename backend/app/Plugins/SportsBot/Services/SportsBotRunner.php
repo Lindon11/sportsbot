@@ -382,6 +382,7 @@ class SportsBotRunner
             'rugby union', 'rugby league' => 'Rugby',
             'formula one', 'f1' => 'Formula 1',
             'mixed martial arts', 'ultimate fighting championship', 'ufc' => 'MMA',
+            'ice hockey', 'hockey', 'nhl' => 'Ice Hockey',
             default => trim($sport),
         };
     }

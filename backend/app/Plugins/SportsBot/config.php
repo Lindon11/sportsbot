@@ -452,7 +452,7 @@ return [
     'tv' => [
         'enabled' => env('SPORTSBOT_TV_ENABLED', true),
         'channels' => $csv(env('SPORTSBOT_TV_CHANNELS', implode(',', $defaultTvChannels))),
-        'sports' => $csv(env('SPORTSBOT_TV_SPORTS', 'Soccer,Basketball,Baseball,MMA,Tennis,Rugby')),
+        'sports' => $csv(env('SPORTSBOT_TV_SPORTS', 'Soccer,Basketball,Baseball,Ice Hockey,MMA,Tennis,Rugby')),
         'lookahead_hours' => (int) env('SPORTSBOT_TV_LOOKAHEAD_HOURS', 24),
         'max_events_per_channel' => (int) env('SPORTSBOT_TV_MAX_EVENTS_PER_CHANNEL', 20),
         'max_per_channel' => (int) env('SPORTSBOT_TV_GUIDE_MAX_PER_CHANNEL', 8),

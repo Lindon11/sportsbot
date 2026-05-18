@@ -274,6 +274,7 @@ class TvGuideService
             'mma', 'mixed martial arts', 'ufc' => 'MMA',
             'tennis' => 'Tennis',
             'rugby', 'rugby union', 'rugby league' => 'Rugby',
+            'ice hockey', 'hockey', 'nhl' => 'Ice Hockey',
             default => trim($sport) !== '' ? trim($sport) : 'Sport',
         };
     }

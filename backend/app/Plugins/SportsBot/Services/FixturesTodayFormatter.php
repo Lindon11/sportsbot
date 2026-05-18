@@ -15,6 +15,7 @@ class FixturesTodayFormatter
         'MMA' => '🥊',
         'Tennis' => '🎾',
         'Rugby' => '🏉',
+        'Ice Hockey' => '🏒',
         'Motorsport' => '🏎',
     ];
 

@@ -94,6 +94,10 @@ class SportsBotInlineKeyboardBuilder
                 ['text' => '🏀 Basketball', 'callback_data' => 'fixtures:basketball:1'],
             ],
             [
+                ['text' => '🏒 Ice Hockey', 'callback_data' => 'fixtures:ice_hockey:1'],
+                ['text' => '⚾ Baseball', 'callback_data' => 'fixtures:baseball:1'],
+            ],
+            [
                 ['text' => '🎾 Tennis', 'callback_data' => 'fixtures:tennis:1'],
                 ['text' => '🥊 MMA', 'callback_data' => 'fixtures:mma:1'],
             ],
@@ -115,7 +119,10 @@ class SportsBotInlineKeyboardBuilder
                 ['text' => '🏀 Basketball', 'callback_data' => 'live:basketball'],
             ],
             [
+                ['text' => '🏒 Ice Hockey', 'callback_data' => 'live:ice_hockey'],
                 ['text' => '🎾 Tennis', 'callback_data' => 'live:tennis'],
+            ],
+            [
                 ['text' => '🥊 MMA', 'callback_data' => 'live:mma'],
             ],
         ];
