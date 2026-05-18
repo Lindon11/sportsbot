@@ -41,7 +41,7 @@ Route::prefix('install')->name('installer.')->middleware('installer')->group(fun
 
 Route::get('/scheduler/run/{token}', [SchedulerHttpController::class, 'run'])
     ->name('scheduler.http.run')
-    ->where('token', '[A-Za-z0-9_\-]{24,}');
+    ->where('token', '.+');
 
 // Admin Control Panel SPA (including installer UI)
 Route::prefix('admin')->group(function () {

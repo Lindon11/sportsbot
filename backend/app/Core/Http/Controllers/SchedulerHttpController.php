@@ -5,6 +5,7 @@ namespace App\Core\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class SchedulerHttpController extends Controller
 {
@@ -13,6 +14,12 @@ class SchedulerHttpController extends Controller
         $expected = trim((string) config('app.scheduler_http_token', ''));
 
         if ($expected === '' || !hash_equals($expected, $token)) {
+            Log::warning('scheduler.http.token_mismatch', [
+                'expected_length' => strlen($expected),
+                'received_length' => strlen($token),
+                'base_path' => base_path(),
+                'config_cached' => app()->configurationIsCached(),
+            ]);
             abort(404);
         }
 
