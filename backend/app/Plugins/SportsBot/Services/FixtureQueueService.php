@@ -464,7 +464,7 @@ class FixtureQueueService
     private function hasCurrentCard(SportsBotFixtureQueue $entry, string $cardVersion): bool
     {
         $cardPath = (string) ($entry->card_path ?? '');
-        if ($cardPath === '' || !is_file($cardPath)) {
+        if ($cardPath === '' || !@is_file($cardPath)) {
             return false;
         }
 
@@ -485,7 +485,7 @@ class FixtureQueueService
         $card = $this->cards->fixtureCard($fixture, $cardVersion);
         $cardPath = (string) ($card['path'] ?? '');
 
-        if ($cardPath === '' || !is_file($cardPath)) {
+        if ($cardPath === '' || !@is_file($cardPath)) {
             throw new \RuntimeException('Card render returned no valid file path');
         }
 
@@ -533,7 +533,7 @@ class FixtureQueueService
             ],
         ];
 
-        if ($cardPath !== '' && is_file($cardPath)) {
+        if ($cardPath !== '' && @is_file($cardPath)) {
             $sendResults = $this->notifier->sendPhoto($cardPath, $caption, $notifyOptions);
 
             $telegramResult = $this->firstDeliveryResult($sendResults, 'telegram');
@@ -656,7 +656,7 @@ class FixtureQueueService
             $card = $this->cards->fixtureCard($fixture, $cardVersion);
             $cardPath = (string) ($card['path'] ?? '');
 
-            if ($cardPath === '' || !is_file($cardPath)) {
+            if ($cardPath === '' || !@is_file($cardPath)) {
                 throw new \RuntimeException('Card render returned no valid file');
             }
 

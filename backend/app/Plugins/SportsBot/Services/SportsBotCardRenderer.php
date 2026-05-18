@@ -137,12 +137,12 @@ class SportsBotCardRenderer
         }
 
         $dir = storage_path('app/sportsbot/cards');
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
             return null;
         }
 
         $inputDir = storage_path('app/sportsbot/render-input');
-        if (!is_dir($inputDir) && !mkdir($inputDir, 0775, true) && !is_dir($inputDir)) {
+        if (!@is_dir($inputDir) && !@mkdir($inputDir, 0775, true) && !@is_dir($inputDir)) {
             return null;
         }
 
@@ -210,7 +210,7 @@ class SportsBotCardRenderer
         $exitCode = $processExitCode ?? $closeCode;
         @unlink($inputPath);
 
-        if ($exitCode === 0 && is_file($outputPath) && filesize($outputPath) > 0) {
+        if ($exitCode === 0 && @is_file($outputPath) && filesize($outputPath) > 0) {
             return ['path' => $outputPath, 'type' => 'fixture-v3-browser', 'width' => $this->width, 'height' => $this->height];
         }
 
@@ -220,7 +220,7 @@ class SportsBotCardRenderer
             'stderr' => $this->strLimit($stderr, 1000),
         ]);
 
-        if (is_file($outputPath)) {
+        if (@is_file($outputPath)) {
             @unlink($outputPath);
         }
 
@@ -237,19 +237,19 @@ class SportsBotCardRenderer
             return null;
         }
 
-        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script', base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script, base_path('resources/sportsbot/v3-card-renderer.cjs'));
         if ($script === '' || !is_file($script)) {
             Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
             return null;
         }
 
         $dir = storage_path('app/sportsbot/cards');
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
             return null;
         }
 
         $inputDir = storage_path('app/sportsbot/render-input');
-        if (!is_dir($inputDir) && !mkdir($inputDir, 0775, true) && !is_dir($inputDir)) {
+        if (!@is_dir($inputDir) && !@mkdir($inputDir, 0775, true) && !@is_dir($inputDir)) {
             return null;
         }
 
@@ -318,7 +318,7 @@ class SportsBotCardRenderer
         $exitCode = $processExitCode ?? $closeCode;
         @unlink($inputPath);
 
-        if ($exitCode === 0 && is_file($outputPath) && filesize($outputPath) > 0) {
+        if ($exitCode === 0 && @is_file($outputPath) && filesize($outputPath) > 0) {
             return ['path' => $outputPath, 'type' => 'no-fixtures-v3-browser', 'width' => $this->width, 'height' => $this->height];
         }
 
@@ -328,7 +328,7 @@ class SportsBotCardRenderer
             'stderr' => $this->strLimit($stderr, 1000),
         ]);
 
-        if (is_file($outputPath)) {
+        if (@is_file($outputPath)) {
             @unlink($outputPath);
         }
 
@@ -467,7 +467,7 @@ class SportsBotCardRenderer
         $draw($image, $c);
 
         $dir = storage_path('app/sportsbot/cards');
-        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
             throw new RuntimeException('Could not create SportsBot card directory.');
         }
 
@@ -1263,7 +1263,7 @@ class SportsBotCardRenderer
         $dir = storage_path('app/sportsbot/image-cache');
         $path = $dir . '/' . sha1($url) . '.img';
 
-        if (is_file($path) && ($ttl === 0 || (time() - (int) filemtime($path)) <= $ttl)) {
+        if (@is_file($path) && ($ttl === 0 || (time() - (int) @filemtime($path)) <= $ttl)) {
             $body = @file_get_contents($path);
             if (is_string($body) && $body !== '') {
                 return $body;
@@ -1275,7 +1275,7 @@ class SportsBotCardRenderer
             if ($response->successful()) {
                 $body = $response->body();
                 if ($body !== '') {
-                    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+                    if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
                         return $body;
                     }
 
@@ -1288,7 +1288,7 @@ class SportsBotCardRenderer
             Log::debug('sportsbot.card.image_fetch_failed', ['url' => $url, 'error' => $error->getMessage()]);
         }
 
-        if (is_file($path)) {
+        if (@is_file($path)) {
             $body = @file_get_contents($path);
             if (is_string($body) && $body !== '') {
                 return $body;
