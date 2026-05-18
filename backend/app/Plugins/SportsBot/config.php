@@ -512,4 +512,10 @@ return [
         'rich_cards' => env('SPORTSBOT_RICH_CARDS_ENABLED', true),
         'callback_throttle_seconds' => (int) env('SPORTSBOT_CALLBACK_THROTTLE_SECONDS', 2),
     ],
+
+    'updater' => [
+        'enabled' => env('SPORTSBOT_UPDATER_ENABLED', false),
+        'remote' => env('SPORTSBOT_UPDATER_REMOTE', 'origin'),
+        'admin_frontend_path' => env('SPORTSBOT_UPDATER_ADMIN_FRONTEND_PATH', 'resources/admin'),
+    ],
 ];

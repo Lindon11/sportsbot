@@ -32,6 +32,7 @@ class CoreAdminMenu
                 'order' => 2,
                 'children' => [
                     [ 'route' => '/settings',       'label' => 'Settings',    'icon' => 'Cog6ToothIcon' ],
+                    [ 'route' => '/live-env',       'label' => 'Live Env',    'icon' => 'ServerIcon' ],
                     [ 'route' => '/email-settings', 'label' => 'Email',       'icon' => 'EnvelopeIcon' ],
                     [ 'route' => '/plugin-settings','label' => 'Plugins',     'icon' => 'PuzzlePieceIcon' ],
                     [ 'route' => '/license',        'label' => 'License',     'icon' => 'KeyIcon' ],

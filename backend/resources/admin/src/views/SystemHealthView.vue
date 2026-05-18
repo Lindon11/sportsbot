@@ -301,6 +301,31 @@
       </div>
     </div>
 
+    <!-- Scheduler Setup -->
+    <div class="rounded-2xl bg-slate-800/50 backdrop-blur border border-slate-700/50 p-6">
+      <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+        <ClockIcon class="w-5 h-5 text-emerald-400" />
+        Scheduler Setup
+      </h3>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <div class="rounded-xl bg-slate-900/50 p-4">
+          <p class="text-sm font-medium text-white">Server cron</p>
+          <p class="mt-1 text-xs text-slate-400">Use this once if your host lets you add a normal cron job.</p>
+          <code class="mt-3 block rounded-lg bg-slate-950 p-3 text-xs text-slate-200 break-all">{{ schedulerSetup.server_cron }}</code>
+        </div>
+        <div class="rounded-xl bg-slate-900/50 p-4">
+          <p class="text-sm font-medium text-white">HTTP scheduler</p>
+          <p class="mt-1 text-xs text-slate-400">{{ schedulerSetup.note }}</p>
+          <code class="mt-3 block rounded-lg bg-slate-950 p-3 text-xs text-slate-200 break-all">
+            {{ schedulerSetup.http_url || 'Set APP_SCHEDULER_HTTP_TOKEN in Live Env to enable this URL.' }}
+          </code>
+          <p class="mt-2 text-xs" :class="schedulerSetup.http_enabled ? 'text-emerald-300' : 'text-amber-300'">
+            {{ schedulerSetup.http_enabled ? `Last HTTP run: ${schedulerSetup.http_last_run_at || 'not seen yet'}` : 'HTTP scheduler disabled' }}
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Error Logs -->
     <div class="rounded-2xl bg-slate-800/50 backdrop-blur border border-slate-700/50 p-6">
       <div class="flex items-center justify-between mb-4">
@@ -470,6 +495,13 @@ const database = ref({
 
 const errors = ref([])
 const scheduledTasks = ref([])
+const schedulerSetup = ref({
+  server_cron: '',
+  http_enabled: false,
+  http_url: null,
+  http_last_run_at: null,
+  note: '',
+})
 const showAllLogs = ref(false)
 
 const overallStatus = computed(() => {
@@ -516,6 +548,7 @@ async function refreshAll() {
       Object.assign(database.value, response.data.database || {})
       errors.value = response.data.errors || []
       scheduledTasks.value = response.data.scheduled_tasks || []
+      Object.assign(schedulerSetup.value, response.data.scheduler_setup || {})
     }
   } catch (error) {
     console.error('Failed to fetch health data:', error)
@@ -589,6 +622,14 @@ function loadSampleData() {
     { name: 'Process Energy Regen', schedule: '* * * * *', last_run: '30 sec ago', next_run: 'In 30 sec', status: 'success' },
     { name: 'Send Scheduled Emails', schedule: '*/5 * * * *', last_run: '2 min ago', next_run: 'In 3 min', status: 'success' }
   ]
+
+  schedulerSetup.value = {
+    server_cron: '* * * * * cd /path/to/backend && php artisan schedule:run >> /dev/null 2>&1',
+    http_enabled: false,
+    http_url: null,
+    http_last_run_at: null,
+    note: 'Set APP_SCHEDULER_HTTP_TOKEN in Live Env to enable the HTTP scheduler URL.',
+  }
 }
 
 function getUsageColor(value) {
@@ -609,7 +650,7 @@ function formatNumber(num) {
 
 async function retryFailedJobs() {
   try {
-    await api.post('/admin/queue/retry-failed')
+    await api.post('/admin/system/queue/retry-failed')
     await refreshAll()
   } catch (error) {
     console.error('Failed to retry jobs:', error)
@@ -619,7 +660,7 @@ async function retryFailedJobs() {
 
 async function clearCache(type) {
   try {
-    await api.post('/admin/cache/clear', { type })
+    await api.post('/admin/system/cache/clear', { type })
     await refreshAll()
     alert(`${type === 'all' ? 'All cache' : 'View cache'} cleared successfully`)
   } catch (error) {

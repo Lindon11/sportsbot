@@ -1,6 +1,7 @@
 <?php
 
 use App\Core\Http\Controllers\InstallerController;
+use App\Core\Http\Controllers\SchedulerHttpController;
 use Illuminate\Support\Facades\Route;
 
 // Installer Routes (API for SPA)
@@ -37,6 +38,10 @@ Route::prefix('install')->name('installer.')->middleware('installer')->group(fun
     Route::get('/license/check', [InstallerController::class, 'licenseCheck'])->name('license.check');
     Route::post('/complete', [InstallerController::class, 'complete'])->name('complete');
 });
+
+Route::get('/scheduler/run/{token}', [SchedulerHttpController::class, 'run'])
+    ->name('scheduler.http.run')
+    ->where('token', '[A-Za-z0-9_\-]{24,}');
 
 // Admin Control Panel SPA (including installer UI)
 Route::prefix('admin')->group(function () {

@@ -282,6 +282,7 @@ import {
   BriefcaseIcon,
   LifebuoyIcon,
   ServerIcon,
+  ArrowPathIcon,
   CubeIcon,
   IdentificationIcon,
   TagIcon,
@@ -301,7 +302,7 @@ const iconMap = {
   ExclamationTriangleIcon, NoSymbolIcon, PuzzlePieceIcon, FlagIcon, CommandLineIcon,
   BeakerIcon, ShoppingBagIcon, ShoppingCartIcon, RocketLaunchIcon, StarIcon,
   UserCircleIcon, EnvelopeIcon, CircleStackIcon, HeartIcon, KeyIcon,
-  BriefcaseIcon, LifebuoyIcon, ServerIcon, CubeIcon, IdentificationIcon, TagIcon, BellIcon, TvIcon,
+  BriefcaseIcon, LifebuoyIcon, ServerIcon, ArrowPathIcon, CubeIcon, IdentificationIcon, TagIcon, BellIcon, TvIcon,
 }
 
 const normalizeSidebar = (sections) => {
@@ -399,6 +400,7 @@ const pageTitle = computed(() => {
     '/user-tools': 'User Tools',
     '/roles': 'Roles & Permissions',
     '/settings': 'Settings',
+    '/live-env': 'Live Env',
     '/email-settings': 'Email Settings',
     '/plugin-settings': 'Plugins',
     '/ip-bans': 'IP Bans',
@@ -434,6 +436,7 @@ const pageTitle = computed(() => {
     '/sportsbot/scraper-settings': 'SportsBot Scraper Settings',
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
     '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
+    '/sportsbot/update': 'SportsBot Update',
   }
 
   // Check overrides first

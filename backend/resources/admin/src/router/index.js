@@ -104,6 +104,11 @@ const router = createRouter({
           component: () => import('../views/SettingsView.vue')
         },
         {
+          path: '/live-env',
+          name: 'live-env',
+          component: () => import('../views/LiveEnvView.vue')
+        },
+        {
           path: '/license',
           name: 'license',
           component: () => import('../views/LicenseView.vue')
@@ -233,6 +238,11 @@ const router = createRouter({
           path: '/sportsbot/fixture-queue',
           name: 'sportsbot-fixture-queue',
           component: () => import('../views/SportsBotFixtureQueueView.vue')
+        },
+        {
+          path: '/sportsbot/update',
+          name: 'sportsbot-update',
+          component: () => import('../views/SportsBotUpdateView.vue')
         },
         {
           path: '/sportsbot/motorsport-fixtures',

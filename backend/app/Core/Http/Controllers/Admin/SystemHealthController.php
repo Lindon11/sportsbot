@@ -29,6 +29,7 @@ class SystemHealthController extends Controller
             'database' => $this->getDatabaseStatus(),
             'errors' => $this->getRecentErrors(),
             'scheduled_tasks' => $this->getScheduledTasks(),
+            'scheduler_setup' => $this->getSchedulerSetup(),
         ]);
     }
 
@@ -676,6 +677,21 @@ class SystemHealthController extends Controller
         // Check if cron is configured for scheduler
         // This is a simplified check
         return true;
+    }
+
+    protected function getSchedulerSetup(): array
+    {
+        $token = trim((string) env('APP_SCHEDULER_HTTP_TOKEN', ''));
+        $baseUrl = rtrim((string) config('app.url'), '/');
+        $backend = base_path();
+
+        return [
+            'server_cron' => '* * * * * cd ' . $backend . ' && php artisan schedule:run >> /dev/null 2>&1',
+            'http_enabled' => $token !== '',
+            'http_url' => $token !== '' ? $baseUrl . '/scheduler/run/' . $token : null,
+            'http_last_run_at' => Cache::get('http_scheduler_last_run_at'),
+            'note' => 'Best option is one server cron entry. If SSH is awkward, set APP_SCHEDULER_HTTP_TOKEN and call the HTTP URL every minute from cPanel cron, EasyCron, cron-job.org, or UptimeRobot.',
+        ];
     }
 
     protected function formatBytes(int $bytes): string

@@ -164,6 +164,11 @@ Route::prefix('v1')->group(function () {
                 Route::delete('/{key}', 'destroy');
             });
 
+            Route::prefix('env')->controller(\App\Core\Http\Controllers\Admin\EnvSettingsController::class)->group(function () {
+                Route::get('/', 'index');
+                Route::post('/', 'update');
+            });
+
             // Webhooks Management
             Route::prefix('webhooks')->controller(\App\Core\Http\Controllers\Admin\WebhookController::class)->group(function () {
                 Route::get('/', 'index');
