@@ -88,31 +88,15 @@ class UpdateController extends Controller
 
         $root = $this->repositoryRoot();
         $remote = $this->remoteName();
-        $adminFrontend = base_path(config('plugins.SportsBot.updater.admin_frontend_path', 'resources/admin'));
+        $adminFrontend = $this->adminFrontendPath();
 
         $steps = array_merge([
             ['name' => 'Fetch latest code', 'cmd' => ['git', 'fetch', '--prune', $remote], 'cwd' => $root, 'timeout' => 120],
             ['name' => 'Pull update', 'cmd' => ['git', 'pull', '--ff-only'], 'cwd' => $root, 'timeout' => 120],
         ], $this->postUpdateSteps($adminFrontend));
 
-        $ok = true;
-
         try {
-            foreach ($steps as $step) {
-                $result = $this->runCommand($step['cmd'], $step['cwd'], $step['timeout']);
-
-                $logs[] = [
-                    'step' => $step['name'],
-                    'ok' => $result['ok'],
-                    'exit_code' => $result['exit_code'],
-                    'output' => $result['output'],
-                ];
-
-                if (!$result['ok']) {
-                    $ok = false;
-                    break;
-                }
-            }
+            $ok = $this->runSteps($steps, $logs);
         } finally {
             optional($lock)->release();
         }
@@ -192,7 +176,7 @@ class UpdateController extends Controller
         $root = $this->repositoryRoot();
         $remote = $this->remoteName();
         $target = $this->forceSyncTarget($remote);
-        $adminFrontend = base_path(config('plugins.SportsBot.updater.admin_frontend_path', 'resources/admin'));
+        $adminFrontend = $this->adminFrontendPath();
 
         $steps = array_merge([
             ['name' => 'Fetch latest code', 'cmd' => ['git', 'fetch', '--prune', $remote], 'cwd' => $root, 'timeout' => 120],
@@ -200,24 +184,8 @@ class UpdateController extends Controller
             ['name' => 'Remove untracked files', 'cmd' => ['git', 'clean', '-fd'], 'cwd' => $root, 'timeout' => 120],
         ], $this->postUpdateSteps($adminFrontend));
 
-        $ok = true;
-
         try {
-            foreach ($steps as $step) {
-                $result = $this->runCommand($step['cmd'], $step['cwd'], $step['timeout']);
-
-                $logs[] = [
-                    'step' => $step['name'],
-                    'ok' => $result['ok'],
-                    'exit_code' => $result['exit_code'],
-                    'output' => $result['output'],
-                ];
-
-                if (!$result['ok']) {
-                    $ok = false;
-                    break;
-                }
-            }
+            $ok = $this->runSteps($steps, $logs);
         } finally {
             optional($lock)->release();
         }
@@ -235,6 +203,66 @@ class UpdateController extends Controller
         return response()->json([
             'ok' => $ok,
             'message' => $ok ? 'Force sync completed successfully.' : $this->failedStepMessage($logs, 'Force sync stopped because a step failed.'),
+            'status' => $finalStatus,
+            'logs' => $logs,
+        ], $ok ? 200 : 500);
+    }
+
+    public function rebuildAdminUi(): JsonResponse
+    {
+        if ($response = $this->adminOnlyResponse()) {
+            return $response;
+        }
+
+        $logs = [];
+        $status = $this->buildStatus(false);
+
+        if (!$status['enabled']) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Admin updates are disabled. Set SPORTSBOT_UPDATER_ENABLED=true on the live server to enable admin UI rebuilds.',
+                'status' => $status,
+                'logs' => [],
+            ], 403);
+        }
+
+        if (!$status['requirements']['php'] || !$status['requirements']['npm']) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'PHP and NPM must be available to rebuild the admin UI.',
+                'status' => $status,
+                'logs' => [],
+            ], 422);
+        }
+
+        $lock = Cache::lock('sportsbot_admin_update', 600);
+
+        if (!$lock->get()) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Another update or admin UI rebuild is already running.',
+                'status' => $status,
+                'logs' => [],
+            ], 409);
+        }
+
+        try {
+            $ok = $this->runSteps($this->adminRebuildSteps($this->adminFrontendPath()), $logs);
+        } finally {
+            optional($lock)->release();
+        }
+
+        $finalStatus = $this->buildStatus(false);
+
+        Log::info('sportsbot.admin.rebuild_admin_ui_completed', [
+            'ok' => $ok,
+            'steps' => count($logs),
+            'commit' => $finalStatus['current_commit'],
+        ]);
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => $ok ? 'Admin UI rebuilt successfully.' : $this->failedStepMessage($logs, 'Admin UI rebuild stopped because a step failed.'),
             'status' => $finalStatus,
             'logs' => $logs,
         ], $ok ? 200 : 500);
@@ -381,6 +409,17 @@ class UpdateController extends Controller
         return (string) config('plugins.SportsBot.updater.remote', 'origin');
     }
 
+    private function adminFrontendPath(): string
+    {
+        $path = trim((string) config('plugins.SportsBot.updater.admin_frontend_path', 'resources/admin'));
+
+        if ($path !== '' && str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return base_path($path !== '' ? $path : 'resources/admin');
+    }
+
     private function forceSyncTarget(string $remote): string
     {
         return trim((string) config('plugins.SportsBot.updater.force_sync_target', "{$remote}/main")) ?: "{$remote}/main";
@@ -393,16 +432,178 @@ class UpdateController extends Controller
             ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
             ['name' => 'Ensure storage link', 'cmd' => ['php', 'artisan', 'storage:link'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Install admin frontend dependencies', 'cmd' => ['npm', 'ci'], 'cwd' => $adminFrontend, 'timeout' => 300],
+            ...$this->adminRebuildSteps($adminFrontend),
+        ];
+    }
+
+    private function adminRebuildSteps(string $adminFrontend): array
+    {
+        $before = [];
+
+        return [
+            ['name' => 'Check admin frontend source', 'run' => fn (): array => $this->checkAdminFrontend($adminFrontend)],
+            ['name' => 'Install admin frontend dependencies', 'cmd' => ['npm', 'ci', '--include=dev'], 'cwd' => $adminFrontend, 'timeout' => 300],
+            ['name' => 'Snapshot admin assets before build', 'run' => function () use (&$before): array {
+                $before = $this->adminAssetsSnapshot();
+
+                return [
+                    'ok' => true,
+                    'exit_code' => 0,
+                    'output' => $this->formatAdminAssetsSnapshot('Before build', $before),
+                ];
+            }],
             ['name' => 'Build admin frontend', 'cmd' => ['npm', 'run', 'build'], 'cwd' => $adminFrontend, 'timeout' => 600],
+            ['name' => 'Verify admin assets changed', 'run' => fn (): array => $this->verifyAdminAssetsChanged($before)],
+            ['name' => 'Clear Laravel caches after admin rebuild', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
         ];
     }
 
+    private function checkAdminFrontend(string $adminFrontend): array
+    {
+        $required = [
+            $adminFrontend,
+            $adminFrontend . '/package.json',
+            $adminFrontend . '/package-lock.json',
+            $adminFrontend . '/vite.config.js',
+        ];
+
+        $missing = array_values(array_filter($required, static fn (string $path): bool => !file_exists($path)));
+
+        if ($missing !== []) {
+            return [
+                'ok' => false,
+                'exit_code' => null,
+                'output' => 'Missing admin frontend path(s):' . "\n" . implode("\n", $missing),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'exit_code' => 0,
+            'output' => 'Admin frontend path: ' . $adminFrontend . "\n" . 'Build output path: ' . public_path('admin'),
+        ];
+    }
+
+    private function verifyAdminAssetsChanged(array $before): array
+    {
+        clearstatcache();
+
+        $after = $this->adminAssetsSnapshot();
+        $indexExists = is_file(public_path('admin/index.html'));
+        $assetsExist = is_dir(public_path('admin/assets')) && (int) ($after['asset_count'] ?? 0) > 0;
+        $changed = ($after['signature'] ?? '') !== ($before['signature'] ?? '')
+            || (int) ($after['latest_mtime'] ?? 0) > (int) ($before['latest_mtime'] ?? 0)
+            || (int) ($after['index_mtime'] ?? 0) > (int) ($before['index_mtime'] ?? 0);
+
+        $output = $this->formatAdminAssetsSnapshot('Before build', $before)
+            . "\n\n"
+            . $this->formatAdminAssetsSnapshot('After build', $after);
+
+        if (!$indexExists || !$assetsExist) {
+            return [
+                'ok' => false,
+                'exit_code' => null,
+                'output' => $output . "\n\n" . 'Admin build did not produce public/admin/index.html and public/admin/assets.',
+            ];
+        }
+
+        if (!$changed) {
+            return [
+                'ok' => false,
+                'exit_code' => null,
+                'output' => $output . "\n\n" . 'Admin assets did not change after npm run build.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'exit_code' => 0,
+            'output' => $output . "\n\n" . 'Admin assets changed and are ready to serve.',
+        ];
+    }
+
+    private function adminAssetsSnapshot(): array
+    {
+        $assetsPath = public_path('admin/assets');
+        $indexPath = public_path('admin/index.html');
+        $files = is_dir($assetsPath) ? glob($assetsPath . '/*') : [];
+        $files = is_array($files) ? array_values(array_filter($files, 'is_file')) : [];
+        sort($files);
+
+        $latestMtime = 0;
+        $totalBytes = 0;
+        $parts = [];
+
+        foreach ($files as $file) {
+            $mtime = (int) filemtime($file);
+            $bytes = (int) filesize($file);
+            $latestMtime = max($latestMtime, $mtime);
+            $totalBytes += $bytes;
+            $parts[] = basename($file) . ':' . $bytes . ':' . $mtime;
+        }
+
+        $indexMtime = is_file($indexPath) ? (int) filemtime($indexPath) : 0;
+        $indexBytes = is_file($indexPath) ? (int) filesize($indexPath) : 0;
+        $signature = sha1(implode('|', $parts) . '|index:' . $indexBytes . ':' . $indexMtime);
+
+        return [
+            'asset_path' => $assetsPath,
+            'index_path' => $indexPath,
+            'asset_count' => count($files),
+            'total_bytes' => $totalBytes,
+            'latest_mtime' => $latestMtime,
+            'latest_mtime_label' => $latestMtime > 0 ? date('c', $latestMtime) : 'missing',
+            'index_mtime' => $indexMtime,
+            'index_mtime_label' => $indexMtime > 0 ? date('c', $indexMtime) : 'missing',
+            'signature' => $signature,
+        ];
+    }
+
+    private function formatAdminAssetsSnapshot(string $label, array $snapshot): string
+    {
+        return $label . ':'
+            . "\n" . 'Assets path: ' . (string) ($snapshot['asset_path'] ?? public_path('admin/assets'))
+            . "\n" . 'Index path: ' . (string) ($snapshot['index_path'] ?? public_path('admin/index.html'))
+            . "\n" . 'Asset count: ' . (string) ($snapshot['asset_count'] ?? 0)
+            . "\n" . 'Total bytes: ' . (string) ($snapshot['total_bytes'] ?? 0)
+            . "\n" . 'Latest asset mtime: ' . (string) ($snapshot['latest_mtime_label'] ?? 'missing')
+            . "\n" . 'Index mtime: ' . (string) ($snapshot['index_mtime_label'] ?? 'missing')
+            . "\n" . 'Signature: ' . (string) ($snapshot['signature'] ?? '');
+    }
+
     private function binaryAvailable(string $binary, string $cwd): bool
     {
         return $this->runCommand([$binary, '--version'], $cwd, 20)['ok'];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $steps
+     * @param array<int, array{step:string,ok:bool,exit_code:int|null,output:string}> $logs
+     */
+    private function runSteps(array $steps, array &$logs): bool
+    {
+        foreach ($steps as $step) {
+            if (isset($step['run']) && is_callable($step['run'])) {
+                $result = $step['run']();
+            } else {
+                $result = $this->runCommand($step['cmd'], $step['cwd'], $step['timeout']);
+            }
+
+            $logs[] = [
+                'step' => (string) $step['name'],
+                'ok' => (bool) ($result['ok'] ?? false),
+                'exit_code' => $result['exit_code'] ?? null,
+                'output' => (string) ($result['output'] ?? ''),
+            ];
+
+            if (!($result['ok'] ?? false)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

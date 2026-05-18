@@ -7,7 +7,7 @@
       </div>
       <button
         @click="loadStatus"
-        :disabled="checking || updating || forceSyncing"
+        :disabled="checking || updating || forceSyncing || rebuildingAdmin"
         class="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <ArrowPathIcon :class="['h-5 w-5', checking && 'animate-spin']" />
@@ -57,7 +57,7 @@
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
               @click="applyUpdate"
-              :disabled="!status.can_update || updating || forceSyncing"
+              :disabled="!status.can_update || updating || forceSyncing || rebuildingAdmin"
               class="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               <ArrowDownTrayIcon v-if="!updating" class="h-5 w-5" />
@@ -65,8 +65,17 @@
               {{ updating ? 'Applying...' : 'Apply Update' }}
             </button>
             <button
+              @click="rebuildAdminUi"
+              :disabled="!canRebuildAdmin || updating || forceSyncing || rebuildingAdmin"
+              class="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-400/50 bg-sky-500/10 px-5 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+            >
+              <WrenchScrewdriverIcon v-if="!rebuildingAdmin" class="h-5 w-5" />
+              <ArrowPathIcon v-else class="h-5 w-5 animate-spin" />
+              {{ rebuildingAdmin ? 'Rebuilding...' : 'Rebuild Admin UI' }}
+            </button>
+            <button
               @click="forceSync"
-              :disabled="!canForceSync || updating || forceSyncing"
+              :disabled="!canForceSync || updating || forceSyncing || rebuildingAdmin"
               class="inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-5 py-2.5 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
             >
               <ExclamationTriangleIcon v-if="!forceSyncing" class="h-5 w-5" />
@@ -131,6 +140,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
+  WrenchScrewdriverIcon,
   XCircleIcon,
 } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -138,6 +148,7 @@ import api from '@/services/api'
 const checking = ref(false)
 const updating = ref(false)
 const forceSyncing = ref(false)
+const rebuildingAdmin = ref(false)
 const error = ref('')
 const logs = ref([])
 const status = ref(null)
@@ -177,6 +188,18 @@ const canForceSync = computed(() => {
   )
 })
 
+const canRebuildAdmin = computed(() => {
+  if (!status.value) return false
+
+  const requirements = status.value.requirements || {}
+
+  return (
+    Boolean(status.value.enabled)
+    && Boolean(requirements.php)
+    && Boolean(requirements.npm)
+  )
+})
+
 async function loadStatus() {
   checking.value = true
   error.value = ''
@@ -192,7 +215,7 @@ async function loadStatus() {
 }
 
 async function applyUpdate() {
-  if (!status.value?.can_update || updating.value || forceSyncing.value) return
+  if (!status.value?.can_update || updating.value || forceSyncing.value || rebuildingAdmin.value) return
   if (!window.confirm('Apply the latest update now?')) return
 
   updating.value = true
@@ -214,7 +237,7 @@ async function applyUpdate() {
 }
 
 async function forceSync() {
-  if (!canForceSync.value || updating.value || forceSyncing.value) return
+  if (!canForceSync.value || updating.value || forceSyncing.value || rebuildingAdmin.value) return
 
   const target = status.value?.force_sync_target || 'origin/main'
   const confirmation = window.prompt(
@@ -238,6 +261,28 @@ async function forceSync() {
     error.value = data?.message || 'Force sync failed'
   } finally {
     forceSyncing.value = false
+  }
+}
+
+async function rebuildAdminUi() {
+  if (!canRebuildAdmin.value || updating.value || forceSyncing.value || rebuildingAdmin.value) return
+  if (!window.confirm('Rebuild the admin Vue/Vite assets now?')) return
+
+  rebuildingAdmin.value = true
+  error.value = ''
+  logs.value = []
+
+  try {
+    const { data } = await api.post('/admin/sportsbot/update/rebuild-admin-ui')
+    logs.value = data.logs || []
+    status.value = data.status || status.value
+  } catch (err) {
+    const data = err?.response?.data
+    logs.value = data?.logs || []
+    status.value = data?.status || status.value
+    error.value = data?.message || 'Admin UI rebuild failed'
+  } finally {
+    rebuildingAdmin.value = false
   }
 }
 

@@ -70,5 +70,6 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     // Update
     Route::get('/update/check', [UpdateController::class, 'check'])->name('update.check');
     Route::post('/update/run', [UpdateController::class, 'update'])->name('update.run');
+    Route::post('/update/rebuild-admin-ui', [UpdateController::class, 'rebuildAdminUi'])->name('update.rebuild-admin-ui');
     Route::post('/update/force-sync', [UpdateController::class, 'forceSync'])->name('update.force-sync');
 });
