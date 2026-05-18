@@ -91,6 +91,7 @@ class UpdateController extends Controller
         $adminFrontend = $this->adminFrontendPath();
 
         $steps = array_merge([
+            ['name' => 'Clean generated admin assets before Git update', 'run' => fn (): array => $this->normalizeAdminBuildArtifacts($root)],
             ['name' => 'Fetch latest code', 'cmd' => ['git', 'fetch', '--prune', $remote], 'cwd' => $root, 'timeout' => 120],
             ['name' => 'Pull update', 'cmd' => ['git', 'pull', '--ff-only'], 'cwd' => $root, 'timeout' => 120],
         ], $this->postUpdateSteps($adminFrontend));
@@ -288,8 +289,10 @@ class UpdateController extends Controller
             'commits_behind' => 0,
             'commits_ahead' => 0,
             'tracked_changes' => [],
+            'ignored_tracked_changes' => [],
             'has_tracked_changes' => false,
             'untracked_count' => 0,
+            'ignored_untracked_count' => 0,
             'update_available' => false,
             'requirements' => [
                 'git' => false,
@@ -361,13 +364,17 @@ class UpdateController extends Controller
 
         $trackedChanges = $this->runCommand(['git', 'status', '--porcelain', '--untracked-files=no'], $root);
         if ($trackedChanges['ok']) {
-            $status['tracked_changes'] = array_values(array_filter(explode("\n", trim($trackedChanges['output']))));
+            $tracked = array_values(array_filter(explode("\n", trim($trackedChanges['output']))));
+            $status['ignored_tracked_changes'] = array_values(array_filter($tracked, fn (string $line): bool => $this->isAdminBuildArtifactStatusLine($line)));
+            $status['tracked_changes'] = array_values(array_filter($tracked, fn (string $line): bool => !$this->isAdminBuildArtifactStatusLine($line)));
             $status['has_tracked_changes'] = count($status['tracked_changes']) > 0;
         }
 
         $untracked = $this->runCommand(['git', 'ls-files', '--others', '--exclude-standard'], $root);
         if ($untracked['ok'] && trim($untracked['output']) !== '') {
-            $status['untracked_count'] = count(array_filter(explode("\n", trim($untracked['output']))));
+            $untrackedFiles = array_values(array_filter(explode("\n", trim($untracked['output']))));
+            $status['ignored_untracked_count'] = count(array_filter($untrackedFiles, fn (string $path): bool => $this->isAdminBuildArtifactPath($path)));
+            $status['untracked_count'] = count(array_filter($untrackedFiles, fn (string $path): bool => !$this->isAdminBuildArtifactPath($path)));
         }
 
         $status['repository_ready'] = true;
@@ -457,6 +464,38 @@ class UpdateController extends Controller
             ['name' => 'Clear Laravel caches after admin rebuild', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
+        ];
+    }
+
+    private function normalizeAdminBuildArtifacts(string $root): array
+    {
+        $restore = $this->runCommand([
+            'git',
+            'restore',
+            '--',
+            ...$this->adminBuildArtifactPaths(),
+        ], $root, 120);
+
+        $clean = $this->runCommand([
+            'git',
+            'clean',
+            '-fd',
+            '--',
+            'backend/public/admin/assets',
+        ], $root, 120);
+
+        $output = [
+            'git restore -- ' . implode(' ', $this->adminBuildArtifactPaths()),
+            $restore['output'] !== '' ? $restore['output'] : '(no output)',
+            '',
+            'git clean -fd -- backend/public/admin/assets',
+            $clean['output'] !== '' ? $clean['output'] : '(no output)',
+        ];
+
+        return [
+            'ok' => $restore['ok'] && $clean['ok'],
+            'exit_code' => $restore['ok'] ? $clean['exit_code'] : $restore['exit_code'],
+            'output' => implode("\n", $output),
         ];
     }
 
@@ -576,6 +615,44 @@ class UpdateController extends Controller
     private function binaryAvailable(string $binary, string $cwd): bool
     {
         return $this->runCommand([$binary, '--version'], $cwd, 20)['ok'];
+    }
+
+    private function isAdminBuildArtifactStatusLine(string $line): bool
+    {
+        $line = trim($line);
+        if ($line === '') {
+            return false;
+        }
+
+        $path = trim(substr($line, 3));
+        if (str_contains($path, ' -> ')) {
+            [$from, $to] = array_pad(explode(' -> ', $path, 2), 2, '');
+
+            return $this->isAdminBuildArtifactPath($from) || $this->isAdminBuildArtifactPath($to);
+        }
+
+        return $this->isAdminBuildArtifactPath($path);
+    }
+
+    private function isAdminBuildArtifactPath(string $path): bool
+    {
+        $path = trim($path, " \t\n\r\0\x0B\"'");
+
+        foreach ($this->adminBuildArtifactPaths() as $artifactPath) {
+            if ($path === $artifactPath || str_starts_with($path, rtrim($artifactPath, '/') . '/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function adminBuildArtifactPaths(): array
+    {
+        return [
+            'backend/public/admin/index.html',
+            'backend/public/admin/assets',
+        ];
     }
 
     /**
