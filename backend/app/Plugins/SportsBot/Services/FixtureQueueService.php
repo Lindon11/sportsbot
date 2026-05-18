@@ -15,7 +15,7 @@ class FixtureQueueService
         private readonly TheSportsDbClient $provider = new TheSportsDbClient(),
         private readonly FixturesTodayService $fixturesService = new FixturesTodayService(),
         private readonly SportsBotCardRenderer $cards = new SportsBotCardRenderer(),
-        private readonly TelegramNotifier $notifier = new TelegramNotifier(),
+        private readonly SportsBotNotifier $notifier = new SportsBotNotifier(),
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
         private readonly SportsBotScraperService $scrapers = new SportsBotScraperService(),
@@ -432,16 +432,15 @@ class FixtureQueueService
         ];
 
         if ($cardPath !== '' && is_file($cardPath)) {
-            $targets = $this->routingService->resolveTargets($routeKey);
-            $tgResults = $this->notifier->sendPhoto($cardPath, $caption, $notifyOptions);
+            $sendResults = $this->notifier->sendPhoto($cardPath, $caption, $notifyOptions);
 
-            $first = $tgResults[0] ?? [];
+            $telegramResult = $this->firstDeliveryResult($sendResults, 'telegram');
 
             return [
-                'message_id' => $first['message_id'] ?? null,
-                'topic_id' => $first['message_thread_id'] ?? null,
-                'chat_id' => $first['chat_id'] ?? null,
-                'results' => $tgResults,
+                'message_id' => $telegramResult['message_id'] ?? null,
+                'topic_id' => $telegramResult['message_thread_id'] ?? null,
+                'chat_id' => $telegramResult['chat_id'] ?? null,
+                'results' => $sendResults,
             ];
         }
 
@@ -462,15 +461,30 @@ class FixtureQueueService
             '📺 UK TV: ' . $tvChannel,
         ]);
 
-        $tgResults = $this->notifier->send($text, $notifyOptions);
-        $first = $tgResults[0] ?? [];
+        $sendResults = $this->notifier->send($text, $notifyOptions);
+        $telegramResult = $this->firstDeliveryResult($sendResults, 'telegram');
 
         return [
-            'message_id' => $first['message_id'] ?? null,
-            'topic_id' => $first['message_thread_id'] ?? null,
-            'chat_id' => $first['chat_id'] ?? null,
-            'results' => $tgResults,
+            'message_id' => $telegramResult['message_id'] ?? null,
+            'topic_id' => $telegramResult['message_thread_id'] ?? null,
+            'chat_id' => $telegramResult['chat_id'] ?? null,
+            'results' => $sendResults,
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $results
+     * @return array<string, mixed>
+     */
+    private function firstDeliveryResult(array $results, string $platform): array
+    {
+        foreach ($results as $result) {
+            if (($result['platform'] ?? null) === $platform) {
+                return $result;
+            }
+        }
+
+        return [];
     }
 
     public function find(int $id): ?SportsBotFixtureQueue
@@ -651,6 +665,9 @@ class FixtureQueueService
         }
 
         $result = $this->scrapers->accept($entry);
+        if (($result['accepted'] ?? false) === true) {
+            $result['render'] = $this->reRenderItem($id);
+        }
         $fresh = $entry->fresh();
 
         return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);

@@ -5,6 +5,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/status', [SportsBotController::class, 'status'])->name('status');
+    Route::get('/autopilot', [SportsBotController::class, 'autopilotStatus'])->name('autopilot');
+    Route::get('/post-timings', [SportsBotController::class, 'postTimings'])->name('post-timings');
+    Route::post('/post-timings', [SportsBotController::class, 'savePostTimings'])->name('post-timings.save');
     Route::post('/run', [SportsBotController::class, 'run'])->name('run');
     Route::post('/test-route', [SportsBotController::class, 'testRoute'])->name('test-route');
     Route::get('/fixture-queue', [SportsBotController::class, 'fixtureQueue'])->name('fixture-queue');
@@ -43,6 +46,12 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/scraper-settings', [SportsBotController::class, 'scraperSettings'])->name('scraper-settings');
     Route::post('/scraper-settings', [SportsBotController::class, 'saveScraperSettings'])->name('scraper-settings.save');
     Route::post('/telegram/send-diagnostics', [SportsBotController::class, 'sendTelegramDiagnostics'])->name('telegram.send-diagnostics');
+    Route::post('/discord/send-diagnostics', [SportsBotController::class, 'sendDiscordDiagnostics'])->name('discord.send-diagnostics');
+    Route::get('/discord/routes', [SportsBotController::class, 'discordRoutesIndex'])->name('discord.routes');
+    Route::post('/discord/settings', [SportsBotController::class, 'saveDiscordSettings'])->name('discord.settings.save');
+    Route::post('/discord/routes', [SportsBotController::class, 'saveDiscordRoute'])->name('discord.routes.save');
+    Route::post('/discord/routes/test', [SportsBotController::class, 'testDiscordRoute'])->name('discord.routes.test');
+    Route::delete('/discord/routes/{routeKey}', [SportsBotController::class, 'deleteDiscordRoute'])->name('discord.routes.delete');
     Route::get('/telegram/messages', [SportsBotController::class, 'telegramMessages'])->name('telegram.messages');
     Route::get('/telegram/topics', [SportsBotController::class, 'telegramTopics'])->name('telegram.topics');
     Route::post('/telegram/topics', [SportsBotController::class, 'saveTelegramTopic'])->name('telegram.topics.save');

@@ -27,11 +27,17 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
 
     public function scrape(SportsBotFixtureQueue $entry, string $action): array
     {
-        $urls = $this->fixtureSourceUrls($entry, $this->scraperArray('broadcast_schedule_urls'));
+        $urls = $this->fixtureSourceUrls($entry, array_merge(
+            $this->scraperArray('broadcast_schedule_urls'),
+            (array) config('plugins.SportsBot.scrapers.broadcast_schedule_urls', [])
+        ));
         $discovery = $this->discoverPublicUrls($entry, array_merge([
             '{event_name} UK TV channel',
             '{home_team} vs {away_team} UK TV channel',
+            '{home_team} v {away_team} on TV',
+            '{home_team} {away_team} TV channel',
             '{event_name} live on TV UK',
+            '{league} TV schedule {home_team} {away_team}',
             '{league} {event_name} TV schedule UK',
         ], $this->scraperArray('broadcast_schedule_search_queries')));
         $urls = array_values(array_unique(array_merge($urls, $discovery['urls'])));
@@ -47,31 +53,36 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             }
 
             $xpath = $this->dom($page['html']);
-            $text = $this->visibleText($xpath);
+            $text = $this->pageSearchText($xpath);
             $title = $this->title($xpath);
+            $matchScore = $this->fixtureMatchScore($entry, $title . ' ' . $text);
             $window = $this->fixtureWindow($entry, $text);
-            if ($window === '' && !$this->titleMatchesFixture($title . ' ' . $text, $entry)) {
+            if ($window === '' && $matchScore < 0.45) {
                 $logs[] = ['source_url' => $url, 'checked_at' => now()->toISOString(), 'status' => 'skipped', 'error' => 'Schedule page did not mention fixture'];
                 continue;
             }
 
-            $searchText = $window !== '' ? $window : $text;
+            $searchText = $window !== '' ? $window : $this->bestSignalWindow($entry, $text);
             $channels = $this->findChannels($searchText, $knownChannels);
             $dateTime = $this->findDateTimeNearFixture($entry, $searchText);
-            if ($channels === [] && $dateTime === '') {
-                $logs[] = ['source_url' => $url, 'checked_at' => now()->toISOString(), 'status' => 'empty', 'error' => 'No TV channel or date/time found near fixture'];
+            if ($channels === []) {
+                $logs[] = ['source_url' => $url, 'checked_at' => now()->toISOString(), 'status' => 'empty', 'error' => 'No TV channel found near fixture'];
                 continue;
             }
 
+            $eventTitle = $this->eventTitle($entry, $title);
             $fields = [
-                'event_name' => $title,
+                'event_name' => $eventTitle,
                 'venue' => $this->findVenue($searchText),
                 'tv_channel' => $channels[0] ?? '',
                 'tv_channels' => $channels,
             ] + $this->teamsFromTitle($title) + $this->normalizer->dateTimeFields($dateTime);
 
             $fields = $this->normalizer->sanitizeFields($fields);
-            $confidence = $this->confidence($fields, $channels !== [] ? 0.45 : 0.2);
+            $confidence = $this->confidence($fields, min(0.72, 0.42 + ($matchScore * 0.24) + ($window !== '' ? 0.06 : 0.0) + ($dateTime !== '' ? 0.04 : 0.0)));
+            if ($eventTitle === '' && $dateTime === '') {
+                $confidence = min($confidence, count($channels) > 4 ? 0.78 : 0.82);
+            }
 
             $results[] = [
                 'provider' => $this->key(),
@@ -85,6 +96,8 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
                 'status' => $fields === [] ? 'empty' : 'found',
                 'confidence' => $confidence,
                 'fields_found' => array_keys($fields),
+                'match_score' => $matchScore,
+                'channels_found' => $channels,
             ];
         }
 
@@ -161,6 +174,14 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             return $matches[0];
         }
 
+        if (preg_match('/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+\d{1,2}\s+[A-Z][a-z]+\s+(?:20\d{2}\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i', $window, $matches) === 1) {
+            return $matches[0];
+        }
+
+        if (preg_match('/\b\d{1,2}\s+[A-Z][a-z]+\s+(?:20\d{2}\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i', $window, $matches) === 1) {
+            return $matches[0];
+        }
+
         return '';
     }
 
@@ -178,14 +199,163 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             return '';
         }
 
+        $homePosition = $this->firstRawPosition($text, $this->fixtureAliases((string) ($fixture['home_team'] ?? '')));
+        $awayPosition = $this->firstRawPosition($text, $this->fixtureAliases((string) ($fixture['away_team'] ?? '')));
+        if ($homePosition !== null && $awayPosition !== null && abs($homePosition - $awayPosition) <= 1200) {
+            $start = max(0, min($homePosition, $awayPosition) - 420);
+            $length = abs($homePosition - $awayPosition) + 1200;
+
+            return substr($text, $start, $length);
+        }
+
         foreach ($needles as $needle) {
-            $position = stripos($text, (string) $needle);
-            if ($position !== false) {
+            $position = $this->firstRawPosition($text, $this->fixtureAliases((string) $needle));
+            if ($position !== null) {
                 return substr($text, max(0, $position - 320), 900);
             }
         }
 
         return '';
+    }
+
+    private function bestSignalWindow(SportsBotFixtureQueue $entry, string $text): string
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+        foreach (['event_name', 'home_team', 'away_team', 'league'] as $key) {
+            $position = $this->firstRawPosition($text, $this->fixtureAliases((string) ($fixture[$key] ?? '')));
+            if ($position !== null) {
+                return substr($text, max(0, $position - 400), 1200);
+            }
+        }
+
+        return substr($text, 0, 1800);
+    }
+
+    private function eventTitle(SportsBotFixtureQueue $entry, string $title): string
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return '';
+        }
+
+        if (preg_match('/\b(?:tv guide|sports tv schedules?|live sport on tv|watch live|fixtures?|schedule)\b/i', $title) === 1) {
+            return '';
+        }
+
+        $fixture = (array) ($entry->fixture_data ?? []);
+        foreach (['event_name', 'home_team', 'away_team'] as $key) {
+            if ($this->hasAnyAlias($title, $this->fixtureAliases((string) ($fixture[$key] ?? '')))) {
+                return $title;
+            }
+        }
+
+        return '';
+    }
+
+    private function fixtureMatchScore(SportsBotFixtureQueue $entry, string $text): float
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+        $event = $this->hasAnyAlias($text, $this->fixtureAliases((string) ($fixture['event_name'] ?? '')));
+        $home = $this->hasAnyAlias($text, $this->fixtureAliases((string) ($fixture['home_team'] ?? '')));
+        $away = $this->hasAnyAlias($text, $this->fixtureAliases((string) ($fixture['away_team'] ?? '')));
+        $league = $this->hasAnyAlias($text, $this->fixtureAliases((string) ($fixture['league'] ?? '')));
+
+        if ($home && $away) {
+            return 1.0;
+        }
+
+        if ($event) {
+            return $league ? 0.9 : 0.78;
+        }
+
+        if (($home || $away) && $league) {
+            return 0.62;
+        }
+
+        return $league ? 0.42 : 0.0;
+    }
+
+    /**
+     * @param array<int, string> $aliases
+     */
+    private function hasAnyAlias(string $text, array $aliases): bool
+    {
+        return $this->firstPosition($text, $aliases) !== null;
+    }
+
+    /**
+     * @param array<int, string> $aliases
+     */
+    private function firstPosition(string $text, array $aliases): ?int
+    {
+        $haystack = $this->normalizedText($text);
+
+        foreach ($aliases as $alias) {
+            $needle = $this->normalizedText($alias);
+            if ($needle === '' || mb_strlen($needle) < 3) {
+                continue;
+            }
+
+            $position = strpos($haystack, $needle);
+            if ($position !== false) {
+                return $position;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, string> $aliases
+     */
+    private function firstRawPosition(string $text, array $aliases): ?int
+    {
+        $best = null;
+
+        foreach ($aliases as $alias) {
+            $alias = trim($alias);
+            if ($alias === '' || mb_strlen($alias) < 3) {
+                continue;
+            }
+
+            $position = stripos($text, $alias);
+            if ($position !== false) {
+                $best = min($best ?? PHP_INT_MAX, $position);
+            }
+        }
+
+        return $best === null ? null : $best;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function fixtureAliases(string $value): array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return [];
+        }
+
+        $aliases = [$value];
+        $withoutBrackets = trim(preg_replace('/\s*\([^)]*\)\s*/', ' ', $value) ?? $value);
+        if ($withoutBrackets !== '') {
+            $aliases[] = $withoutBrackets;
+        }
+
+        foreach (preg_split('/\s+(?:vs\.?|v)\s+/i', $value) ?: [] as $part) {
+            $part = trim($part);
+            if ($part !== '') {
+                $aliases[] = $part;
+            }
+        }
+
+        $aliases[] = preg_replace('/\b(?:fc|afc|cf|club|the)\b/i', '', $withoutBrackets) ?? '';
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (string $alias): string => trim(preg_replace('/\s+/', ' ', $alias) ?? $alias),
+            $aliases
+        ))));
     }
 
     /**
@@ -243,10 +413,11 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
         $patterns = [
             // UK
             '/\bSky Sports(?:\+| Plus)?(?:\s+(?:Main Event|Premier League|Football|Cricket|Golf|F1|Mix|Arena|Action|Racing|Tennis|News))?\b/i',
+            '/\bSky Sports Ultra HDR\b/i',
             '/\bTNT Sports(?:\s+(?:1|2|3|4|Ultimate|Box Office))?\b/i',
             '/\b(?:Premier Sports(?:\s+(?:1|2|Player))?|Racing TV|Eurosport\s+(?:1|2))\b/i',
             '/\b(?:BBC One|BBC Two|BBC Three|BBC Four|BBC iPlayer|BBC Sport Website)\b/i',
-            '/\b(?:ITV1|ITV4|ITVX|Channel 4|Channel 5|DAZN UK|DAZN|discovery\+|Amazon Prime Video|UFC Fight Pass|YouTube)\b/i',
+            '/\b(?:ITV1|ITV4|ITVX|Channel 4|Channel 5|DAZN UK|DAZN|discovery\+|Amazon Prime Video|Apple TV\+|UFC Fight Pass|YouTube)\b/i',
             // Canada
             '/\bTSN(?:\s*(?:1|2|3|4|5))?\b/i',
             '/\bSportsnet(?:\s+(?:One|360|1|SN1))?\b/i',
@@ -259,7 +430,7 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             '/\b(?:NBC\s+Sports|USA\s+Network)\b/i',
             '/\b(?:CBS\s+Sports\s+Network|CBS|ABC)\b/i',
             '/\b(?:NFL\s+Network|NBA\s+TV|NHL\s+Network|MLB\s+Network)\b/i',
-            '/\b(?:Golf\s+Channel|TNT|TBS)\b/i',
+            '/\b(?:Golf\s+Channel|TNT|TBS|Peacock|Big\s+Ten\s+Network|BTN|ACC\s+Network|ACCN|SEC\s+Network|SECN|The\s+CW|truTV)\b/i',
         ];
 
         foreach ($patterns as $pattern) {
@@ -304,6 +475,8 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             'sky sports mix' => 'Sky Sports Mix',
             'sky sports plus' => 'Sky Sports+',
             'sky sports racing' => 'Sky Sports Racing',
+            'sky sports tennis' => 'Sky Sports Tennis',
+            'sky sports ultra hdr' => 'Sky Sports Ultra HDR',
             'tnt sports 1' => 'TNT Sports 1',
             'tnt sports 2' => 'TNT Sports 2',
             'tnt sports 3' => 'TNT Sports 3',
@@ -329,7 +502,10 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             'discovery plus' => 'discovery+',
             'discovery+' => 'discovery+',
             'amazon prime video' => 'Amazon Prime Video',
+            'apple tv plus' => 'Apple TV+',
+            'apple tv+' => 'Apple TV+',
             'ufc fight pass' => 'UFC Fight Pass',
+            'youtube' => 'YouTube',
             // Canada
             'tsn' => 'TSN',
             'tsn1' => 'TSN1',
@@ -368,6 +544,15 @@ class BroadcastScheduleScraper extends AbstractPublicPageScraper implements Scra
             'golf channel' => 'Golf Channel',
             'tnt' => 'TNT',
             'tbs' => 'TBS',
+            'peacock' => 'Peacock',
+            'big ten network' => 'Big Ten Network',
+            'btn' => 'BTN',
+            'acc network' => 'ACC Network',
+            'accn' => 'ACCN',
+            'sec network' => 'SEC Network',
+            'secn' => 'SECN',
+            'the cw' => 'The CW',
+            'trutv' => 'truTV',
         ];
 
         return $map[$normalized] ?? ucwords($normalized);

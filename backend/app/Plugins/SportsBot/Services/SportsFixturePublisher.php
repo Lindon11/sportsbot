@@ -14,7 +14,7 @@ class SportsFixturePublisher
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
         private readonly SportsBotCardRenderer $cards = new SportsBotCardRenderer(),
-        private readonly TelegramNotifier $notifier = new TelegramNotifier(),
+        private readonly SportsBotNotifier $notifier = new SportsBotNotifier(),
     ) {
     }
 

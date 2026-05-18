@@ -29,7 +29,10 @@ class F1ScheduleScraper extends AbstractPublicPageScraper implements ScraperProv
 
     public function scrape(SportsBotFixtureQueue $entry, string $action): array
     {
-        $urls = $this->fixtureSourceUrls($entry, $this->scraperArray('f1_schedule_urls'));
+        $urls = $this->fixtureSourceUrls($entry, array_merge(
+            $this->scraperArray('f1_schedule_urls'),
+            (array) config('plugins.SportsBot.scrapers.f1_schedule_urls', [])
+        ));
         $discovery = $this->discoverPublicUrls($entry, array_merge([
             '{event_name} F1 session schedule UK time',
             '{event_name} Formula 1 practice qualifying race schedule',
@@ -47,7 +50,7 @@ class F1ScheduleScraper extends AbstractPublicPageScraper implements ScraperProv
             }
 
             $xpath = $this->dom($page['html']);
-            $text = $this->visibleText($xpath);
+            $text = $this->pageSearchText($xpath);
             $title = $this->title($xpath);
 
             if (!$this->titleMatchesFixture($title . ' ' . $text, $entry)) {

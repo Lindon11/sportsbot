@@ -237,6 +237,26 @@ abstract class AbstractPublicPageScraper
         return trim(preg_replace('/\s+/', ' ', $text) ?? $text);
     }
 
+    protected function pageSearchText(DOMXPath $xpath): string
+    {
+        $parts = [
+            $this->title($xpath),
+            $this->meta($xpath, 'description'),
+            $this->meta($xpath, 'og:description'),
+            $this->meta($xpath, 'twitter:description'),
+            $this->visibleText($xpath),
+        ];
+
+        $scriptNodes = $xpath->query("//script[@type='application/ld+json' or @id='__NEXT_DATA__']");
+        if ($scriptNodes) {
+            foreach ($scriptNodes as $node) {
+                $parts[] = $this->jsonText((string) $node->textContent);
+            }
+        }
+
+        return trim(preg_replace('/\s+/', ' ', implode(' ', array_filter($parts))) ?? '');
+    }
+
     protected function absoluteUrl(string $url, string $baseUrl): string
     {
         $url = trim($url);
@@ -294,6 +314,16 @@ abstract class AbstractPublicPageScraper
         }
 
         return false;
+    }
+
+    protected function normalizedText(string $text): string
+    {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = strtolower($text);
+        $text = str_replace(['_', '-', '–', '—', '+', '&'], [' ', ' ', ' ', ' ', ' plus ', ' and '], $text);
+        $text = preg_replace('/[^\p{L}\p{N}\s+.]/u', ' ', $text) ?? $text;
+
+        return trim(preg_replace('/\s+/', ' ', $text) ?? $text);
     }
 
     protected function expandTemplate(string $template, SportsBotFixtureQueue $entry): string
@@ -471,6 +501,33 @@ abstract class AbstractPublicPageScraper
         }
 
         return array_values($urls);
+    }
+
+    private function jsonText(string $json): string
+    {
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            return '';
+        }
+
+        return trim(preg_replace('/\s+/', ' ', implode(' ', $this->stringsFromJson($decoded))) ?? '');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function stringsFromJson(array $value): array
+    {
+        $strings = [];
+        foreach ($value as $item) {
+            if (is_string($item) && mb_strlen($item) <= 500) {
+                $strings[] = $item;
+            } elseif (is_array($item)) {
+                array_push($strings, ...$this->stringsFromJson($item));
+            }
+        }
+
+        return $strings;
     }
 
     private function looksRestricted(string $html): bool

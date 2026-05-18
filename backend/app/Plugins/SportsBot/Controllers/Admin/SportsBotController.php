@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Controllers\Admin;
 
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
+use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
@@ -23,6 +24,7 @@ use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
 use App\Plugins\SportsBot\Services\SportsFixturePublisher;
+use App\Plugins\SportsBot\Services\DiscordNotifier;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
@@ -67,6 +69,86 @@ class SportsBotController extends Controller
             'recent_alerts' => SportsBotSentAlert::latest('id')->limit(10)->get(),
             'recent_telegram_messages' => $this->recentTelegramMessages(TelegramRouteKeys::FIXTURES_TODAY),
             'recent_telegram_topics' => $this->recentTelegramTopics(),
+        ]);
+    }
+
+    public function autopilotStatus(SportsBotRunner $runner, SportsBotSettingsService $settings): JsonResponse
+    {
+        return response()->json([
+            'health' => $runner->health(),
+            'scheduler' => $this->sportsBotSchedulerStatus(),
+            'queue' => $this->fixtureQueueAutopilotStatus(),
+            'deliveries' => [
+                'recent' => $this->recentDeliveries(50),
+                'last_24h' => $this->deliveryCountsSince(now()->subDay()),
+            ],
+            'settings' => [
+                'discord_enabled' => (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false)),
+                'scrapers_enabled' => (bool) $settings->get('scraper_enabled', config('plugins.SportsBot.scrapers.enabled', true)),
+                'auto_use_confidence' => (float) $settings->get('scraper_auto_use_confidence', config('plugins.SportsBot.scrapers.auto_use_confidence', 0.9)),
+            ],
+        ]);
+    }
+
+    public function postTimings(SportsBotSettingsService $settings): JsonResponse
+    {
+        return response()->json([
+            'settings' => $this->postTimingSettings($settings),
+            'frequencies' => $this->postTimingFrequencies(),
+        ]);
+    }
+
+    public function savePostTimings(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'schedule_enabled' => ['sometimes', 'boolean'],
+            'schedule_frequency' => ['sometimes', 'string', 'max:80'],
+            'fixtures_today_schedule_enabled' => ['sometimes', 'boolean'],
+            'fixtures_today_schedule_time' => ['sometimes', 'date_format:H:i'],
+            'tv_guide_schedule_enabled' => ['sometimes', 'boolean'],
+            'tv_guide_schedule_time' => ['sometimes', 'date_format:H:i'],
+            'live_now_schedule_enabled' => ['sometimes', 'boolean'],
+            'live_now_schedule_frequency' => ['sometimes', 'string', 'max:80'],
+            'fixture_queue_schedule_enabled' => ['sometimes', 'boolean'],
+            'fixture_queue_prefetch_enabled' => ['sometimes', 'boolean'],
+            'fixture_queue_prefetch_time' => ['sometimes', 'date_format:H:i'],
+            'fixture_queue_enrich_enabled' => ['sometimes', 'boolean'],
+            'fixture_queue_enrich_frequency' => ['sometimes', 'string', 'max:80'],
+            'fixture_queue_enrich_days' => ['sometimes', 'integer', 'min:0', 'max:14'],
+            'fixture_queue_enrich_limit' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'fixture_queue_render_enabled' => ['sometimes', 'boolean'],
+            'fixture_queue_render_frequency' => ['sometimes', 'string', 'max:80'],
+            'fixture_queue_publish_enabled' => ['sometimes', 'boolean'],
+            'fixture_queue_publish_frequency' => ['sometimes', 'string', 'max:80'],
+        ]);
+
+        $frequencies = array_column($this->postTimingFrequencies(), 'value');
+        foreach ([
+            'schedule_frequency',
+            'live_now_schedule_frequency',
+            'fixture_queue_enrich_frequency',
+            'fixture_queue_render_frequency',
+            'fixture_queue_publish_frequency',
+        ] as $frequencyKey) {
+            if (isset($validated[$frequencyKey]) && !in_array($validated[$frequencyKey], $frequencies, true)) {
+                return response()->json([
+                    'saved' => false,
+                    'error' => "Unsupported frequency for {$frequencyKey}.",
+                ], 422);
+            }
+        }
+
+        foreach ($validated as $key => $value) {
+            $settings->set($key, $value);
+        }
+
+        Log::info('sportsbot.admin.post_timings_saved', [
+            'keys' => array_keys($validated),
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'settings' => $this->postTimingSettings($settings),
         ]);
     }
 
@@ -767,6 +849,11 @@ class SportsBotController extends Controller
                 'cards_enabled' => (bool) config('plugins.SportsBot.cards.enabled', true),
                 'rich_cards_enabled' => (bool) config('plugins.SportsBot.features.rich_cards', true),
                 'send_messages' => (bool) config('plugins.SportsBot.send_messages', false),
+                'discord_enabled' => (bool) config('plugins.SportsBot.discord.enabled', false),
+                'discord_default_webhook_url' => (string) config('plugins.SportsBot.discord.default_webhook_url', ''),
+                'discord_username' => (string) config('plugins.SportsBot.discord.username', 'SportsBot'),
+                'discord_avatar_url' => (string) config('plugins.SportsBot.discord.avatar_url', ''),
+                'discord_route_webhooks' => (array) config('plugins.SportsBot.discord.route_webhooks', []),
             ], $settings->all()),
             'route_statuses' => $this->routeStatuses($routingService),
             'card_generation' => [
@@ -778,6 +865,9 @@ class SportsBotController extends Controller
             'telegram_send_diagnostics' => [
                 'configured' => app(TelegramNotifier::class)->configured(),
                 'recent_messages' => $this->recentTelegramMessages(null, 10),
+            ],
+            'discord_send_diagnostics' => [
+                'configured' => app(DiscordNotifier::class)->configured(),
             ],
         ]);
     }
@@ -795,6 +885,12 @@ class SportsBotController extends Controller
             'cards_enabled' => ['sometimes', 'boolean'],
             'rich_cards_enabled' => ['sometimes', 'boolean'],
             'send_messages' => ['sometimes', 'boolean'],
+            'discord_enabled' => ['sometimes', 'boolean'],
+            'discord_default_webhook_url' => ['nullable', 'string', 'max:500'],
+            'discord_username' => ['nullable', 'string', 'max:80'],
+            'discord_avatar_url' => ['nullable', 'string', 'max:500'],
+            'discord_route_webhooks' => ['sometimes', 'array'],
+            'discord_route_webhooks.*' => ['nullable', 'string', 'max:500'],
         ]);
 
         foreach ($validated as $key => $value) {
@@ -914,6 +1010,46 @@ class SportsBotController extends Controller
                 $results = $notifier->send($caption, [
                     'route_key' => $routeKey,
                     'type' => 'SEND_DIAGNOSTIC',
+                ]);
+            }
+        } catch (Throwable $error) {
+            return response()->json([
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'sent' => true,
+            'results' => $results,
+        ]);
+    }
+
+    public function sendDiscordDiagnostics(Request $request, DiscordNotifier $notifier, SportsBotCardRenderer $cards): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['sometimes', 'string', 'max:100'],
+            'media' => ['sometimes', 'boolean'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) ($validated['route_key'] ?? TelegramRouteKeys::DEFAULT));
+        $caption = 'SportsBot Discord diagnostic - ' . now()->toDateTimeString();
+
+        try {
+            if ((bool) ($validated['media'] ?? true)) {
+                $card = $cards->breakingNewsCard([
+                    'title' => 'SportsBot Diagnostics',
+                    'summary' => 'Rich card generation and Discord webhook delivery are working.',
+                    'source' => 'LaravelCP Admin',
+                ]);
+                $results = $notifier->sendPhoto((string) $card['path'], $caption, [
+                    'route_key' => $routeKey,
+                    'type' => 'DISCORD_DIAGNOSTIC',
+                ]);
+            } else {
+                $results = $notifier->send($caption, [
+                    'route_key' => $routeKey,
+                    'type' => 'DISCORD_DIAGNOSTIC',
                 ]);
             }
         } catch (Throwable $error) {
@@ -1087,6 +1223,141 @@ class SportsBotController extends Controller
             'deleted' => true,
             'routes' => $this->telegramRoutes(),
             'route_statuses' => $this->routeStatuses($routingService),
+        ]);
+    }
+
+    public function discordRoutesIndex(SportsBotSettingsService $settings): JsonResponse
+    {
+        return response()->json([
+            'route_keys' => TelegramRouteKeys::all(),
+            'settings' => $this->discordSettings($settings),
+            'routes' => $this->discordRoutes($settings),
+            'route_statuses' => $this->discordRouteStatuses($settings),
+        ]);
+    }
+
+    public function saveDiscordSettings(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'discord_enabled' => ['sometimes', 'boolean'],
+            'discord_default_webhook_url' => ['nullable', 'string', 'max:500'],
+            'discord_username' => ['nullable', 'string', 'max:80'],
+            'discord_avatar_url' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        foreach (['discord_default_webhook_url', 'discord_avatar_url'] as $urlKey) {
+            $url = trim((string) ($validated[$urlKey] ?? ''));
+            if ($url !== '' && $urlKey === 'discord_default_webhook_url' && !$this->isDiscordWebhookUrl($url)) {
+                return response()->json([
+                    'saved' => false,
+                    'error' => 'Default webhook URL must be a Discord webhook URL.',
+                ], 422);
+            }
+        }
+
+        foreach ($validated as $key => $value) {
+            $settings->set($key, is_string($value) ? trim($value) : $value);
+        }
+
+        Log::info('sportsbot.admin.discord_settings_saved', [
+            'keys' => array_keys($validated),
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'settings' => $this->discordSettings($settings),
+            'route_statuses' => $this->discordRouteStatuses($settings),
+        ]);
+    }
+
+    public function saveDiscordRoute(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['required', 'string', 'max:100'],
+            'webhook_url' => ['required', 'string', 'max:500'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) $validated['route_key']);
+
+        if (!in_array($routeKey, TelegramRouteKeys::all(), true)) {
+            return response()->json([
+                'saved' => false,
+                'error' => 'Unsupported SportsBot route key.',
+            ], 422);
+        }
+
+        $webhookUrl = trim((string) $validated['webhook_url']);
+        if (!$this->isDiscordWebhookUrl($webhookUrl)) {
+            return response()->json([
+                'saved' => false,
+                'error' => 'Webhook URL must start with https://discord.com/api/webhooks/ or https://discordapp.com/api/webhooks/.',
+            ], 422);
+        }
+
+        if ($routeKey === TelegramRouteKeys::DEFAULT) {
+            $settings->set('discord_default_webhook_url', $webhookUrl);
+        } else {
+            $routes = $this->discordWebhookMap($settings);
+            $routes[$routeKey] = $webhookUrl;
+            $settings->set('discord_route_webhooks', $routes);
+        }
+
+        Log::info('sportsbot.admin.discord_route_saved', [
+            'route_key' => $routeKey,
+            'has_webhook' => $webhookUrl !== '',
+        ]);
+
+        return response()->json([
+            'saved' => true,
+            'settings' => $this->discordSettings($settings),
+            'routes' => $this->discordRoutes($settings),
+            'route_statuses' => $this->discordRouteStatuses($settings),
+        ]);
+    }
+
+    public function deleteDiscordRoute(string $routeKey, SportsBotSettingsService $settings): JsonResponse
+    {
+        $normalized = TelegramRouteKeys::normalize($routeKey);
+
+        if ($normalized === TelegramRouteKeys::DEFAULT) {
+            $settings->set('discord_default_webhook_url', '');
+        } else {
+            $routes = $this->discordWebhookMap($settings);
+            unset($routes[$normalized]);
+            $settings->set('discord_route_webhooks', $routes);
+        }
+
+        return response()->json([
+            'deleted' => true,
+            'settings' => $this->discordSettings($settings),
+            'routes' => $this->discordRoutes($settings),
+            'route_statuses' => $this->discordRouteStatuses($settings),
+        ]);
+    }
+
+    public function testDiscordRoute(Request $request, DiscordNotifier $notifier): JsonResponse
+    {
+        $validated = $request->validate([
+            'route_key' => ['required', 'string', 'max:100'],
+        ]);
+
+        $routeKey = TelegramRouteKeys::normalize((string) $validated['route_key']);
+
+        try {
+            $results = $notifier->send('SportsBot Discord route test - ' . now()->toDateTimeString(), [
+                'route_key' => $routeKey,
+                'type' => 'DISCORD_ROUTE_TEST',
+            ]);
+        } catch (Throwable $error) {
+            return response()->json([
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'sent' => true,
+            'results' => $results,
         ]);
     }
 
@@ -1416,6 +1687,313 @@ class SportsBotController extends Controller
             ->orderBy('route_key')
             ->get()
             ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function discordSettings(SportsBotSettingsService $settings): array
+    {
+        return [
+            'discord_enabled' => (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false)),
+            'discord_default_webhook_url' => (string) $settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')),
+            'discord_username' => (string) $settings->get('discord_username', config('plugins.SportsBot.discord.username', 'SportsBot')),
+            'discord_avatar_url' => (string) $settings->get('discord_avatar_url', config('plugins.SportsBot.discord.avatar_url', '')),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function discordRoutes(SportsBotSettingsService $settings): array
+    {
+        $routes = [];
+        $defaultWebhook = trim((string) $settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')));
+
+        if ($defaultWebhook !== '') {
+            $routes[] = [
+                'route_key' => TelegramRouteKeys::DEFAULT,
+                'webhook_url' => $defaultWebhook,
+                'source' => 'default',
+            ];
+        }
+
+        foreach ($this->discordWebhookMap($settings) as $routeKey => $webhookUrl) {
+            $routes[] = [
+                'route_key' => $routeKey,
+                'webhook_url' => $webhookUrl,
+                'source' => 'route',
+            ];
+        }
+
+        usort($routes, static fn (array $a, array $b): int => strcmp((string) $a['route_key'], (string) $b['route_key']));
+
+        return $routes;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function discordRouteStatuses(SportsBotSettingsService $settings): array
+    {
+        $enabled = (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false));
+        $defaultWebhook = trim((string) $settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')));
+        $routes = $this->discordWebhookMap($settings);
+        $statuses = [];
+
+        foreach (TelegramRouteKeys::all() as $routeKey) {
+            $hasRouteWebhook = isset($routes[$routeKey]) && trim((string) $routes[$routeKey]) !== '';
+            $hasDefaultWebhook = $defaultWebhook !== '';
+
+            $statuses[$routeKey] = [
+                'configured' => $enabled && ($hasRouteWebhook || $hasDefaultWebhook),
+                'enabled' => $enabled,
+                'source' => $hasRouteWebhook ? 'route' : ($hasDefaultWebhook ? 'default' : 'none'),
+                'fallback' => !$hasRouteWebhook && $hasDefaultWebhook && $routeKey !== TelegramRouteKeys::DEFAULT,
+                'has_route_webhook' => $hasRouteWebhook,
+                'has_default_webhook' => $hasDefaultWebhook,
+            ];
+        }
+
+        return $statuses;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function discordWebhookMap(SportsBotSettingsService $settings): array
+    {
+        $value = $settings->get('discord_route_webhooks', config('plugins.SportsBot.discord.route_webhooks', []));
+
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $routes = [];
+        foreach ($value as $key => $url) {
+            $routeKey = TelegramRouteKeys::normalize((string) $key);
+            $url = trim((string) $url);
+
+            if ($routeKey !== '' && $url !== '' && $this->isDiscordWebhookUrl($url)) {
+                $routes[$routeKey] = $url;
+            }
+        }
+
+        return $routes;
+    }
+
+    private function isDiscordWebhookUrl(string $url): bool
+    {
+        return str_starts_with($url, 'https://discord.com/api/webhooks/')
+            || str_starts_with($url, 'https://discordapp.com/api/webhooks/');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sportsBotSchedulerStatus(): array
+    {
+        $timings = $this->postTimingSettings(app(SportsBotSettingsService::class));
+        $fixtureQueue = (array) ($timings['fixture_queue'] ?? []);
+
+        return [
+            'plugin_enabled' => (bool) config('plugins.SportsBot.enabled', true),
+            'live_alerts_enabled' => (bool) ($timings['live_alerts']['enabled'] ?? false),
+            'live_alerts_frequency' => (string) ($timings['live_alerts']['frequency'] ?? 'everyTwoMinutes'),
+            'fixture_queue' => $fixtureQueue,
+            'logs' => $this->schedulerLogFiles(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function postTimingSettings(SportsBotSettingsService $settings): array
+    {
+        return [
+            'live_alerts' => [
+                'enabled' => (bool) $settings->get('schedule_enabled', config('plugins.SportsBot.schedule.enabled', false)),
+                'frequency' => (string) $settings->get('schedule_frequency', config('plugins.SportsBot.schedule.frequency', 'everyTwoMinutes')),
+            ],
+            'fixtures_today' => [
+                'enabled' => (bool) $settings->get('fixtures_today_schedule_enabled', config('plugins.SportsBot.publishing.fixtures_today.enabled', false)),
+                'time' => (string) $settings->get('fixtures_today_schedule_time', config('plugins.SportsBot.publishing.fixtures_today.time', '08:00')),
+            ],
+            'tv_guide' => [
+                'enabled' => (bool) $settings->get('tv_guide_schedule_enabled', config('plugins.SportsBot.publishing.tv_guide.enabled', false)),
+                'time' => (string) $settings->get('tv_guide_schedule_time', config('plugins.SportsBot.publishing.tv_guide.time', '08:00')),
+            ],
+            'live_now' => [
+                'enabled' => (bool) $settings->get('live_now_schedule_enabled', config('plugins.SportsBot.publishing.live_now.enabled', false)),
+                'frequency' => (string) $settings->get('live_now_schedule_frequency', config('plugins.SportsBot.publishing.live_now.frequency', 'everyFiveMinutes')),
+            ],
+            'fixture_queue' => [
+                'enabled' => (bool) $settings->get('fixture_queue_schedule_enabled', config('plugins.SportsBot.publishing.fixture_queue.enabled', false)),
+                'prefetch_enabled' => (bool) $settings->get('fixture_queue_prefetch_enabled', config('plugins.SportsBot.publishing.fixture_queue.prefetch_enabled', true)),
+                'prefetch_time' => (string) $settings->get('fixture_queue_prefetch_time', config('plugins.SportsBot.publishing.fixture_queue.prefetch_time', '05:00')),
+                'enrich_enabled' => (bool) $settings->get('fixture_queue_enrich_enabled', config('plugins.SportsBot.publishing.fixture_queue.enrich_enabled', true)),
+                'enrich_frequency' => (string) $settings->get('fixture_queue_enrich_frequency', config('plugins.SportsBot.publishing.fixture_queue.enrich_frequency', 'everyThirtyMinutes')),
+                'enrich_days' => (int) $settings->get('fixture_queue_enrich_days', config('plugins.SportsBot.publishing.fixture_queue.enrich_days', 2)),
+                'enrich_limit' => (int) $settings->get('fixture_queue_enrich_limit', config('plugins.SportsBot.publishing.fixture_queue.enrich_limit', 30)),
+                'render_enabled' => (bool) $settings->get('fixture_queue_render_enabled', config('plugins.SportsBot.publishing.fixture_queue.render_enabled', true)),
+                'render_frequency' => (string) $settings->get('fixture_queue_render_frequency', config('plugins.SportsBot.publishing.fixture_queue.render_frequency', 'everyTenMinutes')),
+                'publish_enabled' => (bool) $settings->get('fixture_queue_publish_enabled', config('plugins.SportsBot.publishing.fixture_queue.publish_enabled', true)),
+                'publish_frequency' => (string) $settings->get('fixture_queue_publish_frequency', config('plugins.SportsBot.publishing.fixture_queue.publish_frequency', 'everyFiveMinutes')),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function postTimingFrequencies(): array
+    {
+        return [
+            ['value' => 'everyMinute', 'label' => 'Every minute'],
+            ['value' => 'everyTwoMinutes', 'label' => 'Every 2 minutes'],
+            ['value' => 'everyFiveMinutes', 'label' => 'Every 5 minutes'],
+            ['value' => 'everyTenMinutes', 'label' => 'Every 10 minutes'],
+            ['value' => 'everyFifteenMinutes', 'label' => 'Every 15 minutes'],
+            ['value' => 'everyThirtyMinutes', 'label' => 'Every 30 minutes'],
+            ['value' => 'hourly', 'label' => 'Hourly'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fixtureQueueAutopilotStatus(): array
+    {
+        if (!Schema::hasTable('sportsbot_fixture_queue')) {
+            return [
+                'counts' => [],
+                'today' => [],
+                'needs_attention' => [],
+            ];
+        }
+
+        $counts = SportsBotFixtureQueue::query()
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->all();
+
+        $today = Carbon::today()->toDateString();
+        $windowEnd = Carbon::today()->addDays(2)->toDateString();
+        $windowRows = SportsBotFixtureQueue::query()
+            ->whereBetween('publish_date', [$today, $windowEnd])
+            ->latest('id')
+            ->limit(300)
+            ->get();
+
+        $missingTv = 0;
+        $missingCard = 0;
+        $scraperFound = 0;
+
+        foreach ($windowRows as $row) {
+            $fixture = (array) ($row->fixture_data ?? []);
+            $payload = (array) ($row->payload ?? []);
+            if (trim((string) ($fixture['tv_channel'] ?? '')) === '' && empty($fixture['tv_channels'] ?? [])) {
+                $missingTv++;
+            }
+            if (trim((string) ($row->card_path ?? '')) === '' && $row->status !== SportsBotFixtureQueue::STATUS_SENT) {
+                $missingCard++;
+            }
+            if (($payload['scraper']['status'] ?? null) === 'found') {
+                $scraperFound++;
+            }
+        }
+
+        return [
+            'counts' => $counts,
+            'today' => [
+                'draft' => SportsBotFixtureQueue::query()->where('publish_date', $today)->where('status', SportsBotFixtureQueue::STATUS_DRAFT)->count(),
+                'ready' => SportsBotFixtureQueue::query()->where('publish_date', $today)->where('status', SportsBotFixtureQueue::STATUS_READY)->count(),
+                'sent' => SportsBotFixtureQueue::query()->where('publish_date', $today)->where('status', SportsBotFixtureQueue::STATUS_SENT)->count(),
+                'failed' => SportsBotFixtureQueue::query()->where('publish_date', $today)->where('status', SportsBotFixtureQueue::STATUS_FAILED)->count(),
+            ],
+            'needs_attention' => [
+                'window_rows' => $windowRows->count(),
+                'missing_tv' => $missingTv,
+                'missing_card' => $missingCard,
+                'scraper_found' => $scraperFound,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentDeliveries(int $limit = 50): array
+    {
+        if (!Schema::hasTable('sportsbot_deliveries')) {
+            return [];
+        }
+
+        return SportsBotDelivery::query()
+            ->latest('id')
+            ->limit(max(1, min(100, $limit)))
+            ->get()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function deliveryCountsSince(Carbon $since): array
+    {
+        if (!Schema::hasTable('sportsbot_deliveries')) {
+            return [];
+        }
+
+        return SportsBotDelivery::query()
+            ->where('created_at', '>=', $since)
+            ->selectRaw('platform, status, count(*) as total')
+            ->groupBy('platform', 'status')
+            ->get()
+            ->map(fn (SportsBotDelivery $row): array => [
+                'platform' => $row->platform,
+                'status' => $row->status,
+                'total' => (int) ($row->total ?? 0),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function schedulerLogFiles(): array
+    {
+        $files = [
+            'Live alerts' => 'sportsbot-scheduler.log',
+            'Fixture prefetch' => 'sportsbot-fixture-queue-prefetch.log',
+            'Fixture enrich' => 'sportsbot-fixture-queue-enrich.log',
+            'Fixture render' => 'sportsbot-fixture-queue-render.log',
+            'Fixture publish' => 'sportsbot-fixture-queue-publish.log',
+            'Fixtures today' => 'sportsbot-fixtures-today.log',
+            'TV guide' => 'sportsbot-tv-guide.log',
+            'Live now' => 'sportsbot-live-now.log',
+        ];
+
+        $logs = [];
+        foreach ($files as $label => $file) {
+            $path = storage_path('logs/' . $file);
+            $exists = is_file($path);
+            $logs[] = [
+                'label' => $label,
+                'file' => $file,
+                'exists' => $exists,
+                'last_modified_at' => $exists ? date('c', filemtime($path)) : null,
+                'size' => $exists ? filesize($path) : 0,
+            ];
+        }
+
+        return $logs;
     }
 
     private function routeStatuses(TelegramRoutingService $routingService): array

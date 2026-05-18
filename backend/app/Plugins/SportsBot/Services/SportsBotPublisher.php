@@ -12,7 +12,7 @@ class SportsBotPublisher
 {
     public function __construct(
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
-        private readonly TelegramNotifier $notifier = new TelegramNotifier(),
+        private readonly SportsBotNotifier $notifier = new SportsBotNotifier(),
         private readonly SportsBotCardRenderer $cards = new SportsBotCardRenderer(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
     ) {

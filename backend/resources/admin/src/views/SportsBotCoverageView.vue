@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
         <h1 class="text-2xl font-bold text-white">SportsBot Coverage</h1>
-        <p class="text-slate-400 text-sm mt-1">Sports, leagues, cards, cache and Telegram send diagnostics.</p>
+        <p class="text-slate-400 text-sm mt-1">Sports, leagues, cards, cache and delivery settings.</p>
       </div>
       <div class="flex gap-2">
         <button @click="load" :disabled="loading" class="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 disabled:opacity-60">
@@ -44,8 +44,50 @@
           </label>
           <label class="flex items-center gap-2 text-sm text-slate-300">
             <input v-model="form.rich_cards_enabled" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
-            Send rich Telegram media
+            Send rich media cards
           </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h2 class="text-lg font-semibold text-white">Discord Webhooks</h2>
+          <p class="text-xs mt-1" :class="discordDiagnostics.configured ? 'text-emerald-300' : 'text-slate-500'">
+            {{ discordDiagnostics.configured ? 'Webhook delivery configured' : 'Webhook delivery not configured' }}
+          </p>
+        </div>
+        <button @click="sendDiscordDiagnostic" :disabled="sendingDiscord || !form.discord_enabled" class="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60">
+          {{ sendingDiscord ? 'Sending...' : 'Send Discord Test Card' }}
+        </button>
+      </div>
+      <div class="space-y-4">
+        <label class="flex items-center gap-2 text-sm text-slate-300">
+          <input v-model="form.discord_enabled" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
+          Send SportsBot posts to Discord webhooks
+        </label>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="block text-sm font-medium text-slate-300 mb-2">Default webhook URL</span>
+            <input v-model="form.discord_default_webhook_url" type="password" autocomplete="off" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="https://discord.com/api/webhooks/...">
+          </label>
+          <label class="block">
+            <span class="block text-sm font-medium text-slate-300 mb-2">Bot name</span>
+            <input v-model="form.discord_username" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="SportsBot">
+          </label>
+        </div>
+
+        <label class="block">
+          <span class="block text-sm font-medium text-slate-300 mb-2">Avatar URL</span>
+          <input v-model="form.discord_avatar_url" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="Optional image URL">
+        </label>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Route webhooks</label>
+          <textarea v-model="discordRoutesText" rows="6" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="FOOTBALL=https://discord.com/api/webhooks/...\nMOTORSPORT=https://discord.com/api/webhooks/..." />
+          <p class="text-xs text-slate-500 mt-2">One route per line. If a route is missing, the default webhook is used.</p>
         </div>
       </div>
     </div>
@@ -89,15 +131,22 @@ const toast = useToast()
 const loading = ref(false)
 const saving = ref(false)
 const sending = ref(false)
+const sendingDiscord = ref(false)
 const sports = ref({})
 const card = ref({})
 const routeStatuses = ref({})
+const discordDiagnostics = ref({})
 const form = reactive({
   enabled_sports: [],
   featured_league_ids: [],
   tv_channels: [],
   cards_enabled: true,
-  rich_cards_enabled: true
+  rich_cards_enabled: true,
+  discord_enabled: false,
+  discord_default_webhook_url: '',
+  discord_username: 'SportsBot',
+  discord_avatar_url: '',
+  discord_route_webhooks: {}
 })
 
 const leagueText = computed({
@@ -108,6 +157,21 @@ const leagueText = computed({
 const channelText = computed({
   get: () => form.tv_channels.join('\n'),
   set: value => { form.tv_channels = splitLines(value) }
+})
+
+const discordRoutesText = computed({
+  get: () => Object.entries(form.discord_route_webhooks || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
+  set: value => {
+    const routes = {}
+    for (const line of String(value || '').split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || !trimmed.includes('=')) continue
+      const [key, ...rest] = trimmed.split('=')
+      const webhook = rest.join('=').trim()
+      if (key.trim() && webhook) routes[key.trim()] = webhook
+    }
+    form.discord_route_webhooks = routes
+  }
 })
 
 function splitLines(value) {
@@ -125,12 +189,18 @@ async function load() {
     sports.value = data.sports || {}
     card.value = data.card_generation || {}
     routeStatuses.value = data.route_statuses || {}
+    discordDiagnostics.value = data.discord_send_diagnostics || {}
     Object.assign(form, {
       enabled_sports: data.settings?.enabled_sports || [],
       featured_league_ids: data.settings?.featured_league_ids || [],
       tv_channels: data.settings?.tv_channels || [],
       cards_enabled: data.settings?.cards_enabled ?? true,
-      rich_cards_enabled: data.settings?.rich_cards_enabled ?? true
+      rich_cards_enabled: data.settings?.rich_cards_enabled ?? true,
+      discord_enabled: data.settings?.discord_enabled ?? false,
+      discord_default_webhook_url: data.settings?.discord_default_webhook_url || '',
+      discord_username: data.settings?.discord_username || 'SportsBot',
+      discord_avatar_url: data.settings?.discord_avatar_url || '',
+      discord_route_webhooks: data.settings?.discord_route_webhooks || {}
     })
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to load SportsBot coverage')
@@ -162,6 +232,19 @@ async function sendDiagnostic() {
     toast.error(error?.response?.data?.error || 'Failed to send diagnostic card')
   } finally {
     sending.value = false
+  }
+}
+
+async function sendDiscordDiagnostic() {
+  sendingDiscord.value = true
+  try {
+    await api.post('/admin/sportsbot/discord/send-diagnostics', { route_key: 'default', media: true })
+    toast.success('Discord diagnostic card sent')
+    await load()
+  } catch (error) {
+    toast.error(error?.response?.data?.error || 'Failed to send Discord diagnostic card')
+  } finally {
+    sendingDiscord.value = false
   }
 }
 

@@ -20,7 +20,7 @@ class SportsBotRunner
     public function __construct(
         private readonly SportsDataProviderInterface $provider = new TheSportsDbClient(),
         private readonly MessageRendererInterface $renderer = new DefaultMessageRenderer(),
-        private readonly NotifierInterface $notifier = new TelegramNotifier(),
+        private readonly NotifierInterface $notifier = new SportsBotNotifier(),
     ) {
     }
 
@@ -143,19 +143,22 @@ class SportsBotRunner
     public function health(): array
     {
         $providerKeyConfigured = trim((string) config('plugins.SportsBot.provider.api_key', '')) !== '';
+        $notifier = new SportsBotNotifier();
         $telegramConfigured = (new TelegramNotifier())->configured();
+        $discordConfigured = (new DiscordNotifier())->configured();
         $sendMessages = (bool) config('plugins.SportsBot.send_messages', false);
 
         return [
             'ok' => (bool) config('plugins.SportsBot.enabled', true)
                 && $providerKeyConfigured
-                && (!$sendMessages || $telegramConfigured),
+                && (!$sendMessages || $notifier->configured()),
             'plugin_enabled' => (bool) config('plugins.SportsBot.enabled', true),
             'schedule_enabled' => (bool) config('plugins.SportsBot.schedule.enabled', false),
             'send_messages' => $sendMessages,
             'provider' => (string) config('plugins.SportsBot.provider.name', 'thesportsdb'),
             'provider_key_configured' => $providerKeyConfigured,
             'telegram_configured' => $telegramConfigured,
+            'discord_configured' => $discordConfigured,
             'enabled_sports' => (array) config('plugins.SportsBot.coverage.enabled_sports', []),
             'allowed_league_count' => count((array) config('plugins.SportsBot.coverage.allowed_league_ids', [])),
         ];
@@ -317,7 +320,10 @@ class SportsBotRunner
                     'event_id' => $alert['match']['event_id'],
                     'sport' => $alert['match']['sport'] ?? null,
                     'alert_type' => $alert['type'],
-                    'payload' => array_merge($alert, ['telegram_results' => $results]),
+                    'payload' => array_merge($alert, [
+                        'telegram_results' => $results,
+                        'delivery_results' => $results,
+                    ]),
                     'sent_at' => $sentAt,
                 ]
             );

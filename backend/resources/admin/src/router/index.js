@@ -165,6 +165,16 @@ const router = createRouter({
           component: () => import('../views/SportsBotDashboardView.vue')
         },
         {
+          path: '/sportsbot/autopilot',
+          name: 'sportsbot-autopilot',
+          component: () => import('../views/SportsBotAutopilotView.vue')
+        },
+        {
+          path: '/sportsbot/post-timings',
+          name: 'sportsbot-post-timings',
+          component: () => import('../views/SportsBotPostTimingsView.vue')
+        },
+        {
           path: '/sportsbot/fixtures-today',
           name: 'sportsbot-fixtures-today',
           component: () => import('../views/SportsBotFixturesTodayView.vue')
@@ -198,6 +208,11 @@ const router = createRouter({
           path: '/sportsbot/routing',
           name: 'sportsbot-routing',
           component: () => import('../views/SportsBotRoutingView.vue')
+        },
+        {
+          path: '/sportsbot/discord-routes',
+          name: 'sportsbot-discord-routes',
+          component: () => import('../views/SportsBotDiscordRoutesView.vue')
         },
         {
           path: '/sportsbot/coverage',
