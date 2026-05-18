@@ -128,7 +128,7 @@ class UpdateController extends Controller
 
         return response()->json([
             'ok' => $ok,
-            'message' => $ok ? 'Update applied successfully.' : 'Update stopped because a step failed.',
+            'message' => $ok ? 'Update applied successfully.' : $this->failedStepMessage($logs, 'Update stopped because a step failed.'),
             'status' => $finalStatus,
             'logs' => $logs,
         ], $ok ? 200 : 500);
@@ -234,7 +234,7 @@ class UpdateController extends Controller
 
         return response()->json([
             'ok' => $ok,
-            'message' => $ok ? 'Force sync completed successfully.' : 'Force sync stopped because a step failed.',
+            'message' => $ok ? 'Force sync completed successfully.' : $this->failedStepMessage($logs, 'Force sync stopped because a step failed.'),
             'status' => $finalStatus,
             'logs' => $logs,
         ], $ok ? 200 : 500);
@@ -403,6 +403,29 @@ class UpdateController extends Controller
     private function binaryAvailable(string $binary, string $cwd): bool
     {
         return $this->runCommand([$binary, '--version'], $cwd, 20)['ok'];
+    }
+
+    /**
+     * @param array<int, array{step:string,ok:bool,exit_code:int|null,output:string}> $logs
+     */
+    private function failedStepMessage(array $logs, string $fallback): string
+    {
+        foreach (array_reverse($logs) as $log) {
+            if (($log['ok'] ?? true) === true) {
+                continue;
+            }
+
+            $output = trim((string) ($log['output'] ?? ''));
+            $firstLine = trim((string) preg_split('/\R/', $output)[0]);
+
+            if ($firstLine !== '') {
+                return 'Failed at "' . $log['step'] . '": ' . substr($firstLine, 0, 220);
+            }
+
+            return 'Failed at "' . $log['step'] . '".';
+        }
+
+        return $fallback;
     }
 
     private function adminOnlyResponse(): ?JsonResponse
