@@ -405,7 +405,7 @@ return [
         'search_urls' => $csv(env('SPORTSBOT_SCRAPER_SEARCH_URLS', env('SPORTSBOT_SCRAPER_SEARCH_URL', 'https://html.duckduckgo.com/html/?q={query}'))),
         'search_max_results' => (int) env('SPORTSBOT_SCRAPER_SEARCH_MAX_RESULTS', 5),
         'timeout' => (int) env('SPORTSBOT_SCRAPER_TIMEOUT', 8),
-        'user_agent' => env('SPORTSBOT_SCRAPER_USER_AGENT', 'SportsBot/1.0 public-page-enrichment'),
+        'user_agent' => env('SPORTSBOT_SCRAPER_USER_AGENT', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'),
         'auto_use_confidence' => (float) env('SPORTSBOT_SCRAPER_AUTO_USE_CONFIDENCE', 0.9),
         'combat_poster_urls' => $csv(env('SPORTSBOT_COMBAT_POSTER_URLS', implode(',', $defaultCombatPosterUrls))),
         'broadcast_schedule_urls' => $csv(env('SPORTSBOT_BROADCAST_SCHEDULE_URLS', implode(',', $defaultBroadcastScheduleUrls))),

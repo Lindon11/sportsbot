@@ -7,6 +7,7 @@ use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Services\Scrapers\BroadcastScheduleScraper;
 use App\Plugins\SportsBot\Services\Scrapers\CombatPosterScraper;
 use App\Plugins\SportsBot\Services\Scrapers\F1ScheduleScraper;
+use App\Plugins\SportsBot\Services\Scrapers\RugbyLeagueTvScraper;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -28,6 +29,7 @@ class SportsBotScraperService
             new CombatPosterScraper($this->normalizer),
             new BroadcastScheduleScraper($this->normalizer),
             new F1ScheduleScraper($this->normalizer),
+            new RugbyLeagueTvScraper($this->normalizer),
         ];
     }
 
