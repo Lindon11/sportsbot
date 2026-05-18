@@ -1723,6 +1723,8 @@ class SportsBotCardRenderer
             }
         }
 
+        Log::warning('SportsBotCardRenderer: no font found (install fonts-dejavu-core on Linux, or set SPORTSBOT_CARD_FONT_REGULAR/SPORTSBOT_CARD_FONT_BOLD env)');
+
         return '';
     }
 }

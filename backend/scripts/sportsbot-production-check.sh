@@ -15,6 +15,10 @@ test -f license_public.pem || echo "WARN license_public.pem missing; valid LARAV
 test -f storage/license_key || test -n "${LARAVEL_CP_LICENSE:-}" || echo "WARN no storage/license_key file and LARAVEL_CP_LICENSE env not exported in this shell."
 
 echo
+echo "== Required system packages =="
+dpkg -l fonts-dejavu-core >/dev/null 2>&1 || echo "MISSING: fonts-dejavu-core (run: apt install fonts-dejavu-core)"
+
+echo
 echo "== PHP extensions =="
 php -m | grep -E '^(curl|fileinfo|gd|json|mbstring|openssl|pdo_mysql|xml|zip)$' | sort
 
