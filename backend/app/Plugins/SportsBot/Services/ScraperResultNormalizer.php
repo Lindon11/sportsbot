@@ -136,8 +136,8 @@ class ScraperResultNormalizer
 
             return [
                 'date_label' => $date->format('l j F Y'),
-                'kickoff_label' => $date->format('H:i T'),
-                'time' => $date->format('H:i'),
+                'kickoff_label' => $date->format('g:i A T'),
+                'time' => $date->format('g:i A'),
             ];
         } catch (\Throwable) {
             return [];

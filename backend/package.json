@@ -1,6 +1,11 @@
 {
     "private": true,
     "type": "module",
-    "scripts": {},
+    "scripts": {
+        "sportsbot:render-v3": "node resources/sportsbot/v3-card-renderer.cjs"
+    },
+    "dependencies": {
+        "puppeteer": "^22.0.0"
+    },
     "devDependencies": {}
 }

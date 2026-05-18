@@ -58,8 +58,8 @@ class FootballFixturesContentModule implements SportsBotContentModuleInterface
 
     private function cardVersion(): string
     {
-        $version = (string) $this->settings->get('football_fixture_card_version', 'v1');
+        $version = strtolower(trim((string) $this->settings->get('football_fixture_card_version', 'v3')));
 
-        return strtolower(trim($version)) === 'v2' ? 'v2' : 'v1';
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 }

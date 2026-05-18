@@ -12,7 +12,7 @@ class SportsBotMotorsportFixturesCommand extends Command
     protected $signature = 'sportsbot:motorsport-fixtures
         {--send : Send motorsport fixture TV cards to Telegram route MOTORSPORT}';
 
-    protected $description = 'Build and optionally send upcoming motorsport events with UK TV listings';
+    protected $description = 'Build and optionally send today\'s motorsport fixtures with UK TV listings';
 
     public function handle(
         MotorsportFixturesContentModule $module,

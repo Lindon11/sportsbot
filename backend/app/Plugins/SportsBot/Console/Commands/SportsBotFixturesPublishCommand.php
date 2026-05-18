@@ -44,18 +44,22 @@ class SportsBotFixturesPublishCommand extends Command
 
         if ($sport !== null) {
             $this->line(sprintf(
-                'Published %s: %d sent, %d skipped, %d failed',
+                'Published %s: %d sent, %d would send, %d rendered, %d skipped, %d failed',
                 $sport,
                 $result['sent'] ?? 0,
+                $result['would_send'] ?? 0,
+                $result['rendered'] ?? 0,
                 $result['skipped'] ?? 0,
                 $result['failed'] ?? 0
             ));
         } else {
             foreach ($result as $sportKey => $sportResult) {
                 $this->line(sprintf(
-                    '  %s: %d sent, %d skipped, %d failed',
+                    '  %s: %d sent, %d would send, %d rendered, %d skipped, %d failed',
                     $sportKey,
                     $sportResult['sent'] ?? 0,
+                    $sportResult['would_send'] ?? 0,
+                    $sportResult['rendered'] ?? 0,
                     $sportResult['skipped'] ?? 0,
                     $sportResult['failed'] ?? 0
                 ));

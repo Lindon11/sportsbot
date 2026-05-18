@@ -27,20 +27,32 @@ class SportsBotCardRenderer
     /**
      * @return array{path:string,type:string,width:int,height:int}
      */
-    public function fixtureCard(array $fixture, string $variant = 'v1'): array
+    public function fixtureCard(array $fixture, string $variant = 'v3'): array
     {
         $variant = $this->normalizeCardVariant($variant);
+
+        if ($variant === 'v3') {
+            $browserCard = $this->fixtureCardV3Browser($fixture);
+            if ($browserCard !== null) {
+                return $browserCard;
+            }
+        }
 
         return $this->render('fixture-' . $variant, function ($image, array $c) use ($fixture, $variant): void {
             $sport = (string) ($fixture['sport'] ?? $fixture['strSport'] ?? 'Sports');
             $normalizedSport = SportsBotSports::normalize($sport);
+            if ($variant === 'v3') {
+                $this->fixtureCardV3($image, $fixture, $normalizedSport);
+                return;
+            }
+
             if ($normalizedSport === 'fights') {
                 if ($variant === 'v2') {
                     $this->fightFixtureCardV2($image, $fixture);
                 } else {
                     $this->header($image, $c, SportsBotSports::icon($sport) . ' Fight Night', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Fights'));
                     $this->centerText($image, (string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Fight event'), 42, 325, $c['text'], true);
-                    $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Time TBC'), [20, 184, 166]);
+                    $this->pill($image, $c, 72, 560, $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Time TBC')), [20, 184, 166]);
                     $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
                 }
                 return;
@@ -55,7 +67,7 @@ class SportsBotCardRenderer
                     } else {
                         $this->header($image, $c, SportsBotSports::icon($sport) . ' Fixture', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
                         $this->versusBlock($image, $c, $fixture, 'VS');
-                        $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC'), [20, 184, 166]);
+                        $this->pill($image, $c, 72, 560, $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC')), [20, 184, 166]);
                         $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
                     }
                 }
@@ -69,14 +81,258 @@ class SportsBotCardRenderer
 
             $this->header($image, $c, SportsBotSports::icon($sport) . ' Fixture', (string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Competition TBC'));
             $this->versusBlock($image, $c, $fixture, 'VS');
-            $this->pill($image, $c, 72, 560, (string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC'), [20, 184, 166]);
+            $this->pill($image, $c, 72, 560, $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC')), [20, 184, 166]);
             $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
+        });
+    }
+
+    /**
+     * @return array{path:string,type:string,width:int,height:int}
+     */
+    public function noFixturesCard(array $summary, string $variant = 'v3'): array
+    {
+        $variant = $this->normalizeCardVariant($variant);
+
+        if ($variant === 'v3') {
+            $browserCard = $this->noFixturesCardV3Browser($summary);
+            if ($browserCard !== null) {
+                return $browserCard;
+            }
+        }
+
+        $sport = (string) ($summary['sport'] ?? $summary['sport_key'] ?? 'sports');
+        $label = (string) ($summary['sport_label'] ?? $summary['title'] ?? SportsBotSports::label($sport) . ' Fixtures TV');
+        $date = (string) ($summary['date'] ?? $summary['date_label'] ?? now()->toDateString());
+
+        return $this->render('no-fixtures-' . $variant, function ($image, array $c) use ($sport, $label, $date): void {
+            $this->header($image, $c, $label, 'Fixture update');
+            $this->centerText($image, 'No Fixtures Today', 54, 296, $c['text'], true);
+            $this->centerText($image, 'Nothing scheduled for this topic today.', 24, 360, $c['muted'], false);
+            $this->pill($image, $c, 72, 560, 'Date: ' . $date, [20, 184, 166]);
+            $this->muted($image, 'Topic: ' . SportsBotSports::routeKey($sport), 72, 626, 20);
         });
     }
 
     private function normalizeCardVariant(string $variant): string
     {
-        return strtolower(trim($variant)) === 'v2' ? 'v2' : 'v1';
+        $variant = strtolower(trim($variant));
+
+        return in_array($variant, ['v1', 'v2', 'v3'], true) ? $variant : 'v1';
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @return array{path:string,type:string,width:int,height:int}|null
+     */
+    private function fixtureCardV3Browser(array $fixture): ?array
+    {
+        if (!(bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)) {
+            return null;
+        }
+
+        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script', base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        if ($script === '' || !is_file($script)) {
+            Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
+            return null;
+        }
+
+        $dir = storage_path('app/sportsbot/cards');
+        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return null;
+        }
+
+        $inputDir = storage_path('app/sportsbot/render-input');
+        if (!is_dir($inputDir) && !mkdir($inputDir, 0775, true) && !is_dir($inputDir)) {
+            return null;
+        }
+
+        $outputPath = $dir . '/fixture-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.png';
+        $inputPath = $inputDir . '/fixture-v3-' . bin2hex(random_bytes(8)) . '.json';
+        $payload = [
+            'fixture' => $fixture,
+            'outputPath' => $outputPath,
+            'width' => $this->width,
+            'height' => $this->height,
+            'chromePath' => trim((string) config('plugins.SportsBot.cards.chrome_path', '')),
+            'timeout' => max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15)) * 1000,
+        ];
+
+        if (@file_put_contents($inputPath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+            return null;
+        }
+
+        $node = trim((string) config('plugins.SportsBot.cards.node_binary', 'node')) ?: 'node';
+        $timeout = max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15));
+        $command = [$node, $script, $inputPath];
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
+        if (!is_resource($process)) {
+            @unlink($inputPath);
+            return null;
+        }
+
+        $startedAt = time();
+        $stdout = '';
+        $stderr = '';
+        foreach ($pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
+
+        $processExitCode = null;
+        do {
+            $status = proc_get_status($process);
+            $stdout .= isset($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
+            $stderr .= isset($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
+
+            if (!$status['running']) {
+                $processExitCode = is_int($status['exitcode'] ?? null) ? (int) $status['exitcode'] : null;
+                break;
+            }
+
+            if ((time() - $startedAt) > $timeout) {
+                proc_terminate($process);
+                Log::warning('sportsbot.card.v3_browser_timeout', ['timeout' => $timeout]);
+                break;
+            }
+
+            usleep(100000);
+        } while (true);
+
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+
+        $closeCode = proc_close($process);
+        $exitCode = $processExitCode ?? $closeCode;
+        @unlink($inputPath);
+
+        if ($exitCode === 0 && is_file($outputPath) && filesize($outputPath) > 0) {
+            return ['path' => $outputPath, 'type' => 'fixture-v3-browser', 'width' => $this->width, 'height' => $this->height];
+        }
+
+        Log::warning('sportsbot.card.v3_browser_failed', [
+            'exit_code' => $exitCode,
+            'stdout' => mb_substr($stdout, 0, 1000),
+            'stderr' => mb_substr($stderr, 0, 1000),
+        ]);
+
+        if (is_file($outputPath)) {
+            @unlink($outputPath);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @return array{path:string,type:string,width:int,height:int}|null
+     */
+    private function noFixturesCardV3Browser(array $summary): ?array
+    {
+        if (!(bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)) {
+            return null;
+        }
+
+        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script', base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        if ($script === '' || !is_file($script)) {
+            Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
+            return null;
+        }
+
+        $dir = storage_path('app/sportsbot/cards');
+        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return null;
+        }
+
+        $inputDir = storage_path('app/sportsbot/render-input');
+        if (!is_dir($inputDir) && !mkdir($inputDir, 0775, true) && !is_dir($inputDir)) {
+            return null;
+        }
+
+        $outputPath = $dir . '/no-fixtures-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.png';
+        $inputPath = $inputDir . '/no-fixtures-v3-' . bin2hex(random_bytes(8)) . '.json';
+        $payload = [
+            'kind' => 'no-fixtures',
+            'summary' => $summary,
+            'outputPath' => $outputPath,
+            'width' => $this->width,
+            'height' => $this->height,
+            'chromePath' => trim((string) config('plugins.SportsBot.cards.chrome_path', '')),
+            'timeout' => max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15)) * 1000,
+        ];
+
+        if (@file_put_contents($inputPath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+            return null;
+        }
+
+        $node = trim((string) config('plugins.SportsBot.cards.node_binary', 'node')) ?: 'node';
+        $timeout = max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15));
+        $command = [$node, $script, $inputPath];
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
+        if (!is_resource($process)) {
+            @unlink($inputPath);
+            return null;
+        }
+
+        $startedAt = time();
+        $stdout = '';
+        $stderr = '';
+        foreach ($pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
+
+        $processExitCode = null;
+        do {
+            $status = proc_get_status($process);
+            $stdout .= isset($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
+            $stderr .= isset($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
+
+            if (!$status['running']) {
+                $processExitCode = is_int($status['exitcode'] ?? null) ? (int) $status['exitcode'] : null;
+                break;
+            }
+
+            if ((time() - $startedAt) > $timeout) {
+                proc_terminate($process);
+                Log::warning('sportsbot.card.no_fixtures_v3_browser_timeout', ['timeout' => $timeout]);
+                break;
+            }
+
+            usleep(100000);
+        } while (true);
+
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+
+        $closeCode = proc_close($process);
+        $exitCode = $processExitCode ?? $closeCode;
+        @unlink($inputPath);
+
+        if ($exitCode === 0 && is_file($outputPath) && filesize($outputPath) > 0) {
+            return ['path' => $outputPath, 'type' => 'no-fixtures-v3-browser', 'width' => $this->width, 'height' => $this->height];
+        }
+
+        Log::warning('sportsbot.card.no_fixtures_v3_browser_failed', [
+            'exit_code' => $exitCode,
+            'stdout' => mb_substr($stdout, 0, 1000),
+            'stderr' => mb_substr($stderr, 0, 1000),
+        ]);
+
+        if (is_file($outputPath)) {
+            @unlink($outputPath);
+        }
+
+        return null;
     }
 
     /**
@@ -106,7 +362,7 @@ class SportsBotCardRenderer
             $y = 178;
             foreach ($rows as $row) {
                 $sport = (string) ($row['sport'] ?? $row['strSport'] ?? 'Sports');
-                $time = (string) ($row['time_label'] ?? $row['dateEvent'] ?? '');
+                $time = $this->displayTimeLabel((string) ($row['time_label'] ?? $row['dateEvent'] ?? ''));
                 $title = (string) ($row['event'] ?? $row['strEvent'] ?? $row['name'] ?? 'Event TBC');
                 $channel = (string) ($row['channel'] ?? $row['strChannel'] ?? 'Channel TBC');
                 $this->row($image, $c, $y, SportsBotSports::icon($sport), $time, $title, $channel);
@@ -264,6 +520,222 @@ class SportsBotCardRenderer
     /**
      * @param array<string, mixed> $fixture
      */
+    private function fixtureCardV3($image, array $fixture, string $normalizedSport): void
+    {
+        $accentRgb = $this->v3AccentRgb($normalizedSport);
+        $accent = imagecolorallocate($image, $accentRgb[0], $accentRgb[1], $accentRgb[2]);
+        $accentSoft = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 82);
+        $accentFaint = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 112);
+        $white = imagecolorallocate($image, 248, 250, 252);
+        $muted = imagecolorallocate($image, 158, 166, 181);
+        $dim = imagecolorallocate($image, 104, 112, 128);
+        $black = imagecolorallocate($image, 2, 4, 9);
+        $panel = imagecolorallocatealpha($image, 10, 14, 24, 28);
+        $line = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 74);
+        $darkLine = imagecolorallocatealpha($image, 255, 255, 255, 112);
+
+        imagefilledrectangle($image, 0, 0, $this->width, $this->height, $black);
+        $this->v3Backdrop($image, $accentRgb, $normalizedSport);
+
+        $this->roundedRect($image, 18, 18, 1182, 657, 24, imagecolorallocatealpha($image, 0, 0, 0, 52));
+        imagesetthickness($image, 2);
+        imagerectangle($image, 18, 18, 1182, 657, $line);
+        imagesetthickness($image, 1);
+
+        $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? SportsBotSports::label($normalizedSport)));
+        $leagueShort = strtoupper($this->shortLeagueName($league));
+        $date = strtoupper($this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC'))));
+        $time = $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
+        $eventName = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? ''));
+        $venue = trim((string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC')) ?: 'Venue TBC';
+        $tv = trim((string) ($fixture['tv_channel'] ?? '')) ?: 'Not listed';
+        $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? ''));
+        $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? ''));
+        $hasMatchup = $home !== '' && $away !== '';
+        $title = $eventName !== '' ? $eventName : ($hasMatchup ? $home . ' vs ' . $away : 'Fixture TBC');
+
+        $this->drawLeagueLogoMark($image, $fixture, 98, 80, 88, imagecolorallocatealpha($image, 255, 255, 255, 120), $accent);
+        $this->textFitted($image, $leagueShort, 158, 64, 330, 27, 16, $white, true);
+        $this->textFitted($image, strtoupper($this->v3Subhead($fixture, $normalizedSport)), 158, 96, 330, 16, 11, $accent, true);
+
+        $this->drawCalendarIcon($image, 792, 46, 44, $accent, imagecolorallocatealpha($image, 0, 0, 0, 90));
+        $this->rightText($image, $date, 1130, 70, 22, $white, true);
+        $this->rightText($image, strtoupper($this->v3TimePrefix($normalizedSport)) . ' ' . $time, 1130, 103, 23, $accent, true);
+
+        if ($hasMatchup) {
+            $homeLogo = (string) ($fixture['home_badge'] ?? $fixture['strHomeTeamBadge'] ?? $fixture['home_logo'] ?? '');
+            $awayLogo = (string) ($fixture['away_badge'] ?? $fixture['strAwayTeamBadge'] ?? $fixture['away_logo'] ?? '');
+            $this->v3TeamMark($image, $homeLogo, $home, 310, 275, $accent, $white);
+            $this->v3TeamMark($image, $awayLogo, $away, 890, 275, $accent, $white);
+
+            $this->v3GlowText($image, 'VS', 600, 292, 72, $accentRgb);
+            $this->centerFittedText($image, 'VS', 600, 292, 180, 72, 42, $white, true);
+
+            $homeLines = $this->teamDisplayLines($home);
+            $awayLines = $this->teamDisplayLines($away);
+            $this->centerFittedText($image, $homeLines[0], 310, 430, 360, 36, 23, $white, true);
+            if (($homeLines[1] ?? '') !== '') {
+                $this->centerFittedText($image, $homeLines[1], 310, 466, 330, 24, 16, $muted, true);
+            }
+            $this->centerFittedText($image, $awayLines[0], 890, 430, 360, 36, 23, $white, true);
+            if (($awayLines[1] ?? '') !== '') {
+                $this->centerFittedText($image, $awayLines[1], 890, 466, 330, 24, 16, $muted, true);
+            }
+        } else {
+            $this->drawLeagueLogoMark($image, $fixture, 600, 238, 130, imagecolorallocatealpha($image, 255, 255, 255, 118), $accent);
+            foreach ($this->fitTextLines(strtoupper($this->displayTitle($title)), 780, 42, true, 2) as $index => $lineText) {
+                $this->centerFittedText($image, $lineText, 600, 365 + ($index * 52), 780, 42, 25, $white, true);
+            }
+        }
+
+        $this->roundedRect($image, 36, 518, 1164, 638, 14, $panel);
+        imagerectangle($image, 36, 518, 1164, 638, $line);
+        imagefilledrectangle($image, 402, 542, 404, 615, $darkLine);
+        imagefilledrectangle($image, 790, 542, 792, 615, $darkLine);
+
+        $this->drawTvIcon($image, 64, 548, 44, $accent, imagecolorallocatealpha($image, 0, 0, 0, 100));
+        $this->v3FooterText($image, 124, 560, 246, 'TV BROADCAST', strtoupper($tv), $muted, $white);
+
+        $this->drawVenueIcon($image, 430, 550, 42, $accent);
+        $this->v3FooterText($image, 490, 560, 254, $this->v3VenueLabel($normalizedSport), strtoupper($this->displayTitle($venue)), $muted, $white);
+
+        $this->drawCalendarIcon($image, 822, 548, 42, $accent, imagecolorallocatealpha($image, 0, 0, 0, 100));
+        $this->v3FooterText($image, 882, 560, 230, $this->v3InfoLabel($normalizedSport), strtoupper($this->displayTitle($title)), $dim, $white);
+
+        imagefilledrectangle($image, 20, 655, 1180, 657, $accentSoft);
+        imagefilledrectangle($image, 40, 20, 1160, 22, $accentFaint);
+    }
+
+    /**
+     * @return array{0:int,1:int,2:int}
+     */
+    private function v3AccentRgb(string $sport): array
+    {
+        return match ($sport) {
+            'football' => [176, 64, 255],
+            'rugby', 'cricket', 'tennis' => [34, 197, 94],
+            'fights', 'mma', 'boxing' => [239, 68, 68],
+            'formula_1', 'motorsport' => [239, 38, 38],
+            'basketball' => [245, 158, 11],
+            'baseball' => [56, 189, 248],
+            'american_football' => [251, 146, 60],
+            'ice_hockey' => [96, 165, 250],
+            default => [20, 184, 166],
+        };
+    }
+
+    /**
+     * @param array{0:int,1:int,2:int} $accentRgb
+     */
+    private function v3Backdrop($image, array $accentRgb, string $sport): void
+    {
+        for ($y = 0; $y < $this->height; $y++) {
+            $shade = max(0, 18 - (int) ($y / 34));
+            $color = imagecolorallocate($image, 2 + $shade, 5 + $shade, 10 + $shade);
+            imageline($image, 0, $y, $this->width, $y, $color);
+        }
+
+        $glow = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 92);
+        $glowSoft = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 116);
+        for ($i = 0; $i < 11; $i++) {
+            imagefilledellipse($image, 600, 325, 980 - ($i * 70), 370 - ($i * 22), $i < 3 ? $glowSoft : $glow);
+        }
+
+        imagesetthickness($image, 2);
+        for ($i = 0; $i <= 10; $i++) {
+            $x = 90 + ($i * 102);
+            imageline($image, 600, 345, $x, 515, imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 108));
+        }
+        imagesetthickness($image, 1);
+
+        for ($i = 0; $i < 42; $i++) {
+            $x = 52 + ($i * 27);
+            $y = 142 + (($i % 5) * 15);
+            imagefilledellipse($image, $x, $y, 4, 4, imagecolorallocatealpha($image, 255, 255, 255, 84));
+            imagefilledellipse($image, 1200 - $x, $y + 14, 4, 4, imagecolorallocatealpha($image, 255, 255, 255, 92));
+        }
+
+        imagefilledrectangle($image, 0, 492, $this->width, $this->height, imagecolorallocatealpha($image, 0, 0, 0, 42));
+        imagearc($image, 600, 530, 760, 160, 180, 360, imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 92));
+
+        if (in_array($sport, ['basketball', 'baseball', 'american_football', 'ice_hockey'], true)) {
+            imagearc($image, 600, 355, 900, 300, 180, 360, imagecolorallocatealpha($image, 245, 158, 11, 108));
+        }
+    }
+
+    private function v3Subhead(array $fixture, string $sport): string
+    {
+        $event = trim((string) ($fixture['round'] ?? $fixture['strRound'] ?? $fixture['season'] ?? ''));
+        if ($event !== '') {
+            return $event;
+        }
+
+        return match ($sport) {
+            'formula_1', 'motorsport' => 'Race event',
+            'fights', 'mma', 'boxing' => 'Fight card',
+            'basketball', 'baseball', 'american_football', 'ice_hockey' => 'USA sports',
+            default => 'Fixture',
+        };
+    }
+
+    private function v3TimePrefix(string $sport): string
+    {
+        return match ($sport) {
+            'formula_1', 'motorsport' => 'Race start',
+            'fights', 'mma', 'boxing' => 'Main card',
+            'basketball' => 'Tip-off',
+            default => 'Kick-off',
+        };
+    }
+
+    private function v3VenueLabel(string $sport): string
+    {
+        return match ($sport) {
+            'formula_1', 'motorsport' => 'Circuit',
+            'basketball', 'ice_hockey' => 'Arena',
+            default => 'Venue',
+        };
+    }
+
+    private function v3InfoLabel(string $sport): string
+    {
+        return match ($sport) {
+            'formula_1', 'motorsport' => 'Race',
+            'fights', 'mma', 'boxing' => 'Event',
+            default => 'Fixture',
+        };
+    }
+
+    private function v3TeamMark($image, string $logoUrl, string $team, int $centerX, int $centerY, int $accent, int $white): void
+    {
+        if (!$this->drawTeamLogoContain($image, $logoUrl, $centerX, $centerY, 188, 188, $accent)) {
+            $this->teamPlaceholder($image, $team, $centerX - 94, $centerY - 94, 188, $accent, $white);
+        }
+    }
+
+    /**
+     * @param array{0:int,1:int,2:int} $accentRgb
+     */
+    private function v3GlowText($image, string $text, int $centerX, int $baselineY, int $size, array $accentRgb): void
+    {
+        $glow = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 78);
+        for ($offset = 8; $offset >= 2; $offset -= 2) {
+            $this->centerFittedText($image, $text, $centerX - $offset, $baselineY, 180, $size, 42, $glow, true);
+            $this->centerFittedText($image, $text, $centerX + $offset, $baselineY, 180, $size, 42, $glow, true);
+        }
+    }
+
+    private function v3FooterText($image, int $x, int $labelY, int $maxWidth, string $label, string $value, int $labelColor, int $valueColor): void
+    {
+        $this->textFitted($image, $label, $x, $labelY, $maxWidth, 14, 10, $labelColor, true);
+        foreach ($this->fitTextLines($value !== '' ? $value : 'TBC', $maxWidth, 19, true, 2) as $index => $line) {
+            $this->textFitted($image, $line, $x, $labelY + 30 + ($index * 24), $maxWidth, 19, 12, $valueColor, true);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
     private function footballFixtureCardV1($image, array $fixture): void
     {
         $white = imagecolorallocate($image, 248, 250, 252);
@@ -287,7 +759,7 @@ class SportsBotCardRenderer
         $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? 'Home'));
         $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? 'Away'));
         $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
-        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
+        $kickoff = $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
         $tv = trim((string) ($fixture['tv_channel'] ?? ''));
         $tv = $tv !== '' ? $tv : 'TBC';
 
@@ -350,7 +822,7 @@ class SportsBotCardRenderer
         $home = trim((string) ($fixture['home_team'] ?? $fixture['strHomeTeam'] ?? 'Home'));
         $away = trim((string) ($fixture['away_team'] ?? $fixture['strAwayTeam'] ?? 'Away'));
         $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
-        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
+        $kickoff = $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Kickoff TBC'));
         $venue = trim((string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'));
         $tv = trim((string) ($fixture['tv_channel'] ?? '')) ?: 'Not listed';
 
@@ -458,7 +930,7 @@ class SportsBotCardRenderer
         $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? 'Motorsport'));
         $title = trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? 'Race event'));
         $date = $this->compactDateLabel(trim((string) ($fixture['date_label'] ?? $fixture['dateEvent'] ?? 'Date TBC')));
-        $kickoff = trim((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
+        $kickoff = $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? 'Time TBC'));
         $venue = trim((string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Circuit TBC'));
         $tv = trim((string) ($fixture['tv_channel'] ?? '')) ?: 'Not listed';
 
@@ -649,6 +1121,39 @@ class SportsBotCardRenderer
         ];
 
         return strtr($upper, $replacements);
+    }
+
+    private function displayTimeLabel(string $time): string
+    {
+        $time = trim(preg_replace('/\s+/', ' ', $time) ?? $time);
+        if ($time === '') {
+            return '';
+        }
+
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?\s*([A-Z]{2,5})?$/i', $time, $matches) !== 1) {
+            return $time;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = (string) $matches[2];
+        $meridiem = strtoupper((string) ($matches[3] ?? ''));
+        $timezone = strtoupper((string) ($matches[4] ?? ''));
+
+        if ($meridiem === '') {
+            if ($hour > 23) {
+                return $time;
+            }
+
+            $meridiem = $hour >= 12 ? 'PM' : 'AM';
+            $hour = $hour % 12;
+            if ($hour === 0) {
+                $hour = 12;
+            }
+        }
+
+        $label = sprintf('%d:%s %s', $hour, $minute, $meridiem);
+
+        return trim($label . ($timezone !== '' ? ' ' . $timezone : ''));
     }
 
     /**

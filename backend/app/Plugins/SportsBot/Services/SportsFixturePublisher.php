@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 class SportsFixturePublisher
@@ -50,6 +51,7 @@ class SportsFixturePublisher
         $config = SportsFixtureConfig::for($sportKey);
         $summary = (array) ($preview['summary'] ?? []);
         $message = (string) ($preview['message'] ?? '');
+        $fixtureCount = count($this->flattenFixtures($summary));
 
         try {
             $results = $this->sendCards($sportKey, $config, $summary, $message, $source, $options);
@@ -60,18 +62,20 @@ class SportsFixturePublisher
                 'error' => $error->getMessage(),
             ]);
 
-            $routeOptions = $this->buildRouteOptions($config, $source, $summary);
-            $results = $this->notifier->send($message, $routeOptions);
+            throw $error;
         }
 
         Log::info('sportsbot.fixture_publisher.sent', [
             'sport' => $sportKey,
             'route_key' => $config['topic_key'] ?? null,
+            'fixture_count' => $fixtureCount,
             'result_count' => count($results),
         ]);
 
         return array_merge($preview, [
-            'sent' => true,
+            'sent' => $results !== [],
+            'no_fixtures' => $fixtureCount === 0,
+            'card_only' => true,
             'results' => $results,
         ]);
     }
@@ -79,16 +83,22 @@ class SportsFixturePublisher
     private function sendCards(string $sportKey, array $config, array $summary, string $message, string $source, array $options): array
     {
         $fixtures = $this->flattenFixtures($summary);
+        $cardVersion = $this->resolveCardVersion($config);
 
         if ($fixtures === []) {
-            return $this->notifier->send($message, $this->buildRouteOptions($config, $source, $summary));
+            if (!$this->cardsEnabled()) {
+                throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for sport fixture sends.');
+            }
+
+            $card = $this->cards->noFixturesCard($this->noFixturesSummary($summary, $config), $cardVersion);
+
+            return $this->notifier->sendPhoto((string) $card['path'], '', $this->buildRouteOptions($config, $source, $summary));
         }
 
         if (!$this->cardsEnabled()) {
-            return $this->notifier->send($message, $this->buildRouteOptions($config, $source, $summary));
+            throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for sport fixture sends.');
         }
 
-        $cardVersion = $this->resolveCardVersion($config);
         $captionsEnabled = $this->captionsEnabled($config);
         $results = [];
 
@@ -110,7 +120,27 @@ class SportsFixturePublisher
             }
         }
 
+        if ($results === []) {
+            throw new RuntimeException('No fixture cards were sent. Check card rendering and Telegram route configuration.');
+        }
+
         return $results;
+    }
+
+    private function noFixturesSummary(array $summary, array $config): array
+    {
+        $sportKey = (string) ($config['sport'] ?? $summary['sport_filter'] ?? 'sports');
+        $label = trim((string) ($summary['title'] ?? ''));
+
+        return [
+            'sport' => $sportKey,
+            'sport_key' => $sportKey,
+            'sport_label' => $label !== '' ? $label : SportsFixtureConfig::emoji($sportKey) . ' ' . SportsFixtureConfig::for($sportKey)['sport'],
+            'title' => $label !== '' ? $label : ucwords(str_replace('_', ' ', $sportKey)) . ' Fixtures TV',
+            'date' => (string) ($summary['date'] ?? now()->toDateString()),
+            'route_key' => (string) ($config['topic_key'] ?? ''),
+            'fixtures_total' => 0,
+        ];
     }
 
     private function buildSummary(string $sportKey, ?array $config, array $options = []): array
@@ -170,8 +200,9 @@ class SportsFixturePublisher
         $sportKey = (string) ($config['sport'] ?? '');
         $settingKey = $sportKey . '_fixture_card_version';
         $version = (string) $this->settings->get($settingKey, $config['default_card_version'] ?? 'v1');
+        $version = strtolower(trim($version));
 
-        return strtolower(trim($version)) === 'v2' ? 'v2' : 'v1';
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 
     private function captionsEnabled(array $config): bool

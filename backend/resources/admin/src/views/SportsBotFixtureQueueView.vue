@@ -187,6 +187,12 @@ function showFlash(text, isError = false) {
   setTimeout(() => { flashText.value = null }, 4000)
 }
 
+function sumResult(data, key) {
+  if (!data || typeof data !== 'object') return 0
+  if (typeof data[key] === 'number') return data[key]
+  return Object.values(data).reduce((total, row) => total + (Number(row?.[key] ?? 0) || 0), 0)
+}
+
 async function loadQueue() {
   loading.value = true
   try {
@@ -208,8 +214,10 @@ async function runPrefetch() {
   busy.prefetch = true
   try {
     const { data } = await api.post('/admin/sportsbot/fixture-queue/prefetch')
-    const total = (data.created ?? 0) + (data.updated ?? 0)
-    showFlash(`Prefetched — ${total} items (${data.created ?? 0} new)`)
+    const created = sumResult(data, 'created')
+    const updated = sumResult(data, 'updated')
+    const skipped = sumResult(data, 'skipped')
+    showFlash(`Prefetched ${created + updated} items (${created} new, ${updated} updated, ${skipped} unchanged)`)
     toast.success('Prefetch complete')
     await loadQueue()
   } catch (error) {
@@ -224,10 +232,11 @@ async function runRender() {
   busy.render = true
   try {
     const { data } = await api.post('/admin/sportsbot/fixture-queue/render')
-    let total = 0
-    for (const k of Object.keys(data)) total += data[k]?.rendered ?? 0
-    showFlash(`Rendered ${total} cards`)
-    toast.success('Render complete')
+    const rendered = sumResult(data, 'rendered')
+    const skipped = sumResult(data, 'skipped')
+    const failed = sumResult(data, 'failed')
+    showFlash(`Rendered ${rendered} cards (${skipped} current, ${failed} failed)`, failed > 0)
+    failed > 0 ? toast.error('Render finished with failures') : toast.success('Render complete')
     await loadQueue()
   } catch (error) {
     showFlash(error?.response?.data?.message || 'Render failed', true)
@@ -241,10 +250,12 @@ async function runPublish() {
   busy.publish = true
   try {
     const { data } = await api.post('/admin/sportsbot/fixture-queue/publish')
-    let total = 0
-    for (const k of Object.keys(data)) total += data[k]?.sent ?? 0
-    showFlash(`Published ${total} items`)
-    toast.success('Publish complete')
+    const sent = sumResult(data, 'sent')
+    const rendered = sumResult(data, 'rendered')
+    const skipped = sumResult(data, 'skipped')
+    const failed = sumResult(data, 'failed')
+    showFlash(`Published ${sent} cards (${rendered} rendered first, ${skipped} skipped, ${failed} failed)`, failed > 0)
+    failed > 0 ? toast.error('Publish finished with failures') : toast.success('Publish complete')
     await loadQueue()
   } catch (error) {
     showFlash(error?.response?.data?.message || 'Publish failed', true)
@@ -271,7 +282,13 @@ async function publishNow(id) {
   pendingActions.value.set(id, 'send')
   try {
     const { data } = await api.post(`/admin/sportsbot/fixture-queue/${id}/publish`)
-    if (data.published) { toast.success('Published!') } else { toast.error(data.error || 'Publish failed') }
+    if (data.published) {
+      toast.success('Published!')
+    } else if (data.already_sent) {
+      toast.error('Already sent')
+    } else {
+      toast.error(data.error || 'Publish failed')
+    }
     await loadQueue()
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Publish failed')

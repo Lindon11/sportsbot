@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev libjpeg-dev libfreetype6-dev \
         libcurl4-openssl-dev libsqlite3-dev fonts-dejavu-core \
         libzip-dev libonig-dev libxml2-dev \
-        zip unzip git curl \
+        zip unzip git curl chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Node.js 20 (for admin panel / Vite builds) ──────────────────────
@@ -36,6 +36,11 @@ COPY . .
 # ── Install PHP dependencies ─────────────────────────────────────────
 RUN if [ -f composer.json ]; then \
         composer install --no-interaction --optimize-autoloader; \
+    fi
+
+# ── Install Node dependencies used by SportsBot browser card rendering ─
+RUN if [ -f package.json ]; then \
+        PUPPETEER_SKIP_DOWNLOAD=true npm install --omit=dev --no-audit --no-fund; \
     fi
 
 # ── File permissions ─────────────────────────────────────────────────

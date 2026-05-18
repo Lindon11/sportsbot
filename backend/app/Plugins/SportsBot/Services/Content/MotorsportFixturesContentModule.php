@@ -37,7 +37,7 @@ class MotorsportFixturesContentModule implements SportsBotContentModuleInterface
 
     public function buildSummary(): array
     {
-        return $this->service->buildSummary(self::SPORT_KEY, SportsFixtureConfig::dataFetchWindow(self::SPORT_KEY));
+        return $this->service->buildSummary(self::SPORT_KEY);
     }
 
     public function format(array $summary): string
@@ -61,8 +61,8 @@ class MotorsportFixturesContentModule implements SportsBotContentModuleInterface
 
     private function cardVersion(): string
     {
-        $version = (string) $this->settings->get('formula_1_fixture_card_version', SportsFixtureConfig::defaultCardVersion(self::SPORT_KEY));
+        $version = strtolower(trim((string) $this->settings->get('formula_1_fixture_card_version', SportsFixtureConfig::defaultCardVersion(self::SPORT_KEY))));
 
-        return strtolower(trim($version)) === 'v2' ? 'v2' : 'v1';
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 }

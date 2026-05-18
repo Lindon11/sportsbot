@@ -13,6 +13,7 @@ class TelegramRouteKeys
     public const BASKETBALL = 'BASKETBALL';
     public const BASEBALL = 'BASEBALL';
     public const AMERICAN_FOOTBALL = 'AMERICAN_FOOTBALL';
+    public const USA_SPORTS = 'USA_SPORTS';
     public const TENNIS = 'TENNIS';
     public const MMA = 'MMA';
     public const FIGHTS = 'FIGHTS';
@@ -21,6 +22,7 @@ class TelegramRouteKeys
     public const FORMULA_1 = 'FORMULA_1';
     public const ICE_HOCKEY = 'ICE_HOCKEY';
     public const GOLF = 'GOLF';
+    public const OTHER_SPORTS = 'OTHER_SPORTS';
     public const MOTORSPORT = 'MOTORSPORT';
     public const BOXING = 'BOXING';
     public const MY_TEAMS = 'MY_TEAMS';
@@ -41,6 +43,7 @@ class TelegramRouteKeys
             self::BASKETBALL,
             self::BASEBALL,
             self::AMERICAN_FOOTBALL,
+            self::USA_SPORTS,
             self::TENNIS,
             self::MMA,
             self::FIGHTS,
@@ -49,6 +52,7 @@ class TelegramRouteKeys
             self::FORMULA_1,
             self::ICE_HOCKEY,
             self::GOLF,
+            self::OTHER_SPORTS,
             self::MOTORSPORT,
             self::BOXING,
             self::MY_TEAMS,

@@ -51,6 +51,7 @@
             >
               <option value="v1">V1 cards</option>
               <option value="v2">V2 clean cards</option>
+              <option value="v3">V3 polished cards</option>
             </select>
           </label>
           <label class="inline-flex items-center gap-2 text-sm text-slate-300 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700">
@@ -155,7 +156,7 @@ const previewMessage = ref('')
 const cardPreviews = ref([])
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
-const cardVersion = ref('v1')
+const cardVersion = ref('v3')
 
 function statusClass(status) {
   if (status === 'sent') return 'bg-emerald-500/20 text-emerald-400'

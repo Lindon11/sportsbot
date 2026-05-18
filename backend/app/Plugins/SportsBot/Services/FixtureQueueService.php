@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -71,12 +72,21 @@ class FixtureQueueService
 
             if ($existing) {
                 if ($existing->payload_hash === $hash) {
-                    $skipped++;
+                    $routeKey = (string) ($config['topic_key'] ?? '');
+                    if ($routeKey !== '' && $existing->route_key !== $routeKey) {
+                        $existing->route_key = $routeKey;
+                        $existing->save();
+                        $updated++;
+                    } else {
+                        $skipped++;
+                    }
+
                     continue;
                 }
 
                 $existing->fill([
                     'fixture_data' => $fixture,
+                    'route_key' => $config['topic_key'] ?? null,
                     'payload_hash' => $hash,
                     'status' => SportsBotFixtureQueue::STATUS_DRAFT,
                     'asset_status' => SportsBotFixtureQueue::ASSET_PENDING,
@@ -135,35 +145,28 @@ class FixtureQueueService
         }
 
         $maxDate = Carbon::today()->addDays((int) ($config['card_prepare_window'] ?? 2));
-        $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
+        $cardVersion = $this->desiredCardVersion($sportKey, $config);
         $rendered = 0;
         $skipped = 0;
         $failed = 0;
 
         $drafts = SportsBotFixtureQueue::query()
-            ->draft()
             ->bySport($sportKey)
             ->where('publish_date', '<=', $maxDate->toDateString())
+            ->whereIn('status', [SportsBotFixtureQueue::STATUS_DRAFT, SportsBotFixtureQueue::STATUS_READY])
             ->get();
 
         foreach ($drafts as $entry) {
             $fixture = $this->effectiveFixtureData($entry);
 
+            if ($entry->status === SportsBotFixtureQueue::STATUS_READY && $this->hasCurrentCard($entry, $cardVersion)) {
+                $this->syncRouteKey($entry, $config);
+                $skipped++;
+                continue;
+            }
+
             try {
-                $this->cacheAssets($entry, $fixture);
-
-                $card = $this->cards->fixtureCard($fixture, $cardVersion);
-                $cardPath = (string) ($card['path'] ?? '');
-
-                if ($cardPath === '' || !is_file($cardPath)) {
-                    throw new \RuntimeException('Card render returned no valid file path');
-                }
-
-                $entry->card_path = $cardPath;
-                $entry->caption = $this->buildCaption($fixture, $config);
-                $entry->status = SportsBotFixtureQueue::STATUS_READY;
-                $entry->save();
-
+                $this->renderEntryCard($entry, $config, $cardVersion);
                 $rendered++;
             } catch (Throwable $error) {
                 $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
@@ -213,7 +216,10 @@ class FixtureQueueService
         }
 
         $today = Carbon::today()->toDateString();
+        $dryRun = (bool) ($options['dry_run'] ?? false);
         $sent = 0;
+        $wouldSend = 0;
+        $rendered = 0;
         $skipped = 0;
         $failed = 0;
 
@@ -224,12 +230,47 @@ class FixtureQueueService
             ->get();
 
         foreach ($items as $entry) {
-            if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
+            if ($entry->sent_at !== null || $entry->telegram_message_id !== null) {
                 $skipped++;
                 continue;
             }
 
+            if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
+                if ($dryRun) {
+                    $skipped++;
+                    continue;
+                }
+
+                try {
+                    $this->renderEntryCard($entry, $config, $this->desiredCardVersion($sportKey, $config));
+                    $entry = $entry->fresh() ?? $entry;
+                    $rendered++;
+                } catch (Throwable $error) {
+                    $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
+                    $entry->error = mb_substr($error->getMessage(), 0, 1000);
+                    $entry->save();
+
+                    Log::error('sportsbot.fixture_queue.publish_render_failed', [
+                        'sport' => $sportKey,
+                        'event_id' => $entry->event_id,
+                        'error' => $error->getMessage(),
+                    ]);
+                    $failed++;
+                    continue;
+                }
+            }
+
             try {
+                if ($dryRun) {
+                    if ($this->hasCurrentCard($entry, $this->desiredCardVersion($sportKey, $config))) {
+                        $wouldSend++;
+                    } else {
+                        $skipped++;
+                    }
+
+                    continue;
+                }
+
                 $verified = $this->verifyBeforePublish($entry, $config);
 
                 if (!$verified) {
@@ -264,15 +305,21 @@ class FixtureQueueService
         Log::info('sportsbot.fixture_queue.published', [
             'sport' => $sportKey,
             'sent' => $sent,
+            'would_send' => $wouldSend,
+            'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'dry_run' => $dryRun,
         ]);
 
         return [
             'sport' => $sportKey,
             'sent' => $sent,
+            'would_send' => $wouldSend,
+            'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'dry_run' => $dryRun,
         ];
     }
 
@@ -348,8 +395,15 @@ class FixtureQueueService
     {
         try {
             $freshData = $this->provider->lookupEvent($entry->event_id);
+            $cardVersion = $this->desiredCardVersion((string) $entry->sport_key, $config);
+
             if ($freshData === null || !is_array($freshData)) {
-                return false;
+                Log::warning('sportsbot.fixture_queue.verify_provider_unavailable', [
+                    'event_id' => $entry->event_id,
+                    'sport' => $entry->sport_key,
+                ]);
+
+                return $this->hasCurrentCard($entry, $cardVersion);
             }
 
             $providerFixture = (array) ($entry->fixture_data ?? []);
@@ -362,6 +416,12 @@ class FixtureQueueService
             $newHash = $this->computeHash($providerFixture);
 
             if ($currentHash === $newHash) {
+                if ($this->hasCurrentCard($entry, $cardVersion)) {
+                    return true;
+                }
+
+                $this->renderEntryCard($entry, $config, $cardVersion);
+
                 return true;
             }
 
@@ -378,37 +438,79 @@ class FixtureQueueService
             $entry->last_refreshed_at = now();
             $entry->save();
 
-            $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
-            $fixture = $this->effectiveFixtureData($entry);
+            $this->renderEntryCard($entry, $config, $cardVersion);
 
-            $this->cacheAssets($entry, $fixture);
-
-            $card = $this->cards->fixtureCard($fixture, $cardVersion);
-            $cardPath = (string) ($card['path'] ?? '');
-
-            if ($cardPath !== '' && is_file($cardPath)) {
-                $entry->card_path = $cardPath;
-                $entry->caption = $this->buildCaption($fixture, $config);
-                $entry->status = SportsBotFixtureQueue::STATUS_READY;
-                $entry->save();
-
-                return true;
-            }
-
-            return false;
+            return true;
         } catch (Throwable $error) {
             Log::warning('sportsbot.fixture_queue.verify_failed', [
                 'event_id' => $entry->event_id,
                 'error' => $error->getMessage(),
             ]);
 
+            return $this->hasCurrentCard($entry, $this->desiredCardVersion((string) $entry->sport_key, $config));
+        }
+    }
+
+    private function desiredCardVersion(string $sportKey, array $config): string
+    {
+        $version = strtolower(trim((string) $this->settings->get(
+            $sportKey . '_fixture_card_version',
+            $config['default_card_version'] ?? 'v3'
+        )));
+
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
+    }
+
+    private function hasCurrentCard(SportsBotFixtureQueue $entry, string $cardVersion): bool
+    {
+        $cardPath = (string) ($entry->card_path ?? '');
+        if ($cardPath === '' || !is_file($cardPath)) {
             return false;
         }
+
+        $file = basename($cardPath);
+        if ($cardVersion === 'v3') {
+            return str_starts_with($file, 'fixture-v3-') || str_starts_with($file, 'fixture-v3-browser-');
+        }
+
+        return str_starts_with($file, 'fixture-' . $cardVersion . '-');
+    }
+
+    private function renderEntryCard(SportsBotFixtureQueue $entry, array $config, string $cardVersion): void
+    {
+        $fixture = $this->effectiveFixtureData($entry);
+
+        $this->cacheAssets($entry, $fixture);
+
+        $card = $this->cards->fixtureCard($fixture, $cardVersion);
+        $cardPath = (string) ($card['path'] ?? '');
+
+        if ($cardPath === '' || !is_file($cardPath)) {
+            throw new \RuntimeException('Card render returned no valid file path');
+        }
+
+        $entry->card_path = $cardPath;
+        $entry->caption = $this->buildCaption($fixture, $config);
+        $entry->route_key = $config['topic_key'] ?? $entry->route_key;
+        $entry->status = SportsBotFixtureQueue::STATUS_READY;
+        $entry->error = null;
+        $entry->save();
+    }
+
+    private function syncRouteKey(SportsBotFixtureQueue $entry, array $config): void
+    {
+        $routeKey = (string) ($config['topic_key'] ?? '');
+        if ($routeKey === '' || $entry->route_key === $routeKey) {
+            return;
+        }
+
+        $entry->route_key = $routeKey;
+        $entry->save();
     }
 
     private function sendToTelegram(SportsBotFixtureQueue $entry, array $config, array $options): array
     {
-        $routeKey = $entry->route_key ?? $config['topic_key'] ?? 'default';
+        $routeKey = $this->routeKeyForEntry($entry, $config);
         $fixture = $this->effectiveFixtureData($entry);
         $caption = (string) ($entry->caption ?? '');
         $cardPath = (string) ($entry->card_path ?? '');
@@ -487,6 +589,31 @@ class FixtureQueueService
         return [];
     }
 
+    private function routeKeyForEntry(SportsBotFixtureQueue $entry, array $config): string
+    {
+        $configuredRoute = (string) ($config['topic_key'] ?? '');
+        $storedRoute = (string) ($entry->route_key ?? '');
+
+        if ($configuredRoute === TelegramRouteKeys::USA_SPORTS && in_array($storedRoute, [
+            TelegramRouteKeys::BASKETBALL,
+            TelegramRouteKeys::BASEBALL,
+            TelegramRouteKeys::AMERICAN_FOOTBALL,
+            TelegramRouteKeys::ICE_HOCKEY,
+        ], true)) {
+            return $configuredRoute;
+        }
+
+        if ($configuredRoute === TelegramRouteKeys::OTHER_SPORTS && in_array($storedRoute, [
+            TelegramRouteKeys::TENNIS,
+            TelegramRouteKeys::CRICKET,
+            TelegramRouteKeys::GOLF,
+        ], true)) {
+            return $configuredRoute;
+        }
+
+        return $storedRoute !== '' ? $storedRoute : ($configuredRoute !== '' ? $configuredRoute : TelegramRouteKeys::DEFAULT);
+    }
+
     public function find(int $id): ?SportsBotFixtureQueue
     {
         return SportsBotFixtureQueue::query()->find($id);
@@ -518,7 +645,10 @@ class FixtureQueueService
         }
 
         $fixture = $this->effectiveFixtureData($entry);
-        $cardVersion = (string) ($config['default_card_version'] ?? 'v1');
+        $cardVersion = $this->desiredCardVersion($sportKey, $config);
+        $preserveSent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
+            || $entry->sent_at !== null
+            || $entry->telegram_message_id !== null;
 
         try {
             $this->cacheAssets($entry, $fixture);
@@ -532,7 +662,8 @@ class FixtureQueueService
 
             $entry->card_path = $cardPath;
             $entry->caption = $this->buildCaption($fixture, $config);
-            $entry->status = SportsBotFixtureQueue::STATUS_READY;
+            $entry->route_key = $config['topic_key'] ?? $entry->route_key;
+            $entry->status = $preserveSent ? SportsBotFixtureQueue::STATUS_SENT : SportsBotFixtureQueue::STATUS_READY;
             $entry->error = null;
             $entry->save();
 
@@ -551,6 +682,10 @@ class FixtureQueueService
         $entry = $this->find($id);
         if (!$entry) {
             return ['error' => "Queue item {$id} not found"];
+        }
+
+        if ($entry->status === SportsBotFixtureQueue::STATUS_SENT || $entry->sent_at !== null || $entry->telegram_message_id !== null) {
+            return ['published' => false, 'id' => $id, 'already_sent' => true, 'message_id' => $entry->telegram_message_id];
         }
 
         $sportKey = $entry->sport_key;
@@ -638,7 +773,18 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
+        $wasSent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
+            || $entry->sent_at !== null
+            || $entry->telegram_message_id !== null;
+
         $result = $this->scrapers->findTvInfo($entry);
+        if ($this->scrapeResultShouldAutoRender($result, ['tv_channel', 'tv_channels'])) {
+            $result['render'] = $this->reRenderItem($id);
+            if ($wasSent) {
+                $this->restoreSentStatus($id);
+            }
+        }
+
         $fresh = $entry->fresh();
 
         return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
@@ -664,9 +810,16 @@ class FixtureQueueService
             return ['error' => "Queue item {$id} not found"];
         }
 
+        $wasSent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
+            || $entry->sent_at !== null
+            || $entry->telegram_message_id !== null;
+
         $result = $this->scrapers->accept($entry);
         if (($result['accepted'] ?? false) === true) {
             $result['render'] = $this->reRenderItem($id);
+            if ($wasSent) {
+                $this->restoreSentStatus($id);
+            }
         }
         $fresh = $entry->fresh();
 
@@ -760,7 +913,7 @@ class FixtureQueueService
         $sources = [];
 
         foreach (array_keys($fixture) as $field) {
-            if (!$this->emptyFixtureValue($fixture[$field] ?? null)) {
+            if (!$this->emptyFixtureFieldValue((string) $field, $fixture[$field] ?? null)) {
                 $sources[$field] = 'api_provider';
             }
         }
@@ -782,7 +935,7 @@ class FixtureQueueService
 
         $manual = (array) ($payload['manual_override']['fields'] ?? []);
         foreach ($manual as $field => $value) {
-            if (!$this->scrapedFieldAllowed((string) $field) || $this->emptyFixtureValue($value)) {
+            if (!$this->scrapedFieldAllowed((string) $field) || $this->emptyFixtureFieldValue((string) $field, $value)) {
                 continue;
             }
             $fixture[$field] = $value;
@@ -805,11 +958,11 @@ class FixtureQueueService
     {
         foreach ($fields as $field => $value) {
             $field = (string) $field;
-            if (!$this->scrapedFieldAllowed($field) || $this->emptyFixtureValue($value)) {
+            if (!$this->scrapedFieldAllowed($field) || $this->emptyFixtureFieldValue($field, $value)) {
                 continue;
             }
 
-            if (!$this->emptyFixtureValue($fixture[$field] ?? null)) {
+            if (!$this->emptyFixtureFieldValue($field, $fixture[$field] ?? null)) {
                 continue;
             }
 
@@ -852,6 +1005,84 @@ class FixtureQueueService
         }
 
         return trim((string) $value) === '';
+    }
+
+    private function restoreSentStatus(int $id): void
+    {
+        $entry = $this->find($id);
+        if (!$entry || ($entry->sent_at === null && $entry->telegram_message_id === null)) {
+            return;
+        }
+
+        $entry->status = SportsBotFixtureQueue::STATUS_SENT;
+        $entry->save();
+    }
+
+    private function emptyFixtureFieldValue(string $field, mixed $value): bool
+    {
+        if ($this->emptyFixtureValue($value)) {
+            return true;
+        }
+
+        if ($field === 'tv_channel') {
+            return $this->placeholderTvChannel((string) $value);
+        }
+
+        if ($field === 'tv_channels' && is_array($value)) {
+            foreach ($value as $channel) {
+                if (!$this->placeholderTvChannel((string) $channel)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function placeholderTvChannel(string $channel): bool
+    {
+        $normalized = strtolower(trim(preg_replace('/\s+/', ' ', $channel) ?? $channel));
+        $normalized = trim($normalized, " \t\n\r\0\x0B.:-");
+
+        return in_array($normalized, [
+            '',
+            'not listed',
+            'not shown',
+            'not available',
+            'no tv',
+            'none',
+            'unknown',
+            'tbc',
+            'tv tbc',
+            'channel tbc',
+            'channels tbc',
+            'n/a',
+            'na',
+            '-',
+        ], true);
+    }
+
+    /**
+     * @param array<int, string> $fields
+     */
+    private function scrapeResultShouldAutoRender(array $result, array $fields): bool
+    {
+        $normalized = (array) ($result['normalized'] ?? []);
+        $confidence = (float) ($normalized['confidence'] ?? 0.0);
+        if ($confidence < $this->scrapers->autoUseConfidenceThreshold()) {
+            return false;
+        }
+
+        $scrapedFields = (array) ($normalized['fields'] ?? []);
+        foreach ($fields as $field) {
+            if (!$this->emptyFixtureFieldValue($field, $scrapedFields[$field] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function buildCaption(array $fixture, array $config): string

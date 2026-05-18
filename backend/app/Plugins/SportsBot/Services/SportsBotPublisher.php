@@ -6,6 +6,7 @@ use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 class SportsBotPublisher
@@ -95,7 +96,7 @@ class SportsBotPublisher
                 'error' => $error->getMessage(),
             ]);
 
-            $results = $this->notifier->send($message, $options);
+            throw $error;
         }
 
         Log::info('sportsbot.publisher.sport_sent', [
@@ -129,7 +130,8 @@ class SportsBotPublisher
         ]);
 
         try {
-            if (in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES'], true)) {
+            $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES'], true);
+            if ($isFixtureModule) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
             } else {
                 $card = $this->renderCard($module->key(), $summary);
@@ -154,6 +156,10 @@ class SportsBotPublisher
                 'route_key' => $module->routeKey(),
                 'error' => $error->getMessage(),
             ]);
+
+            if (($isFixtureModule ?? false) === true) {
+                throw $error;
+            }
 
             $results = $this->notifier->send($message, $options);
         }
@@ -181,11 +187,18 @@ class SportsBotPublisher
         $fixtures = $this->flattenFixtures($summary);
 
         if ($fixtures === []) {
-            return $this->notifier->send($message, $options);
+            if (!$this->cardsEnabled()) {
+                throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for fixture sends.');
+            }
+
+            $cardVersion = $this->fixtureCardVersionFromOptions($options);
+            $card = $this->cards->noFixturesCard($this->noFixturesSummary($summary, $options), $cardVersion);
+
+            return $this->notifier->sendPhoto((string) $card['path'], '', $options);
         }
 
         if (!$this->cardsEnabled()) {
-            return $this->notifier->send($message, $options);
+            throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for fixture sends.');
         }
 
         $results = [];
@@ -215,7 +228,38 @@ class SportsBotPublisher
             }
         }
 
+        if ($results === []) {
+            throw new RuntimeException('No fixture cards were sent. Check card rendering and route configuration.');
+        }
+
         return $results;
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $options
+     */
+    private function noFixturesSummary(array $summary, array $options): array
+    {
+        $payload = (array) ($options['payload'] ?? []);
+        $contentKey = strtoupper((string) ($payload['content_key'] ?? $options['type'] ?? 'SPORTS_FIXTURES'));
+        $sportKey = match ($contentKey) {
+            'FOOTBALL_FIXTURES' => 'football',
+            'RUGBY_FIXTURES' => 'rugby',
+            'FIGHT_FIXTURES' => 'fights',
+            'MOTORSPORT_FIXTURES' => 'formula_1',
+            default => (string) ($payload['sport_key'] ?? $summary['sport_filter'] ?? 'sports'),
+        };
+
+        return [
+            'sport' => $sportKey,
+            'sport_key' => $sportKey,
+            'sport_label' => (string) ($summary['title'] ?? SportsFixtureConfig::emoji($sportKey) . ' ' . SportsFixtureConfig::providerSport($sportKey) . ' Fixtures TV'),
+            'title' => (string) ($summary['title'] ?? ucwords(str_replace('_', ' ', $sportKey)) . ' Fixtures TV'),
+            'date' => (string) ($summary['date'] ?? now()->toDateString()),
+            'route_key' => (string) ($options['route_key'] ?? ''),
+            'fixtures_total' => 0,
+        ];
     }
 
     /**
@@ -224,9 +268,9 @@ class SportsBotPublisher
     private function fixtureCardVersionFromOptions(array $options): string
     {
         $payload = (array) ($options['payload'] ?? []);
-        $version = (string) ($payload['card_version'] ?? $this->settings->get('football_fixture_card_version', 'v1'));
+        $version = strtolower(trim((string) ($payload['card_version'] ?? $this->settings->get('football_fixture_card_version', 'v3'))));
 
-        return strtolower(trim($version)) === 'v2' ? 'v2' : 'v1';
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 
     /**
@@ -462,7 +506,7 @@ class SportsBotPublisher
                     $chatId,
                     $last->telegram_message_id,
                     (string) $card['path'],
-                    mb_substr('🔴 Live Now · updated ' . now()->format('H:i'), 0, 1000),
+                    mb_substr('🔴 Live Now · updated ' . now()->format('g:i A'), 0, 1000),
                     (array) ($options['reply_markup'] ?? [])
                 );
             }

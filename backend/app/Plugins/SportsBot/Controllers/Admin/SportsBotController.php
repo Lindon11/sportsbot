@@ -253,11 +253,11 @@ class SportsBotController extends Controller
     ): JsonResponse
     {
         $validated = $request->validate([
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
-        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('football_fixture_card_version', 'v1'));
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('football_fixture_card_version', 'v3'));
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
@@ -275,7 +275,7 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'captions_enabled' => ['sometimes', 'boolean'],
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         if (array_key_exists('captions_enabled', $validated)) {
@@ -310,11 +310,11 @@ class SportsBotController extends Controller
     ): JsonResponse
     {
         $validated = $request->validate([
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
-        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('rugby_fixture_card_version', 'v2'));
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('rugby_fixture_card_version', 'v3'));
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
@@ -332,7 +332,7 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'captions_enabled' => ['sometimes', 'boolean'],
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         if (array_key_exists('captions_enabled', $validated)) {
@@ -367,11 +367,11 @@ class SportsBotController extends Controller
     ): JsonResponse
     {
         $validated = $request->validate([
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
-        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('fight_fixture_card_version', 'v2'));
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('fight_fixture_card_version', 'v3'));
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
@@ -389,7 +389,7 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'captions_enabled' => ['sometimes', 'boolean'],
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         if (array_key_exists('captions_enabled', $validated)) {
@@ -424,11 +424,11 @@ class SportsBotController extends Controller
     ): JsonResponse
     {
         $validated = $request->validate([
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
-        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('formula_1_fixture_card_version', 'v2'));
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('formula_1_fixture_card_version', 'v3'));
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
@@ -446,7 +446,7 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'captions_enabled' => ['sometimes', 'boolean'],
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         if (array_key_exists('captions_enabled', $validated)) {
@@ -475,12 +475,12 @@ class SportsBotController extends Controller
     public function sportFixturePreview(
         string $sport,
         Request $request,
-        SportsBotPublisher $publisher,
+        SportsFixturePublisher $fixturePublisher,
         SportsBotCardRenderer $cards,
         SportsBotSettingsService $settings,
     ): JsonResponse {
         $validated = $request->validate([
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         $config = SportsFixtureConfig::for($sport);
@@ -488,12 +488,7 @@ class SportsBotController extends Controller
             return response()->json(['error' => "Unknown sport: {$sport}"], 422);
         }
 
-        $contentModule = $this->resolveContentModule($sport);
-        if ($contentModule === null) {
-            return response()->json(['error' => "No content module for sport: {$sport}"], 422);
-        }
-
-        $preview = $publisher->preview($contentModule);
+        $preview = $fixturePublisher->preview($sport);
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get(
             $this->settingKey($sport, 'card_version'),
@@ -511,7 +506,7 @@ class SportsBotController extends Controller
     public function sportFixtureSend(
         string $sport,
         Request $request,
-        SportsBotPublisher $publisher,
+        SportsFixturePublisher $fixturePublisher,
         SportsBotSettingsService $settings,
     ): JsonResponse {
         $config = SportsFixtureConfig::for($sport);
@@ -521,7 +516,7 @@ class SportsBotController extends Controller
 
         $validated = $request->validate([
             'captions_enabled' => ['sometimes', 'boolean'],
-            'card_version' => ['sometimes', 'string', 'in:v1,v2'],
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
         ]);
 
         if (array_key_exists('captions_enabled', $validated)) {
@@ -531,13 +526,8 @@ class SportsBotController extends Controller
             $settings->set($this->settingKey($sport, 'card_version'), $this->footballFixtureCardVersion($validated['card_version']));
         }
 
-        $contentModule = $this->resolveContentModule($sport);
-        if ($contentModule === null) {
-            return response()->json(['error' => "No content module for sport: {$sport}"], 422);
-        }
-
         try {
-            return response()->json($publisher->send($contentModule, 'admin_api'));
+            return response()->json($fixturePublisher->send($sport, 'admin_api'));
         } catch (Throwable $error) {
             Log::error('sportsbot.admin.sport_fixture_send_failed', [
                 'sport' => $sport,
@@ -595,6 +585,8 @@ class SportsBotController extends Controller
             ],
             'publish_today' => SportsBotFixtureQueue::query()
                 ->where('publish_date', $today)
+                ->whereNull('sent_at')
+                ->whereNull('telegram_message_id')
                 ->ready()
                 ->count(),
             'recent_items' => SportsBotFixtureQueue::query()
@@ -765,12 +757,36 @@ class SportsBotController extends Controller
             }
         }
 
+        if ($previews === [] && (int) ($summary['fixtures_total'] ?? 0) === 0) {
+            try {
+                $card = $cards->noFixturesCard($summary, $cardVersion);
+                $path = (string) ($card['path'] ?? '');
+                if ($path !== '' && is_file($path)) {
+                    $previews[] = [
+                        'event_id' => '',
+                        'title' => (string) ($summary['title'] ?? 'No fixtures today'),
+                        'league' => (string) ($summary['route_key'] ?? ''),
+                        'time' => (string) ($summary['date'] ?? ''),
+                        'tv_channel' => 'No fixtures',
+                        'card_version' => $cardVersion,
+                        'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
+                    ];
+                }
+            } catch (Throwable $error) {
+                Log::warning('sportsbot.admin.no_fixtures_card_preview_failed', [
+                    'error' => $error->getMessage(),
+                ]);
+            }
+        }
+
         return $previews;
     }
 
     private function footballFixtureCardVersion(mixed $version): string
     {
-        return strtolower(trim((string) $version)) === 'v2' ? 'v2' : 'v1';
+        $version = strtolower(trim((string) $version));
+
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 
     /**

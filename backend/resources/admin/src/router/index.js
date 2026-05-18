@@ -238,6 +238,47 @@ const router = createRouter({
           path: '/sportsbot/motorsport-fixtures',
           name: 'sportsbot-motorsport-fixtures',
           component: () => import('../views/SportsBotMotorsportFixturesView.vue')
+        },
+        {
+          path: '/sportsbot/usa-sports-fixtures',
+          name: 'sportsbot-usa-sports-fixtures',
+          component: () => import('../views/SportsBotSportFixturesView.vue'),
+          props: {
+            label: 'USA Sports Fixtures TV',
+            routeKey: 'USA_SPORTS',
+            emoji: '🇺🇸',
+            description: 'Preview and publish NBA, MLB, NFL and NHL fixtures to the USA_SPORTS Telegram topic.',
+            sports: [
+              { sport: 'basketball', label: 'Basketball' },
+              { sport: 'baseball', label: 'Baseball' },
+              { sport: 'american_football', label: 'American Football' },
+              { sport: 'ice_hockey', label: 'Ice Hockey' }
+            ]
+          }
+        },
+        {
+          path: '/sportsbot/other-sports-fixtures',
+          name: 'sportsbot-other-sports-fixtures',
+          component: () => import('../views/SportsBotSportFixturesView.vue'),
+          props: {
+            label: 'Other Sports Fixtures TV',
+            routeKey: 'OTHER_SPORTS',
+            emoji: '🏅',
+            description: 'Preview and publish tennis, cricket, golf and other sport fixtures to the OTHER_SPORTS Telegram topic.',
+            sports: [
+              { sport: 'tennis', label: 'Tennis' },
+              { sport: 'cricket', label: 'Cricket' },
+              { sport: 'golf', label: 'Golf' }
+            ]
+          }
+        },
+        {
+          path: '/sportsbot/tennis-fixtures',
+          redirect: '/sportsbot/other-sports-fixtures'
+        },
+        {
+          path: '/sportsbot/cricket-fixtures',
+          redirect: '/sportsbot/other-sports-fixtures'
         }
       ]
     }

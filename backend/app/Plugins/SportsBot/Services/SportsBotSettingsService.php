@@ -26,6 +26,15 @@ class SportsBotSettingsService
         );
     }
 
+    public function has(string $key): bool
+    {
+        if (!Schema::hasTable('sportsbot_settings')) {
+            return false;
+        }
+
+        return SportsBotSetting::query()->where('key', $key)->exists();
+    }
+
     /**
      * @return array<string, mixed>
      */

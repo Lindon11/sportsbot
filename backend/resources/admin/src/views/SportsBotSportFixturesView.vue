@@ -41,6 +41,7 @@
           <select v-model="cardVersion" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" @change="loadPreview">
             <option value="v1">V1 cards</option>
             <option value="v2">V2 cards</option>
+            <option value="v3">V3 polished cards</option>
           </select>
           <label class="inline-flex items-center gap-2 text-sm text-slate-300 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700">
             <input v-model="captionsEnabled" type="checkbox" class="rounded bg-slate-900 border-slate-700" />
@@ -66,7 +67,7 @@
       <h2 class="text-lg font-semibold text-white">Card Preview</h2>
       <div v-if="cardPreviews.length === 0" class="text-sm text-slate-400">No card previews generated yet.</div>
       <div v-else class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div v-for="card in cardPreviews" :key="card.event_id || card.title" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden">
+        <div v-for="card in cardPreviews" :key="`${card.sport || 'sport'}-${card.event_id || card.title}`" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden">
           <img :src="card.data_url" :alt="card.title" class="w-full block" />
           <div class="p-3">
             <p class="text-white font-semibold text-sm">{{ card.title }}</p>
@@ -109,12 +110,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 
 const props = defineProps({
-  sport: { type: String, required: true },
+  sport: { type: String, default: '' },
+  sports: { type: Array, default: () => [] },
   label: { type: String, default: 'Sport Fixtures' },
   routeKey: { type: String, required: true },
   emoji: { type: String, default: '🏅' },
@@ -131,7 +133,19 @@ const previewMessage = ref('')
 const cardPreviews = ref([])
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
-const cardVersion = ref('v2')
+const cardVersion = ref('v3')
+
+const sportEntries = computed(() => {
+  if (props.sports.length > 0) {
+    return props.sports
+  }
+
+  return [{
+    sport: props.sport,
+    label: props.label,
+    routeKey: props.routeKey,
+  }]
+})
 
 function statusClass(status) {
   if (status === 'sent') return 'bg-emerald-500/20 text-emerald-400'
@@ -154,15 +168,29 @@ async function loadRecentMessages() {
 async function loadPreview() {
   loadingPreview.value = true
   try {
-    const { data } = await api.post(`/admin/sportsbot/fixtures/${props.sport}/preview`, {
-      card_version: cardVersion.value,
-    })
-    previewMessage.value = data.message || ''
-    routeStatus.value = data.route_status || {}
-    summary.value = data.summary || {}
-    cardPreviews.value = data.card_previews || []
-    captionsEnabled.value = Boolean(data.captions_enabled)
-    cardVersion.value = data.card_version || cardVersion.value
+    const responses = await Promise.all(sportEntries.value.map((entry) => (
+      api.post(`/admin/sportsbot/fixtures/${entry.sport}/preview`, {
+        card_version: cardVersion.value,
+      })
+    )))
+    const previews = responses.map((response, index) => ({
+      entry: sportEntries.value[index],
+      data: response.data || {},
+    }))
+
+    previewMessage.value = previews
+      .map(({ entry, data }) => [`${entry.label || entry.sport}`, data.message || 'No fixtures found.'].join('\n'))
+      .join('\n\n')
+    routeStatus.value = previews[0]?.data?.route_status || {}
+    summary.value = previews.reduce((carry, { data }) => {
+      carry.fixtures_total += Number(data.summary?.fixtures_total || 0)
+      return carry
+    }, { fixtures_total: 0 })
+    cardPreviews.value = previews.flatMap(({ entry, data }) => (
+      (data.card_previews || []).map((card) => ({ ...card, sport: entry.sport }))
+    ))
+    captionsEnabled.value = previews.some(({ data }) => Boolean(data.captions_enabled))
+    cardVersion.value = previews[0]?.data?.card_version || cardVersion.value
     await loadRecentMessages()
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to load preview')
@@ -191,14 +219,25 @@ async function testRoute() {
 async function sendFixtures() {
   sending.value = true
   try {
-    const { data } = await api.post(`/admin/sportsbot/fixtures/${props.sport}/send`, {
-      captions_enabled: captionsEnabled.value,
-      card_version: cardVersion.value,
-    })
-    previewMessage.value = data.message || previewMessage.value
-    routeStatus.value = data.route_status || routeStatus.value
-    summary.value = data.summary || summary.value
-    toast.success(`Events sent (${(data.results || []).length} photo post(s))`)
+    const responses = []
+    for (const entry of sportEntries.value) {
+      const response = await api.post(`/admin/sportsbot/fixtures/${entry.sport}/send`, {
+        captions_enabled: captionsEnabled.value,
+        card_version: cardVersion.value,
+      })
+      responses.push({ entry, data: response.data || {} })
+    }
+
+    previewMessage.value = responses
+      .map(({ entry, data }) => [`${entry.label || entry.sport}`, data.message || 'Sent.'].join('\n'))
+      .join('\n\n')
+    routeStatus.value = responses[0]?.data?.route_status || routeStatus.value
+    summary.value = responses.reduce((carry, { data }) => {
+      carry.fixtures_total += Number(data.summary?.fixtures_total || 0)
+      return carry
+    }, { fixtures_total: 0 })
+    const sentCount = responses.reduce((carry, { data }) => carry + (data.results || []).length, 0)
+    toast.success(`Events sent (${sentCount} photo post(s))`)
     await loadRecentMessages()
   } catch (error) {
     toast.error(error?.response?.data?.error || 'Failed to send events')

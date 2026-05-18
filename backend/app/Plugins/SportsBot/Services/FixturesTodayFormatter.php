@@ -63,7 +63,7 @@ class FixturesTodayFormatter
 
             foreach (array_slice($fixtures, 0, $maxPerSport) as $fixture) {
                 $shownCount++;
-                $time = trim((string) ($fixture['time'] ?? 'TBC'));
+                $time = $this->displayTimeLabel((string) ($fixture['time'] ?? 'TBC'));
                 $league = $this->shortLeague(trim((string) ($fixture['league'] ?? 'Competition TBC')));
                 $homeTeam = trim((string) ($fixture['home_team'] ?? ''));
                 $awayTeam = trim((string) ($fixture['away_team'] ?? ''));
@@ -92,6 +92,39 @@ class FixturesTodayFormatter
     private function shortLeague(string $league): string
     {
         return self::SHORT_LEAGUES[$league] ?? ($league !== '' ? $league : 'Competition TBC');
+    }
+
+    private function displayTimeLabel(string $time): string
+    {
+        $time = trim(preg_replace('/\s+/', ' ', $time) ?? $time);
+        if ($time === '') {
+            return '';
+        }
+
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?\s*([A-Z]{2,5})?$/i', $time, $matches) !== 1) {
+            return $time;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = (string) $matches[2];
+        $meridiem = strtoupper((string) ($matches[3] ?? ''));
+        $timezone = strtoupper((string) ($matches[4] ?? ''));
+
+        if ($meridiem === '') {
+            if ($hour > 23) {
+                return $time;
+            }
+
+            $meridiem = $hour >= 12 ? 'PM' : 'AM';
+            $hour = $hour % 12;
+            if ($hour === 0) {
+                $hour = 12;
+            }
+        }
+
+        $label = sprintf('%d:%s %s', $hour, $minute, $meridiem);
+
+        return trim($label . ($timezone !== '' ? ' ' . $timezone : ''));
     }
 
     /**
