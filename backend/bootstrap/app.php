@@ -4,11 +4,13 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-return Application::configure(basePath: dirname(__DIR__))
+$basePath = realpath(__DIR__ . '/..') ?: dirname(__DIR__);
+
+$app = Application::configure(basePath: $basePath)
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        api: __DIR__.'/../routes/api.php',
-        commands: __DIR__.'/../routes/console.php',
+        web: $basePath . '/routes/web.php',
+        api: $basePath . '/routes/api.php',
+        commands: $basePath . '/routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
@@ -68,3 +70,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => abort(401, 'Unauthenticated'));
     })
     ->create();
+
+$app->usePublicPath($basePath . '/public');
+$app->useStoragePath($basePath . '/storage');
+
+return $app;

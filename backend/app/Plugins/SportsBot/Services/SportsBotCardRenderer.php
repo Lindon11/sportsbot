@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\SportsBotPaths;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -130,7 +131,7 @@ class SportsBotCardRenderer
             return null;
         }
 
-        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script', base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        $script = SportsBotPaths::v3RendererScript();
         if ($script === '' || !is_file($script)) {
             Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
             return null;
@@ -237,7 +238,7 @@ class SportsBotCardRenderer
             return null;
         }
 
-        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script, base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        $script = SportsBotPaths::v3RendererScript();
         if ($script === '' || !is_file($script)) {
             Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
             return null;

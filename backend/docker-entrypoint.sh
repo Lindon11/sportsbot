@@ -15,13 +15,13 @@ php artisan key:generate --force --ansi 2>/dev/null || true
 # may not allow the www-data user to write to storage directories.
 # This ensures storage and bootstrap/cache are writable.
 echo "Setting storage permissions..."
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
-chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
+chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 
 # Ensure the log file exists and is writable
-touch /var/www/html/storage/logs/laravel.log 2>/dev/null || true
-chown www-data:www-data /var/www/html/storage/logs/laravel.log 2>/dev/null || true
-chmod 664 /var/www/html/storage/logs/laravel.log 2>/dev/null || true
+touch storage/logs/laravel.log 2>/dev/null || true
+chown www-data:www-data storage/logs/laravel.log 2>/dev/null || true
+chmod 664 storage/logs/laravel.log 2>/dev/null || true
 
 # ── Auto-install on first boot ──────────────────────────
 # Waits for MySQL, then runs the unified installer

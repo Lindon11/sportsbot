@@ -4,13 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: laravel_app
-    working_dir: /var/www/html
+    working_dir: /srv/laravelcp/backend
     ports:
       - '${APP_PORT:-8001}:80'
       - '${VITE_PORT:-5174}:${VITE_PORT:-5174}'
       - '${LARAVEL_WEBSOCKETS_PORT:-6002}:6002'
     volumes:
-      - './:/var/www/html:cached'
+      - './:/srv/laravelcp/backend:cached'
     networks:
       - sail
     depends_on:
@@ -65,11 +65,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: laravel_scheduler
-    working_dir: /var/www/html
+    working_dir: /srv/laravelcp/backend
     entrypoint: []
-    command: ["bash", "-c", "while true; do php /var/www/html/artisan schedule:run --verbose --no-interaction 2>&1; sleep 60; done"]
+    command: ["bash", "-c", "while true; do php artisan schedule:run --verbose --no-interaction 2>&1; sleep 60; done"]
     volumes:
-      - './:/var/www/html:cached'
+      - './:/srv/laravelcp/backend:cached'
     networks:
       - sail
     depends_on:

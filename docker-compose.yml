@@ -23,12 +23,12 @@ services:
     ports:
       - "8001:80"
     volumes:
-      - ./backend:/var/www/html
+      - ./backend:/srv/laravelcp/backend
     depends_on:
       mysql:
         condition: service_healthy
     environment:
-      - APACHE_DOCUMENT_ROOT=/var/www/html/public
+      - APACHE_DOCUMENT_ROOT=/srv/laravelcp/backend/public
       - APP_DEBUG=1
     networks:
       - laravelcp_net
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: laravelcp_scheduler
     volumes:
-      - ./backend:/var/www/html
+      - ./backend:/srv/laravelcp/backend
     depends_on:
       mysql:
         condition: service_healthy

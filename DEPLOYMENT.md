@@ -429,7 +429,7 @@ services:
     environment:
       - APP_ENV=production
     volumes:
-      - backend_storage:/var/www/html/storage
+      - backend_storage:/srv/laravelcp/backend/storage
     depends_on:
       mysql:
         condition: service_healthy

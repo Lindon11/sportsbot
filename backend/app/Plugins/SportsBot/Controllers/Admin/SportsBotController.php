@@ -28,6 +28,7 @@ use App\Plugins\SportsBot\Services\DiscordNotifier;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
+use App\Plugins\SportsBot\Support\SportsBotPaths;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
@@ -686,11 +687,12 @@ class SportsBotController extends Controller
     public function fixtureQueueCard(int $id, FixtureQueueService $queue): mixed
     {
         $item = $queue->find($id);
-        if (!$item || !$item->card_path || !is_file($item->card_path)) {
+        $cardPath = SportsBotPaths::cardPath($item?->card_path);
+        if (!$item || $cardPath === '' || !@is_file($cardPath)) {
             abort(404);
         }
 
-        return response()->file($item->card_path);
+        return response()->file($cardPath);
     }
 
     private function resolveContentModule(string $sport): ?object

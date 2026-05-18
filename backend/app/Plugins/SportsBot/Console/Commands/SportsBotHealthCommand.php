@@ -8,6 +8,7 @@ use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
+use App\Plugins\SportsBot\Support\SportsBotPaths;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Console\Command;
@@ -165,7 +166,7 @@ class SportsBotHealthCommand extends Command
     private function rendererChecks(): array
     {
         $checks = [];
-        $script = (string) config('plugins.SportsBot.cards.v3_renderer_script', base_path('resources/sportsbot/v3-card-renderer.cjs'));
+        $script = SportsBotPaths::v3RendererScript();
         $node = trim((string) config('plugins.SportsBot.cards.node_binary', 'node')) ?: 'node';
         $browserEnabled = (bool) config('plugins.SportsBot.cards.v3_browser_enabled', true);
 

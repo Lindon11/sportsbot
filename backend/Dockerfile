@@ -23,12 +23,15 @@ COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 # ── Apache configuration ─────────────────────────────────────────────
 RUN a2enmod rewrite \
-    && sed -i 's|DocumentRoot /var/www/html.*|DocumentRoot /var/www/html/public|g' \
+    && sed -i 's|DocumentRoot .*|DocumentRoot /srv/laravelcp/backend/public|g' \
         /etc/apache2/sites-available/000-default.conf \
     && sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' \
-        /etc/apache2/apache2.conf
+        /etc/apache2/apache2.conf \
+    && printf '<Directory /srv/laravelcp/backend/public>\n    Options Indexes FollowSymLinks\n    AllowOverride All\n    Require all granted\n</Directory>\n' \
+        > /etc/apache2/conf-available/laravelcp.conf \
+    && a2enconf laravelcp
 
-WORKDIR /var/www/html
+WORKDIR /srv/laravelcp/backend
 
 # ── Copy application code ────────────────────────────────────────────
 COPY . .
@@ -44,8 +47,8 @@ RUN if [ -f package.json ]; then \
     fi
 
 # ── File permissions ─────────────────────────────────────────────────
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
 # ── Entrypoint ────────────────────────────────────────────────────────
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

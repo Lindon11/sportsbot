@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\SportsBotPaths;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -463,10 +464,12 @@ class FixtureQueueService
 
     private function hasCurrentCard(SportsBotFixtureQueue $entry, string $cardVersion): bool
     {
-        $cardPath = (string) ($entry->card_path ?? '');
+        $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
         if ($cardPath === '' || !@is_file($cardPath)) {
             return false;
         }
+
+        $this->syncCardPath($entry, $cardPath);
 
         $file = basename($cardPath);
         if ($cardVersion === 'v3') {
@@ -513,7 +516,7 @@ class FixtureQueueService
         $routeKey = $this->routeKeyForEntry($entry, $config);
         $fixture = $this->effectiveFixtureData($entry);
         $caption = (string) ($entry->caption ?? '');
-        $cardPath = (string) ($entry->card_path ?? '');
+        $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
 
         $notifyOptions = [
             'route_key' => $routeKey,
@@ -534,6 +537,7 @@ class FixtureQueueService
         ];
 
         if ($cardPath !== '' && @is_file($cardPath)) {
+            $this->syncCardPath($entry, $cardPath);
             $sendResults = $this->notifier->sendPhoto($cardPath, $caption, $notifyOptions);
 
             $telegramResult = $this->firstDeliveryResult($sendResults, 'telegram');
@@ -627,6 +631,7 @@ class FixtureQueueService
         $data = $entry->toArray();
         $data['raw_fixture_data'] = $data['fixture_data'] ?? [];
         $data['fixture_data'] = $this->effectiveFixtureData($entry);
+        $data['card_path'] = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
 
         return $data;
     }
@@ -861,6 +866,16 @@ class FixtureQueueService
         }
 
         $entry->asset_status = SportsBotFixtureQueue::ASSET_CACHED;
+        $entry->save();
+    }
+
+    private function syncCardPath(SportsBotFixtureQueue $entry, string $cardPath): void
+    {
+        if ($cardPath === '' || $cardPath === (string) ($entry->card_path ?? '')) {
+            return;
+        }
+
+        $entry->card_path = $cardPath;
         $entry->save();
     }
 
