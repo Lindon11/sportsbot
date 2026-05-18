@@ -10,7 +10,7 @@ class SchedulerHttpController extends Controller
 {
     public function run(string $token): JsonResponse
     {
-        $expected = trim((string) env('APP_SCHEDULER_HTTP_TOKEN', ''));
+        $expected = trim((string) config('app.scheduler_http_token', ''));
 
         if ($expected === '' || !hash_equals($expected, $token)) {
             abort(404);

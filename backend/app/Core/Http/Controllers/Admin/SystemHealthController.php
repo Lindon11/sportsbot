@@ -681,7 +681,7 @@ class SystemHealthController extends Controller
 
     protected function getSchedulerSetup(): array
     {
-        $token = trim((string) env('APP_SCHEDULER_HTTP_TOKEN', ''));
+        $token = trim((string) config('app.scheduler_http_token', ''));
         $baseUrl = rtrim((string) config('app.url'), '/');
         $backend = base_path();
 

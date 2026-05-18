@@ -56,6 +56,8 @@ return [
 
     'license_callback_secret' => env('LICENSE_CALLBACK_SECRET'),
 
+    'scheduler_http_token' => env('APP_SCHEDULER_HTTP_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Frontend URL
