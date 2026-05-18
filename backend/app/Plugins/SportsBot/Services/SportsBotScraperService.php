@@ -174,6 +174,48 @@ class SportsBotScraperService
         ];
 
         $entry->payload = $payload;
+
+        $confidence = (float) ($normalized['confidence'] ?? 0.0);
+        $threshold = $this->autoUseConfidenceThreshold();
+        $fields = (array) ($normalized['fields'] ?? []);
+
+        if ($fields !== [] && $confidence >= $threshold) {
+            $fixtureData = (array) ($entry->fixture_data ?? []);
+            $merged = 0;
+
+            foreach ($fields as $field => $value) {
+                if (!in_array($field, ['tv_channel', 'tv_channels', 'date_label', 'kickoff_label', 'time', 'venue', 'event_name', 'event_poster'], true)) {
+                    continue;
+                }
+                $existing = $fixtureData[$field] ?? '';
+                $isEmpty = is_array($existing) ? $existing === [] : trim((string) $existing) === '';
+                $valueIsEmpty = is_array($value) ? $value === [] : trim((string) $value) === '';
+                if ($isEmpty && !$valueIsEmpty) {
+                    $fixtureData[$field] = $value;
+                    $merged++;
+                } elseif ($field === 'tv_channels' && is_array($value) && $value !== []) {
+                    $fixtureData[$field] = $value;
+                    $merged++;
+                }
+            }
+
+            if ($merged > 0) {
+                $entry->fixture_data = $fixtureData;
+                $entry->status = SportsBotFixtureQueue::STATUS_DRAFT;
+                $entry->card_path = null;
+                $entry->caption = null;
+
+                Log::info('sportsbot.scraper.auto_accepted', [
+                    'queue_id' => $entry->id,
+                    'event_id' => $entry->event_id,
+                    'action' => $action,
+                    'confidence' => $confidence,
+                    'threshold' => $threshold,
+                    'merged_fields' => $merged,
+                ]);
+            }
+        }
+
         $entry->save();
 
         Log::info('sportsbot.scraper.checked', [
