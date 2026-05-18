@@ -4,27 +4,31 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
-function sportsbotSetting(string $key, mixed $default = null): mixed
-{
-    try {
-        return app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->get($key, $default);
-    } catch (\Throwable) {
-        return $default;
+if (! function_exists('sportsbotSetting')) {
+    function sportsbotSetting(string $key, mixed $default = null): mixed
+    {
+        try {
+            return app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->get($key, $default);
+        } catch (\Throwable) {
+            return $default;
+        }
     }
 }
 
-function sportsbotScheduleFrequency($event, string $frequency): void
-{
-    match ($frequency) {
-        'everyMinute' => $event->everyMinute(),
-        'everyTwoMinutes' => $event->everyTwoMinutes(),
-        'everyFiveMinutes' => $event->everyFiveMinutes(),
-        'everyTenMinutes' => $event->everyTenMinutes(),
-        'everyFifteenMinutes' => $event->everyFifteenMinutes(),
-        'everyThirtyMinutes' => $event->everyThirtyMinutes(),
-        'hourly' => $event->hourly(),
-        default => $event->everyFiveMinutes(),
-    };
+if (! function_exists('sportsbotScheduleFrequency')) {
+    function sportsbotScheduleFrequency($event, string $frequency): void
+    {
+        match ($frequency) {
+            'everyMinute' => $event->everyMinute(),
+            'everyTwoMinutes' => $event->everyTwoMinutes(),
+            'everyFiveMinutes' => $event->everyFiveMinutes(),
+            'everyTenMinutes' => $event->everyTenMinutes(),
+            'everyFifteenMinutes' => $event->everyFifteenMinutes(),
+            'everyThirtyMinutes' => $event->everyThirtyMinutes(),
+            'hourly' => $event->hourly(),
+            default => $event->everyFiveMinutes(),
+        };
+    }
 }
 
 Artisan::command('inspire', function () {
