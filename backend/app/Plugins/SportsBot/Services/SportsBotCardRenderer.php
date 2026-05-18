@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\SportsBotPaths;
+use App\Plugins\SportsBot\Support\CardTemplateRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,8 @@ class SportsBotCardRenderer
     private int $height;
     private string $fontRegular;
     private string $fontBold;
+    private CardTemplateRegistry $templates;
+    private ?string $lastBrowserFailureReason = null;
 
     public function __construct()
     {
@@ -23,23 +26,36 @@ class SportsBotCardRenderer
         $this->height = (int) config('plugins.SportsBot.cards.height', 675);
         $this->fontRegular = $this->findFont(false);
         $this->fontBold = $this->findFont(true);
+        $this->templates = new CardTemplateRegistry();
     }
 
     /**
      * @return array{path:string,type:string,width:int,height:int}
      */
-    public function fixtureCard(array $fixture, string $variant = 'v3'): array
+    public function fixtureCard(array $fixture, string $variant = 'v3', array $options = []): array
     {
         $variant = $this->normalizeCardVariant($variant);
+        $startedAt = microtime(true);
+        $context = $this->templates->resolve(
+            (string) ($fixture['sport_key'] ?? $fixture['sport'] ?? $fixture['strSport'] ?? 'sports'),
+            (string) ($fixture['route_key'] ?? $options['route_key'] ?? ''),
+            'fixture-card',
+            array_merge($options, ['card_version' => $variant])
+        );
+        $this->lastBrowserFailureReason = null;
 
         if ($variant === 'v3') {
-            $browserCard = $this->fixtureCardV3Browser($fixture);
+            $browserCard = $this->fixtureCardV3Browser($fixture, $context);
             if ($browserCard !== null) {
                 return $browserCard;
             }
+
+            if (!$this->gdFallbackEnabled()) {
+                throw new RuntimeException('Browser renderer failed and GD fallback is disabled: ' . ($this->lastBrowserFailureReason ?: 'unknown_browser_failure'));
+            }
         }
 
-        return $this->render('fixture-' . $variant, function ($image, array $c) use ($fixture, $variant): void {
+        $card = $this->render('fixture-' . $variant, function ($image, array $c) use ($fixture, $variant): void {
             $sport = (string) ($fixture['sport'] ?? $fixture['strSport'] ?? 'Sports');
             $normalizedSport = SportsBotSports::normalize($sport);
             if ($variant === 'v3') {
@@ -85,6 +101,11 @@ class SportsBotCardRenderer
             $this->pill($image, $c, 72, 560, $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC')), [20, 184, 166]);
             $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
         });
+
+        return array_merge($card, $this->renderMeta('gd_v3', $context, $startedAt, [
+            'fallback_reason' => $variant === 'v3' ? ($this->lastBrowserFailureReason ?: 'browser_renderer_unavailable') : null,
+            'browser_failure_reason' => $this->lastBrowserFailureReason,
+        ]));
     }
 
     /**
@@ -93,11 +114,23 @@ class SportsBotCardRenderer
     public function noFixturesCard(array $summary, string $variant = 'v3'): array
     {
         $variant = $this->normalizeCardVariant($variant);
+        $startedAt = microtime(true);
+        $context = $this->templates->resolve(
+            (string) ($summary['sport_key'] ?? $summary['sport'] ?? 'sports'),
+            (string) ($summary['route_key'] ?? $summary['topic_key'] ?? ''),
+            'fixture-card',
+            ['card_version' => $variant]
+        );
+        $this->lastBrowserFailureReason = null;
 
         if ($variant === 'v3') {
-            $browserCard = $this->noFixturesCardV3Browser($summary);
+            $browserCard = $this->noFixturesCardV3Browser($summary, $context);
             if ($browserCard !== null) {
                 return $browserCard;
+            }
+
+            if (!$this->gdFallbackEnabled()) {
+                throw new RuntimeException('Browser renderer failed and GD fallback is disabled: ' . ($this->lastBrowserFailureReason ?: 'unknown_browser_failure'));
             }
         }
 
@@ -105,35 +138,93 @@ class SportsBotCardRenderer
         $label = (string) ($summary['sport_label'] ?? $summary['title'] ?? SportsBotSports::label($sport) . ' Fixtures TV');
         $date = (string) ($summary['date'] ?? $summary['date_label'] ?? now()->toDateString());
 
-        return $this->render('no-fixtures-' . $variant, function ($image, array $c) use ($sport, $label, $date): void {
+        $card = $this->render('no-fixtures-' . $variant, function ($image, array $c) use ($sport, $label, $date): void {
             $this->header($image, $c, $label, 'Fixture update');
             $this->centerText($image, 'No Fixtures Today', 54, 296, $c['text'], true);
             $this->centerText($image, 'Nothing scheduled for this topic today.', 24, 360, $c['muted'], false);
             $this->pill($image, $c, 72, 560, 'Date: ' . $date, [20, 184, 166]);
             $this->muted($image, 'Topic: ' . SportsBotSports::routeKey($sport), 72, 626, 20);
         });
+
+        return array_merge($card, $this->renderMeta('gd_v3', $context, $startedAt, [
+            'fallback_reason' => $variant === 'v3' ? ($this->lastBrowserFailureReason ?: 'browser_renderer_unavailable') : null,
+            'browser_failure_reason' => $this->lastBrowserFailureReason,
+        ]));
     }
 
     private function normalizeCardVariant(string $variant): string
     {
         $variant = strtolower(trim($variant));
 
-        return in_array($variant, ['v1', 'v2', 'v3'], true) ? $variant : 'v1';
+        return in_array($variant, ['v1', 'v2', 'v3'], true) ? $variant : 'v3';
+    }
+
+    private function gdFallbackEnabled(): bool
+    {
+        return (bool) config('plugins.SportsBot.cards.gd_fallback_enabled', true);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $extra
+     * @return array<string, mixed>
+     */
+    private function renderMeta(string $renderer, array $context, float $startedAt, array $extra = []): array
+    {
+        return array_merge([
+            'renderer_used' => $renderer,
+            'render_duration_ms' => max(0, (int) round((microtime(true) - $startedAt) * 1000)),
+            'template_used' => (string) ($context['template'] ?? ''),
+            'theme_used' => (string) ($context['theme'] ?? ''),
+            'fallback_reason' => null,
+            'browser_failure_reason' => null,
+            'asset_failures' => [],
+            'render_diagnostics' => [],
+            'output' => $context['output'] ?? [],
+            'video_ready' => $context['video_ready'] ?? [],
+        ], $extra);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function browserDiagnostics(string $stdout, string $stderr, string $debugDir, ?int $exitCode): array
+    {
+        return [
+            'exit_code' => $exitCode,
+            'stdout' => $this->strLimit($stdout, 4000),
+            'stderr' => $this->strLimit($stderr, 4000),
+            'debug_dir' => $debugDir,
+            'html_snapshot' => is_file($debugDir . '/render.html') ? $debugDir . '/render.html' : null,
+            'console_log' => is_file($debugDir . '/console.log') ? $debugDir . '/console.log' : null,
+            'failed_screenshot' => is_file($debugDir . '/failed.png') ? $debugDir . '/failed.png' : null,
+        ];
+    }
+
+    private function rendererFailureSummary(?int $exitCode, string $stderr, string $stdout): string
+    {
+        $text = trim($stderr) !== '' ? trim($stderr) : trim($stdout);
+        $firstLine = trim((string) strtok($text, "\n"));
+
+        return trim('exit_' . (string) ($exitCode ?? 'unknown') . ($firstLine !== '' ? ': ' . $this->strLimit($firstLine, 240) : ''));
     }
 
     /**
      * @param array<string, mixed> $fixture
      * @return array{path:string,type:string,width:int,height:int}|null
      */
-    private function fixtureCardV3Browser(array $fixture): ?array
+    private function fixtureCardV3Browser(array $fixture, array $context): ?array
     {
+        $startedAt = microtime(true);
         if (!(bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)) {
+            $this->lastBrowserFailureReason = 'browser_renderer_disabled';
             return null;
         }
 
         $script = SportsBotPaths::v3RendererScript();
         if ($script === '' || !is_file($script)) {
             Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
+            $this->lastBrowserFailureReason = 'renderer_missing';
             return null;
         }
 
@@ -144,10 +235,15 @@ class SportsBotCardRenderer
 
         $inputDir = storage_path('app/sportsbot/render-input');
         if (!@is_dir($inputDir) && !@mkdir($inputDir, 0775, true) && !@is_dir($inputDir)) {
+            $this->lastBrowserFailureReason = 'render_input_directory_unwritable';
             return null;
         }
 
-        $outputPath = $dir . '/fixture-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.png';
+        $debugDir = storage_path('app/sportsbot/render-debug/' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+        @mkdir($debugDir, 0775, true);
+        $format = (string) ($context['output']['format'] ?? 'png');
+        $extension = in_array($format, ['png', 'webp', 'jpeg'], true) ? ($format === 'jpeg' ? 'jpg' : $format) : 'png';
+        $outputPath = $dir . '/fixture-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
         $inputPath = $inputDir . '/fixture-v3-' . bin2hex(random_bytes(8)) . '.json';
         $payload = [
             'fixture' => $fixture,
@@ -156,9 +252,24 @@ class SportsBotCardRenderer
             'height' => $this->height,
             'chromePath' => trim((string) config('plugins.SportsBot.cards.chrome_path', '')),
             'timeout' => max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15)) * 1000,
+            'retries' => max(0, (int) config('plugins.SportsBot.cards.browser_retries', 1)),
+            'browserArgs' => array_values((array) config('plugins.SportsBot.cards.browser_args', [])),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'templateType' => $context['template_type'] ?? 'fixture-card',
+            'templatePath' => $context['template_path'] ?? '',
+            'themePath' => $context['theme_path'] ?? '',
+            'branding' => $context['branding'] ?? [],
+            'format' => $format,
+            'target' => $context['output']['target'] ?? 'telegram',
+            'debugDir' => $debugDir,
+            'htmlSnapshotPath' => $debugDir . '/render.html',
+            'consoleLogPath' => $debugDir . '/console.log',
+            'failedScreenshotPath' => $debugDir . '/failed.png',
         ];
 
         if (@file_put_contents($inputPath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+            $this->lastBrowserFailureReason = 'render_input_write_failed';
             return null;
         }
 
@@ -173,6 +284,7 @@ class SportsBotCardRenderer
         $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
         if (!is_resource($process)) {
             @unlink($inputPath);
+            $this->lastBrowserFailureReason = 'renderer_process_open_failed';
             return null;
         }
 
@@ -197,6 +309,7 @@ class SportsBotCardRenderer
             if ((time() - $startedAt) > $timeout) {
                 proc_terminate($process);
                 Log::warning('sportsbot.card.v3_browser_timeout', ['timeout' => $timeout]);
+                $this->lastBrowserFailureReason = 'browser_timeout';
                 break;
             }
 
@@ -212,13 +325,24 @@ class SportsBotCardRenderer
         @unlink($inputPath);
 
         if ($exitCode === 0 && @is_file($outputPath) && filesize($outputPath) > 0) {
-            return ['path' => $outputPath, 'type' => 'fixture-v3-browser', 'width' => $this->width, 'height' => $this->height];
+            return array_merge([
+                'path' => $outputPath,
+                'type' => 'fixture-v3-browser',
+                'width' => $this->width,
+                'height' => $this->height,
+            ], $this->renderMeta('browser_v3', $context, $startedAt, [
+                'render_diagnostics' => $this->browserDiagnostics($stdout, $stderr, $debugDir, $exitCode),
+            ]));
         }
 
+        $this->lastBrowserFailureReason ??= $this->rendererFailureSummary($exitCode, $stderr, $stdout);
         Log::warning('sportsbot.card.v3_browser_failed', [
             'exit_code' => $exitCode,
             'stdout' => $this->strLimit($stdout, 1000),
             'stderr' => $this->strLimit($stderr, 1000),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'debug_dir' => $debugDir,
         ]);
 
         if (@is_file($outputPath)) {
@@ -232,15 +356,18 @@ class SportsBotCardRenderer
      * @param array<string, mixed> $summary
      * @return array{path:string,type:string,width:int,height:int}|null
      */
-    private function noFixturesCardV3Browser(array $summary): ?array
+    private function noFixturesCardV3Browser(array $summary, array $context): ?array
     {
+        $startedAt = microtime(true);
         if (!(bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)) {
+            $this->lastBrowserFailureReason = 'browser_renderer_disabled';
             return null;
         }
 
         $script = SportsBotPaths::v3RendererScript();
         if ($script === '' || !is_file($script)) {
             Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
+            $this->lastBrowserFailureReason = 'renderer_missing';
             return null;
         }
 
@@ -251,10 +378,15 @@ class SportsBotCardRenderer
 
         $inputDir = storage_path('app/sportsbot/render-input');
         if (!@is_dir($inputDir) && !@mkdir($inputDir, 0775, true) && !@is_dir($inputDir)) {
+            $this->lastBrowserFailureReason = 'render_input_directory_unwritable';
             return null;
         }
 
-        $outputPath = $dir . '/no-fixtures-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.png';
+        $debugDir = storage_path('app/sportsbot/render-debug/' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+        @mkdir($debugDir, 0775, true);
+        $format = (string) ($context['output']['format'] ?? 'png');
+        $extension = in_array($format, ['png', 'webp', 'jpeg'], true) ? ($format === 'jpeg' ? 'jpg' : $format) : 'png';
+        $outputPath = $dir . '/no-fixtures-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
         $inputPath = $inputDir . '/no-fixtures-v3-' . bin2hex(random_bytes(8)) . '.json';
         $payload = [
             'kind' => 'no-fixtures',
@@ -264,9 +396,24 @@ class SportsBotCardRenderer
             'height' => $this->height,
             'chromePath' => trim((string) config('plugins.SportsBot.cards.chrome_path', '')),
             'timeout' => max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15)) * 1000,
+            'retries' => max(0, (int) config('plugins.SportsBot.cards.browser_retries', 1)),
+            'browserArgs' => array_values((array) config('plugins.SportsBot.cards.browser_args', [])),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'templateType' => $context['template_type'] ?? 'fixture-card',
+            'templatePath' => $context['template_path'] ?? '',
+            'themePath' => $context['theme_path'] ?? '',
+            'branding' => $context['branding'] ?? [],
+            'format' => $format,
+            'target' => $context['output']['target'] ?? 'telegram',
+            'debugDir' => $debugDir,
+            'htmlSnapshotPath' => $debugDir . '/render.html',
+            'consoleLogPath' => $debugDir . '/console.log',
+            'failedScreenshotPath' => $debugDir . '/failed.png',
         ];
 
         if (@file_put_contents($inputPath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+            $this->lastBrowserFailureReason = 'render_input_write_failed';
             return null;
         }
 
@@ -281,6 +428,7 @@ class SportsBotCardRenderer
         $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
         if (!is_resource($process)) {
             @unlink($inputPath);
+            $this->lastBrowserFailureReason = 'renderer_process_open_failed';
             return null;
         }
 
@@ -305,6 +453,7 @@ class SportsBotCardRenderer
             if ((time() - $startedAt) > $timeout) {
                 proc_terminate($process);
                 Log::warning('sportsbot.card.no_fixtures_v3_browser_timeout', ['timeout' => $timeout]);
+                $this->lastBrowserFailureReason = 'browser_timeout';
                 break;
             }
 
@@ -320,13 +469,24 @@ class SportsBotCardRenderer
         @unlink($inputPath);
 
         if ($exitCode === 0 && @is_file($outputPath) && filesize($outputPath) > 0) {
-            return ['path' => $outputPath, 'type' => 'no-fixtures-v3-browser', 'width' => $this->width, 'height' => $this->height];
+            return array_merge([
+                'path' => $outputPath,
+                'type' => 'no-fixtures-v3-browser',
+                'width' => $this->width,
+                'height' => $this->height,
+            ], $this->renderMeta('browser_v3', $context, $startedAt, [
+                'render_diagnostics' => $this->browserDiagnostics($stdout, $stderr, $debugDir, $exitCode),
+            ]));
         }
 
+        $this->lastBrowserFailureReason ??= $this->rendererFailureSummary($exitCode, $stderr, $stdout);
         Log::warning('sportsbot.card.no_fixtures_v3_browser_failed', [
             'exit_code' => $exitCode,
             'stdout' => $this->strLimit($stdout, 1000),
             'stderr' => $this->strLimit($stderr, 1000),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'debug_dir' => $debugDir,
         ]);
 
         if (@is_file($outputPath)) {
@@ -1260,6 +1420,13 @@ class SportsBotCardRenderer
 
     private function cachedRemoteImageBody(string $url): ?string
     {
+        if (str_starts_with($url, 'file://') || str_starts_with($url, '/')) {
+            $path = str_starts_with($url, 'file://') ? (string) parse_url($url, PHP_URL_PATH) : $url;
+            $body = $path !== '' && @is_file($path) && @is_readable($path) ? @file_get_contents($path) : false;
+
+            return is_string($body) && $body !== '' ? $body : null;
+        }
+
         $ttl = max(0, (int) config('plugins.SportsBot.cards.image_cache_ttl', 604800));
         $dir = storage_path('app/sportsbot/image-cache');
         $path = $dir . '/' . sha1($url) . '.img';

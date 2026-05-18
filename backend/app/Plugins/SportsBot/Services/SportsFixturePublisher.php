@@ -199,7 +199,7 @@ class SportsFixturePublisher
     {
         $sportKey = (string) ($config['sport'] ?? '');
         $settingKey = $sportKey . '_fixture_card_version';
-        $version = (string) $this->settings->get($settingKey, $config['default_card_version'] ?? 'v1');
+        $version = (string) $this->settings->get($settingKey, $config['default_card_version'] ?? 'v3');
         $version = strtolower(trim($version));
 
         return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';

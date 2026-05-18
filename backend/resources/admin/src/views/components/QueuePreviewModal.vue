@@ -17,7 +17,7 @@
 
         <div class="p-4 space-y-4">
           <div class="rounded-xl overflow-hidden bg-slate-800 border border-slate-700" style="aspect-ratio: 16/9;">
-            <template v-if="item.card_path && item.status === 'ready'">
+            <template v-if="item.card_path && ['ready', 'sent'].includes(item.status)">
               <img :src="`/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-contain bg-slate-900">
             </template>
             <template v-else>
@@ -75,6 +75,42 @@
                 <p class="text-white font-mono text-[11px] truncate">{{ item.card_path || 'not rendered' }}</p>
               </div>
               <div>
+                <p class="text-slate-500">Renderer</p>
+                <p class="text-white">{{ item.renderer_used || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">Duration</p>
+                <p class="text-white">{{ item.render_duration_ms ? `${item.render_duration_ms}ms` : '-' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">Template</p>
+                <p class="text-white">{{ item.template_used || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">Theme</p>
+                <p class="text-white">{{ item.theme_used || '-' }}</p>
+              </div>
+              <div v-if="item.fallback_reason" class="col-span-2">
+                <p class="text-slate-500">Fallback Reason</p>
+                <p class="text-amber-300 break-words">{{ item.fallback_reason }}</p>
+              </div>
+              <div v-if="item.browser_failure_reason" class="col-span-2">
+                <p class="text-slate-500">Browser Failure</p>
+                <p class="text-red-300 break-words">{{ item.browser_failure_reason }}</p>
+              </div>
+              <div v-if="assetFailures.length" class="col-span-2">
+                <p class="text-slate-500">Asset Failures</p>
+                <div class="mt-1 bg-slate-950/70 rounded-lg p-2 space-y-1">
+                  <p v-for="failure in assetFailures" :key="`${failure.field}-${failure.source_url}`" class="text-red-200 break-words">
+                    {{ failure.field }}: {{ failure.reason }}
+                  </p>
+                </div>
+              </div>
+              <div v-if="Object.keys(renderDiagnostics).length" class="col-span-2">
+                <p class="text-slate-500">Render Diagnostics</p>
+                <pre class="mt-1 bg-slate-950/70 rounded-lg p-2 text-[11px] text-slate-300 overflow-x-auto">{{ JSON.stringify(renderDiagnostics, null, 2) }}</pre>
+              </div>
+              <div>
                 <p class="text-slate-500">Updated</p>
                 <p class="text-white">{{ formatDate(item.updated_at) }}</p>
               </div>
@@ -86,6 +122,43 @@
                 <p class="text-slate-500">Telegram Message ID</p>
                 <p class="text-white font-mono text-[11px]">{{ item.telegram_message_id }}</p>
               </div>
+            </div>
+          </details>
+
+          <details class="rounded-xl bg-slate-800/30 border border-slate-700/30">
+            <summary class="px-4 py-3 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300 select-none flex items-center gap-2">
+              Render controls
+            </summary>
+            <div class="px-4 pb-4 space-y-3 text-xs">
+              <div class="grid grid-cols-2 gap-3">
+                <label>
+                  <span class="block text-slate-500 mb-1">Template</span>
+                  <select v-model="renderForm.template" class="w-full rounded-lg bg-slate-950 border border-slate-700 text-white px-3 py-2">
+                    <option value="">Default</option>
+                    <option v-for="template in templateNames" :key="template" :value="template">{{ template }}</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="block text-slate-500 mb-1">Theme</span>
+                  <select v-model="renderForm.theme" class="w-full rounded-lg bg-slate-950 border border-slate-700 text-white px-3 py-2">
+                    <option value="">Default</option>
+                    <option v-for="theme in themeNames" :key="theme" :value="theme">{{ theme }}</option>
+                  </select>
+                </label>
+              </div>
+              <label class="block">
+                <span class="block text-slate-500 mb-1">Manual text override</span>
+                <textarea v-model="renderForm.manual_text" rows="2" class="w-full rounded-lg bg-slate-950 border border-slate-700 text-white px-3 py-2"></textarea>
+              </label>
+              <label class="block">
+                <span class="block text-slate-500 mb-1">Custom poster URL</span>
+                <input v-model="renderForm.custom_poster_url" class="w-full rounded-lg bg-slate-950 border border-slate-700 text-white px-3 py-2">
+              </label>
+              <label class="block">
+                <span class="block text-slate-500 mb-1">Custom background URL</span>
+                <input v-model="renderForm.custom_background_url" class="w-full rounded-lg bg-slate-950 border border-slate-700 text-white px-3 py-2">
+              </label>
+              <button @click="$emit('save-render-options', item.id, { ...renderForm })" class="px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 text-xs font-medium">Save and Rerender</button>
             </div>
           </details>
 
@@ -174,18 +247,24 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import QueueAssetHealth from './QueueAssetHealth.vue'
 
 const props = defineProps({
   item: { type: Object, default: null },
   sportConfigs: { type: Object, default: () => ({}) },
+  templates: { type: Object, default: () => ({}) },
 })
 
-defineEmits(['close', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data'])
+defineEmits(['close', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data', 'save-render-options'])
 
 const fixture = computed(() => props.item?.fixture_data || {})
 const payload = computed(() => props.item?.payload || {})
+const assetFailures = computed(() => props.item?.asset_failures || [])
+const renderDiagnostics = computed(() => props.item?.render_diagnostics || {})
+const templateNames = computed(() => Object.keys(props.templates?.templates || {}))
+const themeNames = computed(() => Object.keys(props.templates?.themes || {}))
+const renderForm = reactive({ template: '', theme: '', manual_text: '', custom_poster_url: '', custom_background_url: '' })
 const scraper = computed(() => payload.value.scraper || null)
 const scrapedFields = computed(() => scraper.value?.normalized?.fields || {})
 const sourceUrls = computed(() => scraper.value?.normalized?.source_urls || [])
@@ -203,6 +282,15 @@ const title = computed(() => {
   return d.event_name || d.strEvent || `Event ${props.item.event_id}`
 })
 const emoji = computed(() => props.sportConfigs[props.item?.sport_key]?.emoji || '🏅')
+
+watch(() => props.item?.id, () => {
+  const options = props.item?.payload?.render_options || {}
+  renderForm.template = options.template || ''
+  renderForm.theme = options.theme || ''
+  renderForm.manual_text = options.manual_text || ''
+  renderForm.custom_poster_url = options.custom_poster_url || ''
+  renderForm.custom_background_url = options.custom_background_url || ''
+}, { immediate: true })
 
 const placeholderText = computed(() => {
   if (!props.item) return ''

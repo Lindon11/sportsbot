@@ -15,9 +15,13 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/fixture-queue/prefetch', [SportsBotController::class, 'fixtureQueuePrefetch'])->name('fixture-queue.prefetch');
     Route::post('/fixture-queue/render', [SportsBotController::class, 'fixtureQueueRender'])->name('fixture-queue.render');
     Route::post('/fixture-queue/publish', [SportsBotController::class, 'fixtureQueuePublish'])->name('fixture-queue.publish');
+    Route::post('/fixture-queue/bulk/re-render', [SportsBotController::class, 'fixtureQueueBulkReRender'])->name('fixture-queue.bulk.re-render');
+    Route::post('/fixture-queue/bulk/republish', [SportsBotController::class, 'fixtureQueueBulkRepublish'])->name('fixture-queue.bulk.republish');
+    Route::post('/fixture-queue/bulk/regenerate-assets', [SportsBotController::class, 'fixtureQueueRegenerateAssets'])->name('fixture-queue.bulk.regenerate-assets');
     Route::get('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueItem'])->name('fixture-queue.item');
     Route::post('/fixture-queue/{id}/re-render', [SportsBotController::class, 'fixtureQueueReRender'])->name('fixture-queue.re-render');
     Route::post('/fixture-queue/{id}/publish', [SportsBotController::class, 'fixtureQueuePublishNow'])->name('fixture-queue.publish-now');
+    Route::post('/fixture-queue/{id}/render-options', [SportsBotController::class, 'fixtureQueueRenderOptions'])->name('fixture-queue.render-options');
     Route::post('/fixture-queue/{id}/find-poster', [SportsBotController::class, 'fixtureQueueFindPoster'])->name('fixture-queue.find-poster');
     Route::post('/fixture-queue/{id}/find-tv-info', [SportsBotController::class, 'fixtureQueueFindTvInfo'])->name('fixture-queue.find-tv-info');
     Route::post('/fixture-queue/{id}/refresh-scraped-data', [SportsBotController::class, 'fixtureQueueRefreshScrapedData'])->name('fixture-queue.refresh-scraped-data');

@@ -21,6 +21,7 @@
       <div class="absolute top-3 left-3 flex items-center gap-2">
         <span class="text-lg drop-shadow-lg">{{ emoji }}</span>
         <QueueStatusBadge :status="item.status" size="sm" />
+        <span v-if="item.renderer_used" class="text-[10px] uppercase tracking-wide text-white/80 bg-black/40 px-2 py-1 rounded-lg backdrop-blur-sm">{{ item.renderer_used }}</span>
       </div>
 
       <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
@@ -67,6 +68,13 @@
           {{ relativeTime(item.updated_at) }}
         </span>
         <span v-if="item.payload_hash" class="font-mono text-slate-600 truncate max-w-[80px]" :title="item.payload_hash">{{ shortHash(item.payload_hash) }}</span>
+      </div>
+
+      <div v-if="renderSummary" class="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+        <span class="truncate">Template: <strong class="text-slate-300">{{ item.template_used || '-' }}</strong></span>
+        <span class="truncate">Theme: <strong class="text-slate-300">{{ item.theme_used || '-' }}</strong></span>
+        <span v-if="item.render_duration_ms">Render: <strong class="text-slate-300">{{ item.render_duration_ms }}ms</strong></span>
+        <span v-if="item.fallback_reason" class="text-amber-300 truncate" :title="item.fallback_reason">Fallback: {{ item.fallback_reason }}</span>
       </div>
 
       <div v-if="scraperStatus" class="flex flex-wrap items-center gap-2 text-xs">
@@ -137,6 +145,7 @@ const scraperConfidence = computed(() => {
 const hasScrapedFields = computed(() => Object.keys(scraper.value?.normalized?.fields || {}).length > 0)
 const acceptedScrape = computed(() => Boolean(payload.value.accepted_scraped_data))
 const rejectedScrape = computed(() => Boolean(payload.value.rejected_scraped_data))
+const renderSummary = computed(() => Boolean(props.item.renderer_used || props.item.template_used || props.item.theme_used || props.item.fallback_reason))
 const scraperStatusClass = computed(() => {
   if (scraperStatus.value === 'found') return 'bg-emerald-500/10 text-emerald-300'
   if (scraperStatus.value === 'error') return 'bg-red-500/10 text-red-300'

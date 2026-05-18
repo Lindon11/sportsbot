@@ -56,7 +56,16 @@
           <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
           {{ busy.publish ? 'Publishing...' : 'Publish Today' }}
         </button>
+        <button @click="bulkAction('re-render')" :disabled="busy.bulk || filteredItems.length === 0" class="px-4 py-2.5 rounded-xl bg-slate-700 text-white hover:bg-slate-600 disabled:opacity-60 text-sm font-medium transition-colors">Bulk Re-render</button>
+        <button @click="bulkAction('republish')" :disabled="busy.bulk || filteredItems.length === 0" class="px-4 py-2.5 rounded-xl bg-sky-700 text-white hover:bg-sky-600 disabled:opacity-60 text-sm font-medium transition-colors">Bulk Republish</button>
+        <button @click="bulkAction('regenerate-assets')" :disabled="busy.bulk || filteredItems.length === 0" class="px-4 py-2.5 rounded-xl bg-violet-700 text-white hover:bg-violet-600 disabled:opacity-60 text-sm font-medium transition-colors">Regenerate Assets</button>
         <span v-if="flashText" class="text-sm px-3 py-1.5 rounded-lg" :class="flashText.isError ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'">{{ flashText.text }}</span>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-3 text-xs text-slate-400">
+        <span class="px-2 py-1 rounded-lg bg-slate-900/70">primary {{ renderer.primary || 'browser_v3' }}</span>
+        <span class="px-2 py-1 rounded-lg bg-slate-900/70">GD fallback {{ renderer.gd_fallback_enabled ? 'enabled' : 'disabled' }}</span>
+        <span class="px-2 py-1 rounded-lg bg-slate-900/70">timeout {{ renderer.browser_timeout || 15 }}s</span>
+        <span class="px-2 py-1 rounded-lg bg-slate-900/70">assets {{ assetCache.files || 0 }} files</span>
       </div>
     </div>
 
@@ -116,6 +125,7 @@
   <QueuePreviewModal
     :item="previewItem"
     :sport-configs="sports"
+    :templates="templates"
     @close="previewItem = null"
     @render="reRender"
     @send="publishNow"
@@ -124,6 +134,7 @@
     @refresh-scraped-data="refreshScrapedData"
     @accept-scraped-data="acceptScrapedData"
     @reject-scraped-data="rejectScrapedData"
+    @save-render-options="saveRenderOptions"
   />
 </template>
 
@@ -138,6 +149,9 @@ const toast = useToast()
 const loading = ref(false)
 const sports = ref({})
 const counts = ref({})
+const renderer = ref({})
+const assetCache = ref({})
+const templates = ref({})
 const allItems = ref([])
 const previewItem = ref(null)
 const pendingActions = ref(new Map())
@@ -145,7 +159,7 @@ const flashText = ref(null)
 
 const filters = reactive({ sport: '', status: '', dateFrom: '', dateTo: '' })
 const searchQuery = ref('')
-const busy = reactive({ prefetch: false, render: false, publish: false })
+const busy = reactive({ prefetch: false, render: false, publish: false, bulk: false })
 
 function itemTitle(item) {
   const d = item.fixture_data || {}
@@ -200,6 +214,9 @@ async function loadQueue() {
     sports.value = data.sports || {}
     counts.value = data.queue_counts || {}
     counts.value.publish_today = data.publish_today ?? 0
+    renderer.value = data.renderer || {}
+    assetCache.value = data.asset_cache || {}
+    templates.value = data.templates || {}
     allItems.value = (data.recent_items || []).sort(
       (a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
     )
@@ -262,6 +279,27 @@ async function runPublish() {
     toast.error('Publish failed')
   } finally {
     busy.publish = false
+  }
+}
+
+async function bulkAction(action) {
+  const ids = filteredItems.value.map(item => item.id).slice(0, 100)
+  if (!ids.length) return
+  if (!confirm(`${action} ${ids.length} filtered queue items?`)) return
+
+  busy.bulk = true
+  try {
+    const { data } = await api.post(`/admin/sportsbot/fixture-queue/bulk/${action}`, { ids })
+    const results = Object.values(data.results || {})
+    const failures = results.filter(result => result?.error || result?.published === false || result?.re_rendered === false).length
+    showFlash(`${action} complete for ${data.count || ids.length} items (${failures} failed)`, failures > 0)
+    failures ? toast.error('Bulk action finished with failures') : toast.success('Bulk action complete')
+    await loadQueue()
+  } catch (error) {
+    showFlash(error?.response?.data?.message || 'Bulk action failed', true)
+    toast.error('Bulk action failed')
+  } finally {
+    busy.bulk = false
   }
 }
 
@@ -336,6 +374,19 @@ function acceptScrapedData(id) {
 
 function rejectScrapedData(id) {
   return scraperAction(id, 'reject-scraped-data', `/admin/sportsbot/fixture-queue/${id}/reject-scraped-data`, 'Scraped data rejected')
+}
+
+async function saveRenderOptions(id, options) {
+  pendingActions.value.set(id, 'render-options')
+  try {
+    await api.post(`/admin/sportsbot/fixture-queue/${id}/render-options`, { ...options, rerender: true })
+    toast.success('Render options saved')
+    await loadQueue()
+  } catch (error) {
+    toast.error(error?.response?.data?.message || 'Failed to save render options')
+  } finally {
+    pendingActions.value.delete(id)
+  }
 }
 
 async function skipItem(id) {

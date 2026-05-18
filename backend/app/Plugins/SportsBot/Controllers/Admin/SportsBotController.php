@@ -25,9 +25,11 @@ use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
 use App\Plugins\SportsBot\Services\SportsFixturePublisher;
 use App\Plugins\SportsBot\Services\DiscordNotifier;
+use App\Plugins\SportsBot\Services\SportsBotAssetCache;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
+use App\Plugins\SportsBot\Support\CardTemplateRegistry;
 use App\Plugins\SportsBot\Support\SportsBotPaths;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
@@ -493,7 +495,7 @@ class SportsBotController extends Controller
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get(
             $this->settingKey($sport, 'card_version'),
-            $config['default_card_version'] ?? 'v1'
+            $config['default_card_version'] ?? 'v3'
         ));
 
         return response()->json(array_merge($preview, [
@@ -590,6 +592,14 @@ class SportsBotController extends Controller
                 ->whereNull('telegram_message_id')
                 ->ready()
                 ->count(),
+            'renderer' => [
+                'primary' => (bool) config('plugins.SportsBot.cards.v3_browser_enabled', true) ? 'browser_v3' : 'gd_v3',
+                'gd_fallback_enabled' => (bool) config('plugins.SportsBot.cards.gd_fallback_enabled', true),
+                'browser_timeout' => (int) config('plugins.SportsBot.cards.browser_timeout', 15),
+                'browser_concurrency' => (int) config('plugins.SportsBot.cards.browser_concurrency', 2),
+            ],
+            'templates' => app(CardTemplateRegistry::class)->catalog(),
+            'asset_cache' => app(SportsBotAssetCache::class)->diagnostics(),
             'recent_items' => SportsBotFixtureQueue::query()
                 ->latest('updated_at')
                 ->limit(500)
@@ -627,6 +637,51 @@ class SportsBotController extends Controller
         }
     }
 
+    public function fixtureQueueBulkReRender(Request $request, FixtureQueueService $queue): JsonResponse
+    {
+        $ids = $this->fixtureQueueBulkIds($request);
+        $results = [];
+
+        foreach ($ids as $id) {
+            $results[$id] = $queue->reRenderItem($id);
+        }
+
+        return response()->json(['count' => count($ids), 'results' => $results]);
+    }
+
+    public function fixtureQueueBulkRepublish(Request $request, FixtureQueueService $queue): JsonResponse
+    {
+        $ids = $this->fixtureQueueBulkIds($request);
+        $results = [];
+
+        foreach ($ids as $id) {
+            $results[$id] = $queue->publishNow($id, ['force' => true]);
+        }
+
+        return response()->json(['count' => count($ids), 'results' => $results]);
+    }
+
+    public function fixtureQueueRegenerateAssets(Request $request, FixtureQueueService $queue): JsonResponse
+    {
+        $ids = $this->fixtureQueueBulkIds($request);
+        $results = [];
+
+        foreach ($ids as $id) {
+            $item = $queue->find($id);
+            if (!$item) {
+                $results[$id] = ['error' => "Queue item {$id} not found"];
+                continue;
+            }
+
+            $item->asset_status = SportsBotFixtureQueue::ASSET_PENDING;
+            $item->asset_failures = [];
+            $item->save();
+            $results[$id] = $queue->reRenderItem($id);
+        }
+
+        return response()->json(['count' => count($ids), 'results' => $results]);
+    }
+
     public function fixtureQueueItem(int $id, FixtureQueueService $queue): JsonResponse
     {
         $item = $queue->find($id);
@@ -647,6 +702,26 @@ class SportsBotController extends Controller
         return response()->json($queue->publishNow($id, [
             'force' => $request->boolean('force'),
         ]));
+    }
+
+    public function fixtureQueueRenderOptions(int $id, Request $request, FixtureQueueService $queue): JsonResponse
+    {
+        $validated = $request->validate([
+            'template' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'theme' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'card_version' => ['sometimes', 'nullable', 'string', 'in:v1,v2,v3'],
+            'manual_text' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'custom_poster_url' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'custom_background_url' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'rerender' => ['sometimes', 'boolean'],
+        ]);
+
+        $result = $queue->updateRenderOptions($id, $validated);
+        if (($result['updated'] ?? false) && $request->boolean('rerender', true)) {
+            $result['render'] = $queue->reRenderItem($id);
+        }
+
+        return response()->json($result);
     }
 
     public function fixtureQueueFindPoster(int $id, FixtureQueueService $queue): JsonResponse
@@ -682,6 +757,19 @@ class SportsBotController extends Controller
     public function fixtureQueueDelete(int $id, FixtureQueueService $queue): JsonResponse
     {
         return response()->json($queue->deleteItem($id));
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function fixtureQueueBulkIds(Request $request): array
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:100'],
+            'ids.*' => ['integer', 'min:1'],
+        ]);
+
+        return array_values(array_unique(array_map('intval', $validated['ids'])));
     }
 
     public function fixtureQueueCard(int $id, FixtureQueueService $queue): mixed
@@ -721,7 +809,7 @@ class SportsBotController extends Controller
      * @param array<string, mixed> $summary
      * @return array<int, array<string, mixed>>
      */
-    private function fixtureCardPreviews(array $summary, SportsBotCardRenderer $cards, string $cardVersion = 'v1'): array
+    private function fixtureCardPreviews(array $summary, SportsBotCardRenderer $cards, string $cardVersion = 'v3'): array
     {
         $previews = [];
         $cardVersion = $this->footballFixtureCardVersion($cardVersion);

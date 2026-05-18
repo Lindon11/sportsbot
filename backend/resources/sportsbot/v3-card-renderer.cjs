@@ -25,6 +25,11 @@ function readInput(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+function readOptionalFile(file) {
+  if (!file || !fs.existsSync(file)) return '';
+  return fs.readFileSync(file, 'utf8');
+}
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -107,12 +112,33 @@ function accentFor(key) {
   }[key] || '#14b8a6';
 }
 
+function className(value) {
+  return clean(value).toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+}
+
 function logoHtml(url, label, className) {
   const src = clean(url);
   if (src) {
     return `<img class="${className}" src="${esc(src)}" alt="">`;
   }
   return `<div class="${className} fallback">${esc(initials(label))}</div>`;
+}
+
+function enhanceHtml(html, input) {
+  const themeCss = readOptionalFile(input.themePath);
+  const templateClass = input.template ? ` template-${className(input.template)}` : '';
+  const themeClass = input.theme ? ` theme-${className(input.theme)}` : '';
+  const branded = input.branding?.watermark ? `<div class="watermark">${esc(input.branding.watermark)}</div>` : '';
+  const css = `
+  :root { --accent: ${esc(input.accent || '#14b8a6')}; }
+  .watermark { position: absolute; z-index: 4; right: 56px; bottom: 14px; color: rgba(255,255,255,.44); font-size: 12px; font-weight: 850; text-transform: uppercase; }
+  ${themeCss}
+  `;
+
+  return html
+    .replace('<style>', `<style>\n${css}\n`)
+    .replace('<body>', `<body class="sports-card${templateClass}${themeClass}" data-template="${esc(input.template || '')}" data-theme="${esc(input.theme || '')}">`)
+    .replace('</div>\n</body>', `${branded}</div>\n</body>`);
 }
 
 function subhead(fixture, key) {
@@ -156,7 +182,7 @@ function buildHtml(input) {
   const away = clean(fixture.away_team || fixture.strAwayTeam);
   const eventName = clean(fixture.event_name || fixture.strEvent);
   const hasMatchup = home && away;
-  const title = eventName || (hasMatchup ? `${home} vs ${away}` : 'Fixture TBC');
+  const title = clean(fixture.manual_text_override) || eventName || (hasMatchup ? `${home} vs ${away}` : 'Fixture TBC');
   const venue = clean(fixture.venue || fixture.strVenue || 'Venue TBC');
   const tv = clean(fixture.tv_channel || 'Not listed');
   const homeLines = teamLines(home || title);
@@ -164,6 +190,8 @@ function buildHtml(input) {
   const leagueLogo = clean(fixture.league_logo || fixture.league_badge || fixture.strLeagueLogo || fixture.strLeagueBadge);
   const homeLogo = clean(fixture.home_badge || fixture.strHomeTeamBadge || fixture.home_logo);
   const awayLogo = clean(fixture.away_badge || fixture.strAwayTeamBadge || fixture.away_logo);
+  const backgroundImage = clean(fixture.background_image);
+  const backgroundLayer = backgroundImage ? `linear-gradient(rgba(2,4,9,.70), rgba(2,4,9,.88)), url("${esc(backgroundImage)}"),` : '';
 
   const matchupHtml = hasMatchup
     ? `<div class="stage matchup">
@@ -194,6 +222,7 @@ function buildHtml(input) {
   .card {
     position: relative; width: ${width}px; height: ${height}px; color: #f8fafc; overflow: hidden;
     background:
+      ${backgroundLayer}
       radial-gradient(ellipse at center, color-mix(in srgb, ${accent} 24%, transparent) 0%, rgba(0,0,0,0) 42%),
       radial-gradient(ellipse at 50% 58%, color-mix(in srgb, ${accent} 20%, transparent) 0%, rgba(0,0,0,0) 38%),
       linear-gradient(180deg, #05070c 0%, #020409 100%);
@@ -375,22 +404,106 @@ async function main() {
   }
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  if (input.debugDir) fs.mkdirSync(input.debugDir, { recursive: true });
 
   const executablePath = input.chromePath || discoverChromePath();
-  const browser = await puppeteer.launch({
-    executablePath,
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
+  const browserArgs = Array.isArray(input.browserArgs) && input.browserArgs.length
+    ? input.browserArgs
+    : ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
+  const attempts = Math.max(1, Number(input.retries || 0) + 1);
+  const consoleEvents = [];
+  const failedRequests = [];
+  let lastError;
 
-  try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: Number(input.width || 1200), height: Number(input.height || 675), deviceScaleFactor: 1 });
-    await page.setContent(input.kind === 'no-fixtures' ? buildNoFixturesHtml(input) : buildHtml(input), { waitUntil: 'networkidle0', timeout: Number(input.timeout || 12000) });
-    await page.screenshot({ path: outputPath, type: 'png', omitBackground: false });
-  } finally {
-    await browser.close();
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let browser;
+    let page;
+
+    try {
+      browser = await puppeteer.launch({
+        executablePath,
+        headless: 'new',
+        args: browserArgs,
+      });
+
+      page = await browser.newPage();
+      page.on('console', (message) => {
+        consoleEvents.push({ type: message.type(), text: message.text(), attempt });
+      });
+      page.on('pageerror', (error) => {
+        consoleEvents.push({ type: 'pageerror', text: error.message, attempt });
+      });
+      page.on('requestfailed', (request) => {
+        failedRequests.push({
+          url: request.url(),
+          resourceType: request.resourceType(),
+          failure: request.failure()?.errorText || 'request_failed',
+          attempt,
+        });
+      });
+      page.on('response', (response) => {
+        if (response.status() >= 400 && ['image', 'media', 'font', 'stylesheet'].includes(response.request().resourceType())) {
+          failedRequests.push({
+            url: response.url(),
+            resourceType: response.request().resourceType(),
+            failure: `http_${response.status()}`,
+            attempt,
+          });
+        }
+      });
+
+      await page.setViewport({ width: Number(input.width || 1200), height: Number(input.height || 675), deviceScaleFactor: 1 });
+      const html = enhanceHtml(input.kind === 'no-fixtures' ? buildNoFixturesHtml(input) : buildHtml(input), input);
+      if (input.htmlSnapshotPath) {
+        fs.writeFileSync(input.htmlSnapshotPath, html);
+      }
+
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: Number(input.timeout || 12000) });
+      await page.screenshot({
+        path: outputPath,
+        type: input.format === 'jpeg' ? 'jpeg' : (input.format === 'webp' ? 'webp' : 'png'),
+        omitBackground: false,
+      });
+
+      if (input.consoleLogPath) {
+        fs.writeFileSync(input.consoleLogPath, JSON.stringify({ consoleEvents, failedRequests, attempt, executablePath, browserArgs }, null, 2));
+      }
+
+      console.log(JSON.stringify({
+        ok: true,
+        renderer: 'browser_v3',
+        attempt,
+        template: input.template || null,
+        theme: input.theme || null,
+        failedRequests,
+        consoleEvents,
+        executablePath,
+      }));
+
+      return;
+    } catch (error) {
+      lastError = error;
+      consoleEvents.push({ type: 'renderer-error', text: error && error.stack ? error.stack : String(error), attempt });
+
+      if (page && input.failedScreenshotPath) {
+        try {
+          await page.screenshot({ path: input.failedScreenshotPath, type: 'png', omitBackground: false });
+        } catch {
+          // Ignore screenshot failures; the original render error is more useful.
+        }
+      }
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+
+      if (input.consoleLogPath) {
+        fs.writeFileSync(input.consoleLogPath, JSON.stringify({ consoleEvents, failedRequests, executablePath, browserArgs }, null, 2));
+      }
+    }
   }
+
+  throw lastError || new Error('Render failed');
 }
 
 main().catch((error) => {

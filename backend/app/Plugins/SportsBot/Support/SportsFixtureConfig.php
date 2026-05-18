@@ -157,6 +157,20 @@ class SportsFixtureConfig
                 'card_prepare_window'    => 2,
                 'publish_window'         => 0,
             ],
+            'other_sports' => [
+                'sport'                  => 'other_sports',
+                'emoji'                  => '🏟',
+                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
+                'provider_sport'         => '',
+                'card_template'          => self::CARD_TEMPLATE_GENERIC,
+                'caption_formatter'      => self::CAPTION_GENERIC,
+                'default_card_version'   => 'v3',
+                'captions_enabled_default' => false,
+                'data_fetch_window'      => 7,
+                'asset_cache_window'     => 7,
+                'card_prepare_window'    => 2,
+                'publish_window'         => 0,
+            ],
             'formula_1' => [
                 'sport'                  => 'formula_1',
                 'emoji'                  => '🏎',
@@ -236,7 +250,7 @@ class SportsFixtureConfig
 
     public static function defaultCardVersion(string $sportKey): string
     {
-        return (string) (self::for($sportKey)['default_card_version'] ?? 'v2');
+        return (string) (self::for($sportKey)['default_card_version'] ?? 'v3');
     }
 
     public static function captionsEnabledDefault(string $sportKey): bool

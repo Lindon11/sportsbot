@@ -21,6 +21,7 @@ class FixtureQueueService
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
         private readonly SportsBotScraperService $scrapers = new SportsBotScraperService(),
+        private readonly SportsBotAssetCache $assets = new SportsBotAssetCache(),
     ) {
     }
 
@@ -482,10 +483,16 @@ class FixtureQueueService
     private function renderEntryCard(SportsBotFixtureQueue $entry, array $config, string $cardVersion): void
     {
         $fixture = $this->effectiveFixtureData($entry);
+        $cardVersion = (string) ($this->renderOptions($entry)['card_version'] ?? $cardVersion);
 
-        $this->cacheAssets($entry, $fixture);
+        $assetResult = $this->cacheAssets($entry, $fixture);
+        $fixture = (array) ($assetResult['fixture'] ?? $fixture);
 
-        $card = $this->cards->fixtureCard($fixture, $cardVersion);
+        $card = $this->cards->fixtureCard($fixture, $cardVersion, [
+            'route_key' => $this->routeKeyForEntry($entry, $config),
+            'target' => 'telegram',
+            ...$this->renderOptions($entry),
+        ]);
         $cardPath = (string) ($card['path'] ?? '');
 
         if ($cardPath === '' || !@is_file($cardPath)) {
@@ -493,6 +500,7 @@ class FixtureQueueService
         }
 
         $entry->card_path = $cardPath;
+        $this->applyRenderMetadata($entry, $card, $assetResult);
         $entry->caption = $this->buildCaption($fixture, $config);
         $entry->route_key = $config['topic_key'] ?? $entry->route_key;
         $entry->status = SportsBotFixtureQueue::STATUS_READY;
@@ -651,14 +659,20 @@ class FixtureQueueService
 
         $fixture = $this->effectiveFixtureData($entry);
         $cardVersion = $this->desiredCardVersion($sportKey, $config);
+        $cardVersion = (string) ($this->renderOptions($entry)['card_version'] ?? $cardVersion);
         $preserveSent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
             || $entry->sent_at !== null
             || $entry->telegram_message_id !== null;
 
         try {
-            $this->cacheAssets($entry, $fixture);
+        $assetResult = $this->cacheAssets($entry, $fixture);
+        $fixture = (array) ($assetResult['fixture'] ?? $fixture);
 
-            $card = $this->cards->fixtureCard($fixture, $cardVersion);
+            $card = $this->cards->fixtureCard($fixture, $cardVersion, [
+                'route_key' => $this->routeKeyForEntry($entry, $config),
+                'target' => 'telegram',
+                ...$this->renderOptions($entry),
+            ]);
             $cardPath = (string) ($card['path'] ?? '');
 
             if ($cardPath === '' || !@is_file($cardPath)) {
@@ -666,6 +680,7 @@ class FixtureQueueService
             }
 
             $entry->card_path = $cardPath;
+            $this->applyRenderMetadata($entry, $card, $assetResult);
             $entry->caption = $this->buildCaption($fixture, $config);
             $entry->route_key = $config['topic_key'] ?? $entry->route_key;
             $entry->status = $preserveSent ? SportsBotFixtureQueue::STATUS_SENT : SportsBotFixtureQueue::STATUS_READY;
@@ -746,6 +761,45 @@ class FixtureQueueService
 
             return ['published' => false, 'id' => $id, 'error' => $error->getMessage()];
         }
+    }
+
+    public function updateRenderOptions(int $id, array $options): array
+    {
+        $entry = $this->find($id);
+        if (!$entry) {
+            return ['updated' => false, 'error' => "Queue item {$id} not found"];
+        }
+
+        $allowed = array_filter([
+            'template' => isset($options['template']) ? trim((string) $options['template']) : null,
+            'theme' => isset($options['theme']) ? trim((string) $options['theme']) : null,
+            'card_version' => isset($options['card_version']) ? trim((string) $options['card_version']) : null,
+            'manual_text' => isset($options['manual_text']) ? trim((string) $options['manual_text']) : null,
+            'custom_poster_url' => isset($options['custom_poster_url']) ? trim((string) $options['custom_poster_url']) : null,
+            'custom_background_url' => isset($options['custom_background_url']) ? trim((string) $options['custom_background_url']) : null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        $payload = (array) $entry->payload;
+        $payload['render_options'] = array_merge((array) ($payload['render_options'] ?? []), $allowed);
+
+        $fixture = (array) ($entry->fixture_data ?? []);
+        if (isset($allowed['manual_text'])) {
+            $fixture['manual_text_override'] = $allowed['manual_text'];
+        }
+        if (isset($allowed['custom_poster_url'])) {
+            $fixture['event_poster'] = $allowed['custom_poster_url'];
+        }
+        if (isset($allowed['custom_background_url'])) {
+            $fixture['background_image'] = $allowed['custom_background_url'];
+        }
+
+        $entry->payload = $payload;
+        $entry->fixture_data = $fixture;
+        $entry->asset_status = SportsBotFixtureQueue::ASSET_PENDING;
+        $entry->status = $entry->status === SportsBotFixtureQueue::STATUS_SENT ? $entry->status : SportsBotFixtureQueue::STATUS_DRAFT;
+        $entry->save();
+
+        return ['updated' => true, 'id' => $id, 'render_options' => $payload['render_options']];
     }
 
     public function skipItem(int $id): array
@@ -859,14 +913,79 @@ class FixtureQueueService
         return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
     }
 
-    private function cacheAssets(SportsBotFixtureQueue $entry, array $fixture): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function cacheAssets(SportsBotFixtureQueue $entry, array $fixture): array
     {
-        if ($entry->asset_status === SportsBotFixtureQueue::ASSET_CACHED) {
-            return;
+        $result = $this->assets->cacheFixtureAssets($fixture);
+        $failures = (array) ($result['failures'] ?? []);
+        $entry->asset_status = $failures === [] ? SportsBotFixtureQueue::ASSET_CACHED : SportsBotFixtureQueue::ASSET_FAILED;
+        $entry->asset_failures = $failures;
+        $entry->payload = array_merge((array) $entry->payload, [
+            'asset_cache' => [
+                'summary' => $result['summary'] ?? [],
+                'assets' => $result['assets'] ?? [],
+                'updated_at' => now()->toIso8601String(),
+            ],
+        ]);
+        $entry->save();
+
+        if ($failures !== []) {
+            Log::warning('sportsbot.fixture_queue.asset_cache_failed', [
+                'event_id' => $entry->event_id,
+                'sport' => $entry->sport_key,
+                'failures' => $failures,
+            ]);
         }
 
-        $entry->asset_status = SportsBotFixtureQueue::ASSET_CACHED;
-        $entry->save();
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function renderOptions(SportsBotFixtureQueue $entry): array
+    {
+        $payload = (array) $entry->payload;
+
+        return (array) ($payload['render_options'] ?? []);
+    }
+
+    /**
+     * @param array<string, mixed> $card
+     * @param array<string, mixed> $assetResult
+     */
+    private function applyRenderMetadata(SportsBotFixtureQueue $entry, array $card, array $assetResult): void
+    {
+        $entry->renderer_used = (string) ($card['renderer_used'] ?? $card['type'] ?? '');
+        $entry->render_duration_ms = isset($card['render_duration_ms']) ? (int) $card['render_duration_ms'] : null;
+        $entry->template_used = (string) ($card['template_used'] ?? '');
+        $entry->theme_used = (string) ($card['theme_used'] ?? '');
+        $entry->fallback_reason = $card['fallback_reason'] ?? null;
+        $entry->browser_failure_reason = $card['browser_failure_reason'] ?? null;
+        $entry->asset_failures = (array) ($assetResult['failures'] ?? []);
+        $entry->render_diagnostics = array_merge((array) ($card['render_diagnostics'] ?? []), [
+            'output' => $card['output'] ?? [],
+            'video_ready' => $card['video_ready'] ?? [],
+            'asset_summary' => $assetResult['summary'] ?? [],
+        ]);
+        $payload = (array) $entry->payload;
+        $history = (array) ($payload['render_history'] ?? []);
+        $entry->payload = array_merge($payload, [
+            'render_history' => array_values(array_slice(array_merge(
+                $history,
+                [[
+                    'renderer' => $entry->renderer_used,
+                    'duration_ms' => $entry->render_duration_ms,
+                    'template' => $entry->template_used,
+                    'theme' => $entry->theme_used,
+                    'fallback_reason' => $entry->fallback_reason,
+                    'browser_failure_reason' => $entry->browser_failure_reason,
+                    'rendered_at' => now()->toIso8601String(),
+                ]]
+            ), -20)),
+        ]);
     }
 
     private function syncCardPath(SportsBotFixtureQueue $entry, string $cardPath): void

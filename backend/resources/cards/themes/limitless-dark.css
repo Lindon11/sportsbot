@@ -1,0 +1,2 @@
+:root { --sportsbot-theme-accent: #14b8a6; --sportsbot-theme-bg: #020409; --sportsbot-theme-panel: rgba(7, 11, 20, .86); }
+.template-stadium-v3 .card::before { box-shadow: inset 0 0 40px rgba(255,255,255,.03), 0 0 28px color-mix(in srgb, var(--accent) 42%, transparent); }

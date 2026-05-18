@@ -73,7 +73,7 @@ class SportsBotPublisher
                 'source' => $source,
                 'content_key' => $contentKey,
                 'sport_key' => $sportKey,
-                'card_version' => $config['default_card_version'] ?? 'v1',
+                'card_version' => $config['default_card_version'] ?? 'v3',
                 'captions_enabled' => (bool) ($config['captions_enabled_default'] ?? false),
             ],
         ], $extraOptions);
