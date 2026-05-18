@@ -436,10 +436,12 @@ class UpdateController extends Controller
     {
         return [
             ['name' => 'Install PHP dependencies', 'cmd' => ['composer', 'install', '--no-dev', '--prefer-dist', '--optimize-autoloader', '--no-interaction'], 'cwd' => base_path(), 'timeout' => 300],
+            ...$this->permissionRepairSteps('Repair Laravel writable permissions before cache work'),
             ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
             ['name' => 'Ensure storage link', 'cmd' => ['php', 'artisan', 'storage:link'], 'cwd' => base_path(), 'timeout' => 120],
             ...$this->adminRebuildSteps($adminFrontend),
+            ...$this->permissionRepairSteps('Repair Laravel writable permissions after update'),
         ];
     }
 
@@ -461,10 +463,86 @@ class UpdateController extends Controller
             }],
             ['name' => 'Build admin frontend', 'cmd' => ['npm', 'run', 'build'], 'cwd' => $adminFrontend, 'timeout' => 600],
             ['name' => 'Verify admin assets changed', 'run' => fn (): array => $this->verifyAdminAssetsChanged($before)],
+            ...$this->permissionRepairSteps('Repair Laravel writable permissions before cache rebuild'),
             ['name' => 'Clear Laravel caches after admin rebuild', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
             ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
+            ...$this->permissionRepairSteps('Repair Laravel writable permissions after cache rebuild'),
         ];
+    }
+
+    private function permissionRepairSteps(string $name): array
+    {
+        if (!filter_var(config('plugins.SportsBot.updater.repair_permissions_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return [];
+        }
+
+        return [
+            ['name' => $name, 'run' => fn (): array => $this->repairLaravelWritablePermissions()],
+        ];
+    }
+
+    private function repairLaravelWritablePermissions(): array
+    {
+        $paths = $this->permissionRepairPaths();
+        if ($paths === []) {
+            return [
+                'ok' => true,
+                'exit_code' => 0,
+                'output' => 'No permission repair paths configured.',
+            ];
+        }
+
+        $owner = trim((string) config('plugins.SportsBot.updater.repair_permissions_owner', ''));
+        $group = trim((string) config('plugins.SportsBot.updater.repair_permissions_group', ''));
+        $logs = [];
+        $ok = true;
+        $exitCode = 0;
+
+        if ($owner !== '' || $group !== '') {
+            $target = $owner . ($group !== '' ? ':' . $group : '');
+            $result = $this->runCommand(['chown', '-R', $target, ...$paths], base_path(), 180);
+            $ok = $ok && $result['ok'];
+            $exitCode = $result['exit_code'] ?? $exitCode;
+            $logs[] = '$ chown -R ' . $target . ' ' . implode(' ', $paths);
+            $logs[] = $result['output'] !== '' ? $result['output'] : '(no output)';
+        }
+
+        $chmod = $this->runCommand(['chmod', '-R', 'ug+rwX', ...$paths], base_path(), 180);
+        $ok = $ok && $chmod['ok'];
+        $exitCode = $chmod['exit_code'] ?? $exitCode;
+        $logs[] = '$ chmod -R ug+rwX ' . implode(' ', $paths);
+        $logs[] = $chmod['output'] !== '' ? $chmod['output'] : '(no output)';
+
+        return [
+            'ok' => $ok,
+            'exit_code' => $ok ? 0 : $exitCode,
+            'output' => implode("\n", $logs),
+        ];
+    }
+
+    private function permissionRepairPaths(): array
+    {
+        $configured = (array) config('plugins.SportsBot.updater.repair_permissions_paths', ['storage', 'bootstrap/cache']);
+        $paths = [];
+
+        foreach ($configured as $path) {
+            $path = trim((string) $path);
+            if ($path === '') {
+                continue;
+            }
+
+            $fullPath = str_starts_with($path, '/') ? $path : base_path($path);
+            if (!file_exists($fullPath)) {
+                @mkdir($fullPath, 0775, true);
+            }
+
+            if (file_exists($fullPath)) {
+                $paths[] = str_starts_with($path, '/') ? $fullPath : $path;
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     private function normalizeAdminBuildArtifacts(string $root): array

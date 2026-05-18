@@ -969,6 +969,17 @@ class FixtureQueueService
             'output' => $card['output'] ?? [],
             'video_ready' => $card['video_ready'] ?? [],
             'asset_summary' => $assetResult['summary'] ?? [],
+            'asset_sources' => array_map(
+                static fn (array $asset): array => [
+                    'field' => (string) ($asset['field'] ?? ''),
+                    'type' => (string) ($asset['type'] ?? ''),
+                    'render_source' => (string) ($asset['render_source'] ?? 'missing'),
+                    'mime_type' => $asset['mime_type'] ?? null,
+                    'local_path' => $asset['local_path'] ?? null,
+                    'source_url' => $asset['source_url'] ?? null,
+                ],
+                (array) ($assetResult['assets'] ?? [])
+            ),
         ]);
         $payload = (array) $entry->payload;
         $history = (array) ($payload['render_history'] ?? []);

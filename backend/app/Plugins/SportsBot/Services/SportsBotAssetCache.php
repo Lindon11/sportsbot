@@ -51,34 +51,79 @@ class SportsBotAssetCache
 
             $result = $this->cacheUrl($url, $type);
             if (($result['ok'] ?? false) === true) {
-                $rewritten[$field] = $result['file_uri'];
-                $assets[] = [
+                $localPath = (string) ($result['local_path'] ?? '');
+                $dataUri = $this->dataUriForLocalImage($localPath);
+
+                if ($dataUri !== null) {
+                    $rewritten[$field] = $dataUri['uri'];
+                    $assets[] = [
+                        'field' => $field,
+                        'type' => $type,
+                        'source_url' => $url,
+                        'local_path' => $localPath,
+                        'bytes' => $result['bytes'],
+                        'sha256' => $result['sha256'],
+                        'cached' => $result['cached'],
+                        'render_source' => 'data_uri',
+                        'mime_type' => $dataUri['mime_type'],
+                    ];
+                    continue;
+                }
+
+                $rewritten[$field] = '';
+                $failures[] = [
                     'field' => $field,
                     'type' => $type,
                     'source_url' => $url,
-                    'local_path' => $result['local_path'],
-                    'file_uri' => $result['file_uri'],
-                    'bytes' => $result['bytes'],
-                    'sha256' => $result['sha256'],
-                    'cached' => $result['cached'],
+                    'local_path' => $localPath,
+                    'reason' => 'cached_asset_data_uri_failed',
+                    'render_source' => 'missing',
                 ];
             } else {
+                $renderSource = preg_match('#^https?://#i', $url) ? 'remote_url' : 'missing';
                 $failures[] = [
                     'field' => $field,
                     'type' => $type,
                     'source_url' => $url,
                     'reason' => (string) ($result['reason'] ?? 'asset_cache_failed'),
+                    'render_source' => $renderSource,
                 ];
+
+                if ($renderSource === 'remote_url') {
+                    $rewritten[$field] = $url;
+                    $assets[] = [
+                        'field' => $field,
+                        'type' => $type,
+                        'source_url' => $url,
+                        'local_path' => null,
+                        'bytes' => null,
+                        'sha256' => null,
+                        'cached' => false,
+                        'render_source' => 'remote_url',
+                        'mime_type' => null,
+                    ];
+                } else {
+                    $rewritten[$field] = '';
+                }
             }
         }
+
+        $renderSources = array_count_values(array_map(
+            static fn (array $asset): string => (string) ($asset['render_source'] ?? 'missing'),
+            $assets
+        ));
 
         return [
             'fixture' => $rewritten,
             'assets' => $assets,
             'failures' => $failures,
             'summary' => [
-                'cached' => count($assets),
+                'cached' => (int) ($renderSources['data_uri'] ?? 0),
+                'renderable' => count($assets),
                 'failed' => count($failures),
+                'data_uri' => (int) ($renderSources['data_uri'] ?? 0),
+                'remote_url' => (int) ($renderSources['remote_url'] ?? 0),
+                'missing' => count(array_filter($failures, static fn (array $failure): bool => ($failure['render_source'] ?? null) === 'missing')),
                 'status' => $failures === [] ? 'cached' : 'failed',
             ],
         ];
@@ -96,7 +141,6 @@ class SportsBotAssetCache
                 'ok' => true,
                 'cached' => true,
                 'local_path' => $path,
-                'file_uri' => $this->fileUri($path),
                 'bytes' => (int) @filesize($path),
                 'sha256' => hash_file('sha256', $path) ?: '',
             ];
@@ -153,7 +197,6 @@ class SportsBotAssetCache
                 'ok' => true,
                 'cached' => false,
                 'local_path' => $path,
-                'file_uri' => $this->fileUri($path),
                 'bytes' => strlen($body),
                 'sha256' => $sha256,
             ];
@@ -243,10 +286,58 @@ class SportsBotAssetCache
 
         return [
             'local_path' => $path,
-            'file_uri' => $this->fileUri($path),
             'bytes' => (int) filesize($path),
             'sha256' => (string) ($data['sha256'] ?? (hash_file('sha256', $path) ?: '')),
         ];
+    }
+
+    /**
+     * @return array{uri:string,mime_type:string}|null
+     */
+    private function dataUriForLocalImage(string $path): ?array
+    {
+        if ($path === '' || !is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $body = @file_get_contents($path);
+        if (!is_string($body) || $body === '') {
+            return null;
+        }
+
+        $mimeType = $this->mimeTypeForLocalImage($path, $body);
+        if ($mimeType === null) {
+            return null;
+        }
+
+        return [
+            'uri' => 'data:' . $mimeType . ';base64,' . base64_encode($body),
+            'mime_type' => $mimeType,
+        ];
+    }
+
+    private function mimeTypeForLocalImage(string $path, string $body): ?string
+    {
+        $info = @getimagesizefromstring($body);
+        if (is_array($info) && isset($info['mime']) && str_starts_with((string) $info['mime'], 'image/')) {
+            return (string) $info['mime'];
+        }
+
+        $mime = function_exists('mime_content_type') ? @mime_content_type($path) : false;
+        if (is_string($mime) && str_starts_with($mime, 'image/')) {
+            return $mime;
+        }
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        return match ($extension) {
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'svg' => 'image/svg+xml',
+            default => null,
+        };
     }
 
     private function writeSourceMap(string $url, string $path, string $sha256, string $type): void
@@ -318,8 +409,4 @@ class SportsBotAssetCache
         return str_starts_with($url, '/') ? $url : '';
     }
 
-    private function fileUri(string $path): string
-    {
-        return 'file://' . str_replace('%2F', '/', rawurlencode($path));
-    }
 }
