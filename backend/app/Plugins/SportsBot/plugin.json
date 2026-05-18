@@ -45,6 +45,14 @@
                 "meta": {
                     "title": "Telegram Settings"
                 }
+            },
+            {
+                "path": "/sportsbot/update",
+                "name": "sportsbot-update",
+                "component": "UpdateView",
+                "meta": {
+                    "title": "Update"
+                }
             }
         ]
     }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Plugins\SportsBot\Controllers\Admin\SportsBotController;
+use App\Plugins\SportsBot\Controllers\Admin\UpdateController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
@@ -65,4 +66,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/telegram/webhook/diagnostics', [SportsBotController::class, 'telegramWebhookDiagnostics'])->name('telegram.webhook.diagnostics');
     Route::post('/telegram/webhook/set', [SportsBotController::class, 'setTelegramWebhook'])->name('telegram.webhook.set');
     Route::delete('/telegram/webhook', [SportsBotController::class, 'deleteTelegramWebhook'])->name('telegram.webhook.delete');
+
+    // Update
+    Route::get('/update/check', [UpdateController::class, 'check'])->name('update.check');
+    Route::post('/update/run', [UpdateController::class, 'update'])->name('update.run');
 });

@@ -150,6 +150,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'icon' => 'QueueListIcon',
                 'plugin' => 'sportsbot',
             ],
+            [
+                'route' => '/sportsbot/update',
+                'label' => 'Update',
+                'icon' => 'ArrowPathIcon',
+                'plugin' => 'sportsbot',
+            ],
         ],
     ];
 
