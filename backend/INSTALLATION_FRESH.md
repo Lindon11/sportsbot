@@ -50,7 +50,7 @@ Notes:
 - For security, change the password immediately after first login or avoid enabling the default seeder in production.
 
 License keys
-- Place your `license_public.pem` in `storage/` or the path configured by `LICENSE_PUBLIC_PATH` in `.env`. If you need to generate a key for the installer, follow the project's license docs.
+- Place your `license_public.pem` in the backend project root, beside `artisan`, unless your licence was signed by the bundled production key. The stored licence is read from `LARAVEL_CP_LICENSE` or `storage/license_key`. If you need to generate a key for the installer, follow the project's license docs.
 
 Cache / Session drivers
 - For a simple installation, use file drivers in `.env`:

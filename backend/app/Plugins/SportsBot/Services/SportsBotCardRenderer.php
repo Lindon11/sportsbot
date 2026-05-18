@@ -216,8 +216,8 @@ class SportsBotCardRenderer
 
         Log::warning('sportsbot.card.v3_browser_failed', [
             'exit_code' => $exitCode,
-            'stdout' => mb_substr($stdout, 0, 1000),
-            'stderr' => mb_substr($stderr, 0, 1000),
+            'stdout' => $this->strLimit($stdout, 1000),
+            'stderr' => $this->strLimit($stderr, 1000),
         ]);
 
         if (is_file($outputPath)) {
@@ -324,8 +324,8 @@ class SportsBotCardRenderer
 
         Log::warning('sportsbot.card.no_fixtures_v3_browser_failed', [
             'exit_code' => $exitCode,
-            'stdout' => mb_substr($stdout, 0, 1000),
-            'stderr' => mb_substr($stderr, 0, 1000),
+            'stdout' => $this->strLimit($stdout, 1000),
+            'stderr' => $this->strLimit($stderr, 1000),
         ]);
 
         if (is_file($outputPath)) {
@@ -1454,8 +1454,8 @@ class SportsBotCardRenderer
         $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
         $size = $this->fittedTextSize($text, $maxWidth, $maxSize, $minSize, $bold);
 
-        while ($this->textWidth($text, $size, $bold) > $maxWidth && mb_strlen($text) > 1) {
-            $text = rtrim(mb_substr($text, 0, -4)) . '...';
+        while ($this->textWidth($text, $size, $bold) > $maxWidth && $this->strLength($text) > 1) {
+            $text = rtrim($this->strSlice($text, 0, -4)) . '...';
         }
 
         $this->text($image, $text, $x, $y, $size, $color, $bold);
@@ -1654,11 +1654,36 @@ class SportsBotCardRenderer
     private function fit(string $text, int $limit): string
     {
         $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
-        if (mb_strlen($text) <= $limit) {
+        if ($this->strLength($text) <= $limit) {
             return $text;
         }
 
-        return rtrim(mb_substr($text, 0, max(1, $limit - 3))) . '...';
+        return rtrim($this->strSlice($text, 0, max(1, $limit - 3))) . '...';
+    }
+
+    private function strLength(string $text): int
+    {
+        return function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
+    }
+
+    private function strSlice(string $text, int $start, ?int $length = null): string
+    {
+        if (function_exists('mb_substr')) {
+            return $length === null
+                ? mb_substr($text, $start, null, 'UTF-8')
+                : mb_substr($text, $start, $length, 'UTF-8');
+        }
+
+        return $length === null ? substr($text, $start) : substr($text, $start, $length);
+    }
+
+    private function strLimit(string $text, int $limit): string
+    {
+        if ($this->strLength($text) <= $limit) {
+            return $text;
+        }
+
+        return $this->strSlice($text, 0, $limit);
     }
 
     private function findFont(bool $bold): string
