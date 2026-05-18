@@ -1718,7 +1718,7 @@ class SportsBotCardRenderer
             ];
 
         foreach ($candidates as $candidate) {
-            if ($candidate !== '' && is_file($candidate)) {
+            if ($candidate !== '' && @is_file($candidate)) {
                 return $candidate;
             }
         }
