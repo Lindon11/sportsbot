@@ -11,12 +11,15 @@ class FixturesTodayFormatter
         'Football' => '⚽',
         'Basketball' => '🏀',
         'Baseball' => '⚾',
+        'American Football' => '🏈',
         'Fights' => '🥊',
         'MMA' => '🥊',
         'Tennis' => '🎾',
+        'Cricket' => '🏏',
         'Rugby' => '🏉',
         'Ice Hockey' => '🏒',
         'Motorsport' => '🏎',
+        'Golf' => '⛳',
     ];
 
     /**

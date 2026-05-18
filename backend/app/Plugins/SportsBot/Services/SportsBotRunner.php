@@ -378,11 +378,18 @@ class SportsBotRunner
         $key = $this->normalizeKey($sport);
 
         return match ($key) {
-            '', 'football' => 'Soccer',
-            'rugby union', 'rugby league' => 'Rugby',
-            'formula one', 'f1' => 'Formula 1',
-            'mixed martial arts', 'ultimate fighting championship', 'ufc' => 'MMA',
+            '', 'football', 'soccer' => 'Soccer',
+            'basketball', 'nba' => 'Basketball',
+            'baseball', 'mlb' => 'Baseball',
+            'american football', 'nfl' => 'American Football',
+            'tennis' => 'Tennis',
+            'rugby', 'rugby union', 'rugby league' => 'Rugby',
+            'cricket' => 'Cricket',
+            'formula one', 'formula 1', 'f1', 'motorsport', 'racing' => 'Formula 1',
+            'mixed martial arts', 'ultimate fighting championship', 'ufc', 'mma' => 'MMA',
+            'boxing', 'fights', 'fighting', 'combat', 'ppv' => 'Boxing',
             'ice hockey', 'hockey', 'nhl' => 'Ice Hockey',
+            'golf' => 'Golf',
             default => trim($sport),
         };
     }

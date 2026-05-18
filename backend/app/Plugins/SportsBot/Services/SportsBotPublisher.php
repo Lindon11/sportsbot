@@ -130,7 +130,7 @@ class SportsBotPublisher
         ]);
 
         try {
-            $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'RUGBY_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES', 'ICE_HOCKEY_FIXTURES'], true);
+            $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'BASKETBALL_FIXTURES', 'BASEBALL_FIXTURES', 'AMERICAN_FOOTBALL_FIXTURES', 'TENNIS_FIXTURES', 'RUGBY_FIXTURES', 'CRICKET_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES', 'ICE_HOCKEY_FIXTURES', 'GOLF_FIXTURES'], true);
             if ($isFixtureModule) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
             } else {
@@ -245,10 +245,16 @@ class SportsBotPublisher
         $contentKey = strtoupper((string) ($payload['content_key'] ?? $options['type'] ?? 'SPORTS_FIXTURES'));
         $sportKey = match ($contentKey) {
             'FOOTBALL_FIXTURES' => 'football',
+            'BASKETBALL_FIXTURES' => 'basketball',
+            'BASEBALL_FIXTURES' => 'baseball',
+            'AMERICAN_FOOTBALL_FIXTURES' => 'american_football',
+            'TENNIS_FIXTURES' => 'tennis',
             'RUGBY_FIXTURES' => 'rugby',
+            'CRICKET_FIXTURES' => 'cricket',
             'FIGHT_FIXTURES' => 'fights',
             'MOTORSPORT_FIXTURES' => 'formula_1',
             'ICE_HOCKEY_FIXTURES' => 'ice_hockey',
+            'GOLF_FIXTURES' => 'golf',
             default => (string) ($payload['sport_key'] ?? $summary['sport_filter'] ?? 'sports'),
         };
 
@@ -314,12 +320,18 @@ class SportsBotPublisher
         $key = strtoupper($contentKey);
         $sportMap = [
             'FOOTBALL_FIXTURES' => 'football',
+            'BASKETBALL_FIXTURES' => 'basketball',
+            'BASEBALL_FIXTURES' => 'baseball',
+            'AMERICAN_FOOTBALL_FIXTURES' => 'american_football',
+            'TENNIS_FIXTURES' => 'tennis',
             'RUGBY_FIXTURES' => 'rugby',
+            'CRICKET_FIXTURES' => 'cricket',
             'FIGHT_FIXTURES' => 'fights',
             'MMA_FIXTURES' => 'mma',
             'BOXING_FIXTURES' => 'boxing',
             'MOTORSPORT_FIXTURES' => 'formula_1',
             'ICE_HOCKEY_FIXTURES' => 'ice_hockey',
+            'GOLF_FIXTURES' => 'golf',
         ];
 
         $sportKey = $sportMap[$key] ?? null;

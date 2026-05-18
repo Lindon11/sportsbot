@@ -269,12 +269,17 @@ class TvGuideService
 
         return match ($key) {
             'soccer', 'football' => 'Football',
-            'basketball' => 'Basketball',
-            'baseball' => 'Baseball',
+            'basketball', 'nba' => 'Basketball',
+            'baseball', 'mlb' => 'Baseball',
+            'american football', 'nfl' => 'American Football',
             'mma', 'mixed martial arts', 'ufc' => 'MMA',
             'tennis' => 'Tennis',
             'rugby', 'rugby union', 'rugby league' => 'Rugby',
+            'cricket' => 'Cricket',
+            'formula one', 'formula 1', 'f1', 'motorsport', 'racing' => 'Formula 1',
+            'boxing', 'fights', 'fighting', 'combat', 'ppv' => 'Boxing',
             'ice hockey', 'hockey', 'nhl' => 'Ice Hockey',
+            'golf' => 'Golf',
             default => trim($sport) !== '' ? trim($sport) : 'Sport',
         };
     }
