@@ -66,6 +66,7 @@ playwright-report/
 /storage/bundles
 backend/app/Plugins/_archived
 backend/storage/bundles
+*.sql
 backend/database/migrations/archived_gaming
 backend/footballbot/cache
 backend/footballbot/generated
