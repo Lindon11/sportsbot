@@ -217,10 +217,10 @@ function buildHtml(input) {
   .league-mark.fallback { display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); color: ${accent}; font-weight: 950; font-size: 34px; }
   .league-title { font-size: 30px; line-height: .94; font-weight: 950; text-transform: uppercase; letter-spacing: .2px; max-width: 410px; }
   .league-sub { margin-top: 8px; color: ${accent}; font-size: 18px; font-weight: 850; text-transform: uppercase; }
-  .date { position: absolute; z-index: 3; right: 66px; top: 48px; text-align: right; text-transform: uppercase; }
+  .date { position: absolute; z-index: 3; right: 66px; top: 48px; width: 420px; text-align: right; text-transform: uppercase; }
   .date .line1 { font-size: 25px; line-height: 1; font-weight: 950; letter-spacing: .5px; }
   .date .line2 { margin-top: 10px; color: ${accent}; font-size: 25px; line-height: 1; font-weight: 950; }
-  .date-icon { position: absolute; z-index: 3; right: 390px; top: 49px; width: 34px; height: 34px; border: 3px solid ${accent}; border-radius: 4px; box-shadow: 0 0 12px color-mix(in srgb, ${accent} 48%, transparent); }
+  .date-icon { position: absolute; z-index: 3; right: 506px; top: 49px; width: 34px; height: 34px; border: 3px solid ${accent}; border-radius: 4px; box-shadow: 0 0 12px color-mix(in srgb, ${accent} 48%, transparent); }
   .date-icon::before { content: ""; position: absolute; left: -3px; right: -3px; top: 8px; border-top: 3px solid ${accent}; }
   .date-icon::after { content: ""; position: absolute; left: 7px; top: -8px; width: 14px; height: 10px; border-left: 3px solid ${accent}; border-right: 3px solid ${accent}; }
   .stage { position: absolute; z-index: 3; left: 58px; right: 58px; top: 148px; height: 342px; }
@@ -303,10 +303,10 @@ function buildNoFixturesHtml(input) {
   .league-mark { width: 96px; height: 96px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); color: ${accent}; font-weight: 950; font-size: 30px; box-shadow: 0 0 28px color-mix(in srgb, ${accent} 35%, transparent); }
   .league-title { font-size: 31px; line-height: .98; font-weight: 950; text-transform: uppercase; letter-spacing: .2px; max-width: 520px; }
   .league-sub { margin-top: 9px; color: ${accent}; font-size: 18px; font-weight: 850; text-transform: uppercase; }
-  .date { position: absolute; z-index: 3; right: 66px; top: 58px; text-align: right; text-transform: uppercase; }
+  .date { position: absolute; z-index: 3; right: 66px; top: 58px; width: 420px; text-align: right; text-transform: uppercase; }
   .date .line1 { color: #fff; font-size: 25px; line-height: 1; font-weight: 950; letter-spacing: .5px; }
   .date .line2 { margin-top: 10px; color: ${accent}; font-size: 25px; line-height: 1; font-weight: 950; }
-  .date-icon { position: absolute; z-index: 3; right: 390px; top: 56px; width: 34px; height: 34px; border: 3px solid ${accent}; border-radius: 4px; box-shadow: 0 0 12px color-mix(in srgb, ${accent} 48%, transparent); }
+  .date-icon { position: absolute; z-index: 3; right: 506px; top: 56px; width: 34px; height: 34px; border: 3px solid ${accent}; border-radius: 4px; box-shadow: 0 0 12px color-mix(in srgb, ${accent} 48%, transparent); }
   .date-icon::before { content: ""; position: absolute; left: -3px; right: -3px; top: 8px; border-top: 3px solid ${accent}; }
   .date-icon::after { content: ""; position: absolute; left: 7px; top: -8px; width: 14px; height: 10px; border-left: 3px solid ${accent}; border-right: 3px solid ${accent}; }
   .stage { position: absolute; z-index: 3; left: 70px; right: 70px; top: 178px; height: 300px; display: grid; place-items: center; text-align: center; }

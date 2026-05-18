@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Controllers;
 
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
+use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\TelegramCallbackService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +24,7 @@ class TelegramWebhookController extends Controller
      */
     public function handle(Request $request): JsonResponse
     {
-        if (!config('plugins.SportsBot.telegram.webhook_enabled', false)) {
+        if (!app(SportsBotSettingsService::class)->resolveWebhookEnabled()) {
             Log::warning('sportsbot.telegram.webhook_disabled', [
                 'remote_addr' => $request->ip(),
             ]);
@@ -76,8 +77,9 @@ class TelegramWebhookController extends Controller
      */
     public function health(Request $request): JsonResponse
     {
-        $enabled = (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
-        $botToken = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
+        $settings = app(SportsBotSettingsService::class);
+        $enabled = $settings->resolveWebhookEnabled();
+        $botToken = trim($settings->resolveBotToken());
 
         $latestUpdate = SportsBotTelegramUpdateState::query()
             ->orderByDesc('id')

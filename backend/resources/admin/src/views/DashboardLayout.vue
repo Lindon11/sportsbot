@@ -434,6 +434,7 @@ const pageTitle = computed(() => {
     '/sportsbot/discord-routes': 'SportsBot Discord Routes',
     '/sportsbot/coverage': 'SportsBot Coverage Settings',
     '/sportsbot/scraper-settings': 'SportsBot Scraper Settings',
+    '/sportsbot/telegram-settings': 'SportsBot Telegram Settings',
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
     '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
     '/sportsbot/update': 'SportsBot Update',

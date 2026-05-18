@@ -230,6 +230,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotScraperSettingsView.vue')
         },
         {
+          path: '/sportsbot/telegram-settings',
+          name: 'sportsbot-telegram-settings',
+          component: () => import('../views/SportsBotTelegramSettingsView.vue')
+        },
+        {
           path: '/sportsbot/webhook-diagnostics',
           name: 'sportsbot-webhook-diagnostics',
           component: () => import('../views/SportsBotWebhookDiagnosticsView.vue')

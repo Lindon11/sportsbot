@@ -1447,8 +1447,9 @@ class SportsBotController extends Controller
 
     public function telegramWebhookDiagnostics(): JsonResponse
     {
-        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
-        $webhookEnabled = (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
+        $settings = app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class);
+        $token = trim((string) $settings->resolveBotToken());
+        $webhookEnabled = $settings->resolveWebhookEnabled();
         $webhookUrl = url(route('sportsbot.telegram.webhook', [], false));
         $lastUpdate = null;
         $lastCallback = null;
@@ -1524,7 +1525,7 @@ class SportsBotController extends Controller
             'webhook_enabled' => $webhookEnabled,
             'webhook_url' => $webhookUrl,
             'bot_token_configured' => $token !== '',
-            'error' => $webhookEnabled ? null : 'Webhook is not enabled. Set SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED=true',
+            'error' => $webhookEnabled ? null : 'Webhook is not enabled.',
             'last_webhook_received' => $lastUpdate instanceof SportsBotTelegramUpdateState
                 ? $lastUpdate->created_at->toIso8601String()
                 : null,

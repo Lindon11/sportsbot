@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Console\Commands;
 
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
+use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -22,8 +23,9 @@ class WebhookInfoCommand extends Command
             return self::FAILURE;
         }
 
-        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
-        $enabled = config('plugins.SportsBot.telegram.webhook_enabled', false);
+        $settings = app(SportsBotSettingsService::class);
+        $token = trim($settings->resolveBotToken());
+        $enabled = $settings->resolveWebhookEnabled();
         $webhookUrl = route('sportsbot.telegram.webhook', [], false);
         $fullUrl = url($webhookUrl);
 

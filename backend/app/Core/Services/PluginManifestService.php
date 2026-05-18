@@ -202,14 +202,10 @@ class PluginManifestService
      */
     protected function buildFrontendRoutes(InstalledPlugin $plugin, ?array $pluginJson): array
     {
-        // First check database stored routes
-        if (!empty($plugin->frontend_routes)) {
-            return $plugin->frontend_routes;
-        }
-
-        // Fall back to plugin.json
         $frontendConfig = $pluginJson['frontend'] ?? [];
-        $routes = $frontendConfig['routes'] ?? [];
+        $manifestRoutes = $frontendConfig['routes'] ?? [];
+        $databaseRoutes = $plugin->frontend_routes ?? [];
+        $routes = $this->mergeFrontendRoutes($databaseRoutes, $manifestRoutes);
 
         // Auto-generate from route_name if no explicit routes defined
         if (empty($routes) && $plugin->route_name) {
@@ -229,6 +225,36 @@ class PluginManifestService
         }
 
         return $routes;
+    }
+
+    /**
+     * Merge DB-stored routes with plugin.json routes.
+     *
+     * Installed plugin rows can lag behind the checked-out repo after an update.
+     * Keeping manifest routes in the response lets newly shipped frontend pages
+     * become available without a manual plugin reinstall.
+     */
+    protected function mergeFrontendRoutes(array $databaseRoutes, array $manifestRoutes): array
+    {
+        $routes = [];
+
+        foreach (array_merge($databaseRoutes, $manifestRoutes) as $route) {
+            if (!is_array($route)) {
+                continue;
+            }
+
+            $path = trim((string) ($route['path'] ?? ''));
+            $name = trim((string) ($route['name'] ?? ''));
+
+            if ($path === '' && $name === '') {
+                continue;
+            }
+
+            $key = $path !== '' ? 'path:' . $path : 'name:' . $name;
+            $routes[$key] = $route;
+        }
+
+        return array_values($routes);
     }
 
     /**

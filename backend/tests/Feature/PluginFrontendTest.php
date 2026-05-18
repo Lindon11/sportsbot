@@ -4,11 +4,19 @@ namespace Tests\Feature;
 
 use App\Core\Models\InstalledPlugin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class PluginFrontendTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Cache::flush();
+    }
 
     /**
      * Test the enabled plugins endpoint returns proper structure.
@@ -194,6 +202,44 @@ class PluginFrontendTest extends TestCase
             ->assertJsonPath('routes.0.plugin', 'racing')
             ->assertJsonPath('routes.0.path', '/racing')
             ->assertJsonPath('routes.1.path', '/racing/create');
+    }
+
+    /**
+     * Test repo manifest routes are still exposed when installed metadata is stale.
+     */
+    public function test_manifest_routes_are_merged_with_stale_installed_plugin_routes(): void
+    {
+        InstalledPlugin::create([
+            'name' => 'Sports Bot',
+            'slug' => 'sportsbot',
+            'version' => '0.1.0',
+            'type' => 'plugin',
+            'description' => 'Sports alerts',
+            'enabled' => true,
+            'installed_at' => now(),
+            'frontend_routes' => [
+                [
+                    'path' => '/sportsbot/update',
+                    'name' => 'sportsbot-update',
+                    'component' => 'UpdateView',
+                    'meta' => ['title' => 'Update'],
+                ],
+            ],
+        ]);
+
+        $response = $this->getJson('/api/v1/plugins/enabled');
+
+        $response->assertOk()
+            ->assertJsonFragment([
+                'path' => '/sportsbot/telegram-settings',
+                'name' => 'sportsbot-telegram-settings',
+                'component' => 'TelegramSettingsView',
+            ])
+            ->assertJsonFragment([
+                'path' => '/sportsbot/update',
+                'name' => 'sportsbot-update',
+                'component' => 'UpdateView',
+            ]);
     }
 
     /**

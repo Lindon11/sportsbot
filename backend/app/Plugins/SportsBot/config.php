@@ -516,6 +516,7 @@ return [
     'updater' => [
         'enabled' => env('SPORTSBOT_UPDATER_ENABLED', true),
         'remote' => env('SPORTSBOT_UPDATER_REMOTE', 'origin'),
+        'force_sync_target' => env('SPORTSBOT_UPDATER_FORCE_SYNC_TARGET', env('SPORTSBOT_UPDATER_REMOTE', 'origin') . '/main'),
         'admin_frontend_path' => env('SPORTSBOT_UPDATER_ADMIN_FRONTEND_PATH', 'resources/admin'),
     ],
 ];

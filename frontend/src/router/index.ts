@@ -173,10 +173,22 @@ router.beforeEach(async (to, _from, next) => {
     document.title = `${title} | ${appName}`
   }
 
-  // Initialize plugin routes on first authenticated navigation
+  // Keep plugin routes registered for authenticated navigation. Other layout
+  // components may fetch plugin manifests before the router sees them.
   const pluginsStore = usePluginsStore()
-  if (user && !pluginsStore.loaded) {
+  if (user) {
     await initializePluginRoutes()
+
+    const resolved = router.resolve(to.fullPath)
+    if (to.name === 'not-found' && resolved.name !== 'not-found') {
+      next({
+        path: to.path,
+        query: to.query,
+        hash: to.hash,
+        replace: true,
+      })
+      return
+    }
   }
 
   if (requiresAuth && !user) {

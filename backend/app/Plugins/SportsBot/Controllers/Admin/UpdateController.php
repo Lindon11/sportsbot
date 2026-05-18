@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Controllers\Admin;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -89,18 +90,10 @@ class UpdateController extends Controller
         $remote = $this->remoteName();
         $adminFrontend = base_path(config('plugins.SportsBot.updater.admin_frontend_path', 'resources/admin'));
 
-        $steps = [
+        $steps = array_merge([
             ['name' => 'Fetch latest code', 'cmd' => ['git', 'fetch', '--prune', $remote], 'cwd' => $root, 'timeout' => 120],
             ['name' => 'Pull update', 'cmd' => ['git', 'pull', '--ff-only'], 'cwd' => $root, 'timeout' => 120],
-            ['name' => 'Install PHP dependencies', 'cmd' => ['composer', 'install', '--no-dev', '--prefer-dist', '--optimize-autoloader', '--no-interaction'], 'cwd' => base_path(), 'timeout' => 300],
-            ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
-            ['name' => 'Ensure storage link', 'cmd' => ['php', 'artisan', 'storage:link'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Install admin frontend dependencies', 'cmd' => ['npm', 'ci'], 'cwd' => $adminFrontend, 'timeout' => 300],
-            ['name' => 'Build admin frontend', 'cmd' => ['npm', 'run', 'build'], 'cwd' => $adminFrontend, 'timeout' => 600],
-            ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
-        ];
+        ], $this->postUpdateSteps($adminFrontend));
 
         $ok = true;
 
@@ -141,6 +134,112 @@ class UpdateController extends Controller
         ], $ok ? 200 : 500);
     }
 
+    public function forceSync(Request $request): JsonResponse
+    {
+        if ($response = $this->adminOnlyResponse()) {
+            return $response;
+        }
+
+        if ((string) $request->input('confirmation') !== 'RESET_AND_CLEAN') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Type RESET_AND_CLEAN to confirm force sync.',
+                'logs' => [],
+            ], 422);
+        }
+
+        $logs = [];
+        $status = $this->buildStatus(true);
+
+        if (!$status['enabled']) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Admin updates are disabled. Set SPORTSBOT_UPDATER_ENABLED=true on the live server to enable them.',
+                'status' => $status,
+                'logs' => [],
+            ], 403);
+        }
+
+        if (!$status['repository_ready']) {
+            return response()->json([
+                'ok' => false,
+                'message' => $status['message'] ?: 'This install is not ready for Git updates.',
+                'status' => $status,
+                'logs' => [],
+            ], 422);
+        }
+
+        if (!$status['requirements']['git']) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Git is not available to the web server user.',
+                'status' => $status,
+                'logs' => [],
+            ], 422);
+        }
+
+        $lock = Cache::lock('sportsbot_admin_update', 600);
+
+        if (!$lock->get()) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Another update is already running.',
+                'status' => $status,
+                'logs' => [],
+            ], 409);
+        }
+
+        $root = $this->repositoryRoot();
+        $remote = $this->remoteName();
+        $target = $this->forceSyncTarget($remote);
+        $adminFrontend = base_path(config('plugins.SportsBot.updater.admin_frontend_path', 'resources/admin'));
+
+        $steps = array_merge([
+            ['name' => 'Fetch latest code', 'cmd' => ['git', 'fetch', '--prune', $remote], 'cwd' => $root, 'timeout' => 120],
+            ['name' => 'Reset checkout to ' . $target, 'cmd' => ['git', 'reset', '--hard', $target], 'cwd' => $root, 'timeout' => 120],
+            ['name' => 'Remove untracked files', 'cmd' => ['git', 'clean', '-fd'], 'cwd' => $root, 'timeout' => 120],
+        ], $this->postUpdateSteps($adminFrontend));
+
+        $ok = true;
+
+        try {
+            foreach ($steps as $step) {
+                $result = $this->runCommand($step['cmd'], $step['cwd'], $step['timeout']);
+
+                $logs[] = [
+                    'step' => $step['name'],
+                    'ok' => $result['ok'],
+                    'exit_code' => $result['exit_code'],
+                    'output' => $result['output'],
+                ];
+
+                if (!$result['ok']) {
+                    $ok = false;
+                    break;
+                }
+            }
+        } finally {
+            optional($lock)->release();
+        }
+
+        $finalStatus = $this->buildStatus(false);
+
+        Log::warning('sportsbot.admin.force_sync_completed', [
+            'ok' => $ok,
+            'target' => $target,
+            'steps' => count($logs),
+            'from' => $status['current_commit'],
+            'to' => $finalStatus['current_commit'],
+        ]);
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => $ok ? 'Force sync completed successfully.' : 'Force sync stopped because a step failed.',
+            'status' => $finalStatus,
+            'logs' => $logs,
+        ], $ok ? 200 : 500);
+    }
+
     private function buildStatus(bool $fetch): array
     {
         $root = $this->repositoryRoot();
@@ -153,6 +252,7 @@ class UpdateController extends Controller
             'message' => null,
             'root' => $root,
             'remote' => $remote,
+            'force_sync_target' => $this->forceSyncTarget($remote),
             'branch' => null,
             'upstream' => null,
             'current_commit' => null,
@@ -279,6 +379,25 @@ class UpdateController extends Controller
     private function remoteName(): string
     {
         return (string) config('plugins.SportsBot.updater.remote', 'origin');
+    }
+
+    private function forceSyncTarget(string $remote): string
+    {
+        return trim((string) config('plugins.SportsBot.updater.force_sync_target', "{$remote}/main")) ?: "{$remote}/main";
+    }
+
+    private function postUpdateSteps(string $adminFrontend): array
+    {
+        return [
+            ['name' => 'Install PHP dependencies', 'cmd' => ['composer', 'install', '--no-dev', '--prefer-dist', '--optimize-autoloader', '--no-interaction'], 'cwd' => base_path(), 'timeout' => 300],
+            ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
+            ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
+            ['name' => 'Ensure storage link', 'cmd' => ['php', 'artisan', 'storage:link'], 'cwd' => base_path(), 'timeout' => 120],
+            ['name' => 'Install admin frontend dependencies', 'cmd' => ['npm', 'ci'], 'cwd' => $adminFrontend, 'timeout' => 300],
+            ['name' => 'Build admin frontend', 'cmd' => ['npm', 'run', 'build'], 'cwd' => $adminFrontend, 'timeout' => 600],
+            ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
+            ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
+        ];
     }
 
     private function binaryAvailable(string $binary, string $cwd): bool

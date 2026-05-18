@@ -558,7 +558,7 @@ class SportsBotCardRenderer
         $this->textFitted($image, $leagueShort, 158, 64, 330, 27, 16, $white, true);
         $this->textFitted($image, strtoupper($this->v3Subhead($fixture, $normalizedSport)), 158, 96, 330, 16, 11, $accent, true);
 
-        $this->drawCalendarIcon($image, 792, 46, 44, $accent, imagecolorallocatealpha($image, 0, 0, 0, 90));
+        $this->drawCalendarIcon($image, 690, 46, 44, $accent, imagecolorallocatealpha($image, 0, 0, 0, 90));
         $this->rightText($image, $date, 1130, 70, 22, $white, true);
         $this->rightText($image, strtoupper($this->v3TimePrefix($normalizedSport)) . ' ' . $time, 1130, 103, 23, $accent, true);
 

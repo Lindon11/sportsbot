@@ -2,6 +2,9 @@ import { type Component, defineAsyncComponent } from 'vue'
 import type { RouteRecordRaw, Router } from 'vue-router'
 import { usePluginsStore, type PluginRoute } from '@/stores/plugins'
 
+type AsyncComponentModule = { default: Component }
+type AsyncComponentLoader = () => Promise<AsyncComponentModule>
+
 /**
  * Plugin route metadata extension
  */
@@ -18,7 +21,7 @@ declare module 'vue-router' {
  * Core view components that plugins can reference
  * Gaming-specific views are provided by plugins via dynamic imports
  */
-const coreComponentMap: Record<string, () => Promise<Component>> = {
+const coreComponentMap: Record<string, AsyncComponentLoader> = {
   // Core views
   ProfileView: () => import('@/views/ProfileView.vue'),
   ActivityView: () => import('@/views/ActivityView.vue'),
@@ -26,26 +29,28 @@ const coreComponentMap: Record<string, () => Promise<Component>> = {
   // They should be provided by plugins via dynamic imports
 }
 
+const pluginViewModules = import.meta.glob<AsyncComponentModule>('../plugins/*/views/*.vue')
+
 /**
  * Dynamic component loader for plugin views
  * Plugins can provide their own Vue components in their bundle
  */
-function getPluginComponentLoader(pluginSlug: string, componentName: string): (() => Promise<Component>) | null {
-  // First, try to load from the plugin's bundle
-  try {
-    return defineAsyncComponent(() =>
-      import(`@/plugins/${pluginSlug}/views/${componentName}.vue`)
-    )
-  } catch {
+function getPluginComponentLoader(pluginSlug: string, componentName: string): AsyncComponentLoader | null {
+  const modulePath = `../plugins/${pluginSlug}/views/${componentName}.vue`
+  const loader = pluginViewModules[modulePath]
+
+  if (!loader) {
     console.warn(`Plugin component not found: ${pluginSlug}/${componentName}`)
     return null
   }
+
+  return loader
 }
 
 /**
  * Get the component loader for a given component name
  */
-function getComponentLoader(componentName: string | null, pluginSlug?: string): (() => Promise<Component>) | null {
+function getComponentLoader(componentName: string | null, pluginSlug?: string): AsyncComponentLoader | null {
   if (!componentName) return null
 
   // Check if it's a core component

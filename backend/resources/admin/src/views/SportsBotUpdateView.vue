@@ -7,7 +7,7 @@
       </div>
       <button
         @click="loadStatus"
-        :disabled="checking || updating"
+        :disabled="checking || updating || forceSyncing"
         class="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <ArrowPathIcon :class="['h-5 w-5', checking && 'animate-spin']" />
@@ -54,15 +54,26 @@
               <p v-if="status.message" class="mt-1 text-sm text-slate-400">{{ status.message }}</p>
             </div>
           </div>
-          <button
-            @click="applyUpdate"
-            :disabled="!status.can_update || updating"
-            class="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-          >
-            <ArrowDownTrayIcon v-if="!updating" class="h-5 w-5" />
-            <ArrowPathIcon v-else class="h-5 w-5 animate-spin" />
-            {{ updating ? 'Applying...' : 'Apply Update' }}
-          </button>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              @click="applyUpdate"
+              :disabled="!status.can_update || updating || forceSyncing"
+              class="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            >
+              <ArrowDownTrayIcon v-if="!updating" class="h-5 w-5" />
+              <ArrowPathIcon v-else class="h-5 w-5 animate-spin" />
+              {{ updating ? 'Applying...' : 'Apply Update' }}
+            </button>
+            <button
+              @click="forceSync"
+              :disabled="!canForceSync || updating || forceSyncing"
+              class="inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-5 py-2.5 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+            >
+              <ExclamationTriangleIcon v-if="!forceSyncing" class="h-5 w-5" />
+              <ArrowPathIcon v-else class="h-5 w-5 animate-spin" />
+              {{ forceSyncing ? 'Force Syncing...' : 'Force Sync' }}
+            </button>
+          </div>
         </div>
 
         <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -81,6 +92,13 @@
         <div v-if="status.tracked_changes?.length" class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
           <p class="text-sm font-medium text-amber-200">Tracked changes on live</p>
           <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-amber-100">{{ status.tracked_changes.join('\n') }}</pre>
+        </div>
+
+        <div
+          v-if="status.has_tracked_changes || status.untracked_count"
+          class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100"
+        >
+          Force Sync will discard tracked changes and remove {{ status.untracked_count || 0 }} untracked file(s) before rebuilding the app.
         </div>
       </div>
 
@@ -119,6 +137,7 @@ import api from '@/services/api'
 
 const checking = ref(false)
 const updating = ref(false)
+const forceSyncing = ref(false)
 const error = ref('')
 const logs = ref([])
 const status = ref(null)
@@ -143,6 +162,21 @@ const statusLabel = computed(() => {
   return 'Up to date'
 })
 
+const canForceSync = computed(() => {
+  if (!status.value) return false
+
+  const requirements = status.value.requirements || {}
+
+  return (
+    Boolean(status.value.enabled)
+    && Boolean(status.value.repository_ready)
+    && Boolean(requirements.git)
+    && Boolean(requirements.php)
+    && Boolean(requirements.composer)
+    && Boolean(requirements.npm)
+  )
+})
+
 async function loadStatus() {
   checking.value = true
   error.value = ''
@@ -158,7 +192,7 @@ async function loadStatus() {
 }
 
 async function applyUpdate() {
-  if (!status.value?.can_update || updating.value) return
+  if (!status.value?.can_update || updating.value || forceSyncing.value) return
   if (!window.confirm('Apply the latest update now?')) return
 
   updating.value = true
@@ -176,6 +210,34 @@ async function applyUpdate() {
     error.value = data?.message || 'Update failed'
   } finally {
     updating.value = false
+  }
+}
+
+async function forceSync() {
+  if (!canForceSync.value || updating.value || forceSyncing.value) return
+
+  const target = status.value?.force_sync_target || 'origin/main'
+  const confirmation = window.prompt(
+    `This will run git fetch, git reset --hard ${target}, git clean -fd, then rebuild the live admin app. Type RESET_AND_CLEAN to continue.`
+  )
+
+  if (confirmation !== 'RESET_AND_CLEAN') return
+
+  forceSyncing.value = true
+  error.value = ''
+  logs.value = []
+
+  try {
+    const { data } = await api.post('/admin/sportsbot/update/force-sync', { confirmation })
+    logs.value = data.logs || []
+    status.value = data.status || status.value
+  } catch (err) {
+    const data = err?.response?.data
+    logs.value = data?.logs || []
+    status.value = data?.status || status.value
+    error.value = data?.message || 'Force sync failed'
+  } finally {
+    forceSyncing.value = false
   }
 }
 
