@@ -32,7 +32,7 @@ class SportsBotHealthCommand extends Command
         $checks[] = $this->check('Provider API key configured', (bool) $health['provider_key_configured'], 'Set SPORTSBOT_THESPORTSDB_API_KEY.');
         $checks[] = $this->check('Telegram or Discord configured when sending is enabled', !(bool) $health['send_messages'] || (bool) ($health['telegram_configured'] || $health['discord_configured']));
         $checks[] = $this->check('Licence valid', LicenseService::isLicensed(), 'Add LARAVEL_CP_LICENSE or storage/license_key plus matching license_public.pem.');
-        $checks[] = $this->check('LICENSE_CALLBACK_SECRET set', trim((string) env('LICENSE_CALLBACK_SECRET', '')) !== '', 'Run php artisan license:generate-secret.');
+        $checks[] = $this->check('LICENSE_CALLBACK_SECRET set', trim((string) config('app.license_callback_secret')) !== '', 'Run php artisan license:generate-secret.');
 
         foreach (['curl', 'fileinfo', 'gd', 'json', 'mbstring', 'openssl', 'pdo_mysql', 'xml', 'zip'] as $extension) {
             $checks[] = $this->check('PHP extension: ' . $extension, extension_loaded($extension));

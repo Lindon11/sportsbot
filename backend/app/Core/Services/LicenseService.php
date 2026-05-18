@@ -402,7 +402,7 @@ VQIDAQAB
                 'activated_at' => now()->toIso8601String(),
             ];
             $jsonBody = json_encode($body);
-            $sharedSecret = env('LICENSE_CALLBACK_SECRET');
+            $sharedSecret = config('app.license_callback_secret');
             $signature = hash_hmac('sha256', $jsonBody, $sharedSecret);
             Http::timeout(5)->withHeaders([
                 'X-Signature' => $signature,

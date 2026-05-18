@@ -236,7 +236,7 @@ class LicenseController extends Controller
     public function activationCallback(Request $request): JsonResponse
     {
         // HMAC signature verification
-        $sharedSecret = env('LICENSE_CALLBACK_SECRET');
+        $sharedSecret = config('app.license_callback_secret');
         $signature = $request->header('X-Signature');
         $rawBody = $request->getContent();
         $expected = hash_hmac('sha256', $rawBody, (string)$sharedSecret);

@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'license_callback_secret' => env('LICENSE_CALLBACK_SECRET'),
+
     /*
     |--------------------------------------------------------------------------
     | Frontend URL

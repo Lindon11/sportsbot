@@ -75,7 +75,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Warn loudly if LICENSE_CALLBACK_SECRET is empty outside local environments.
         // An empty secret means any HMAC signature will pass verification.
-        if (!$this->app->environment('local') && empty(env('LICENSE_CALLBACK_SECRET'))) {
+        if (!$this->app->environment('local') && empty(config('app.license_callback_secret'))) {
             \Illuminate\Support\Facades\Log::critical(
                 'LICENSE_CALLBACK_SECRET is not set. The license callback endpoint is not secured. ' .
                 'Run: php artisan license:generate-callback-secret'
