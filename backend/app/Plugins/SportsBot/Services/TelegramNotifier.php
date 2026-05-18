@@ -317,22 +317,21 @@ class TelegramNotifier implements NotifierInterface
         return $this->telegramPost('editMessageText', $payload);
     }
 
-    public function configured(): bool
+    public function configured(?string $routeKey = null): bool
     {
         if (trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken()) === '') {
             return false;
         }
 
         try {
-            $resolved = $this->routingService->resolveTargets(TelegramRouteKeys::DEFAULT);
+            $resolved = $this->routingService->resolveTargets($routeKey ?: TelegramRouteKeys::DEFAULT);
+            return !empty($resolved['targets']);
         } catch (Throwable) {
             $primary = trim((string) config('plugins.SportsBot.telegram.chat_id', ''));
             $extra = config('plugins.SportsBot.telegram.extra_chat_ids', []);
 
             return $primary !== '' || (is_array($extra) && $extra !== []);
         }
-
-        return !empty($resolved['targets']);
     }
 
     /**

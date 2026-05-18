@@ -53,7 +53,7 @@ class SportsBotNotifier implements NotifierInterface
 
     public function configured(?string $routeKey = null): bool
     {
-        return $this->telegram->configured() || $this->discord->configured($routeKey);
+        return $this->telegram->configured($routeKey) || $this->discord->configured($routeKey);
     }
 
     /**
