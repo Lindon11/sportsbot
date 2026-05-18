@@ -72,6 +72,21 @@
           </button>
         </div>
       </form>
+
+      <div class="bg-gray-800 rounded-lg p-6">
+        <h3 class="text-lg font-medium text-white mb-2">Clear Cache</h3>
+        <p class="text-sm text-gray-400 mb-4">Clear Laravel config, route, view, and application cache.</p>
+        <button
+          @click="clearCache"
+          :disabled="clearing"
+          class="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+        >
+          {{ clearing ? 'Clearing...' : 'Clear Cache' }}
+        </button>
+        <div v-if="cacheMessage" :class="['mt-3 text-sm px-3 py-2 rounded', cacheOk ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300']">
+          {{ cacheMessage }}
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -84,6 +99,10 @@ const loading = ref(true)
 const saving = ref(false)
 const saved = ref(false)
 const error = ref('')
+
+const clearing = ref(false)
+const cacheMessage = ref('')
+const cacheOk = ref(false)
 
 const settings = reactive({
   bot_token_configured: false,
@@ -137,6 +156,21 @@ async function saveSettings() {
     error.value = e?.response?.data?.message || 'Failed to save settings'
   } finally {
     saving.value = false
+  }
+}
+
+async function clearCache() {
+  clearing.value = true
+  cacheMessage.value = ''
+  try {
+    const res = await api.post('/api/v1/admin/cache/clear')
+    cacheOk.value = true
+    cacheMessage.value = res.data?.message || 'Cache cleared successfully'
+  } catch (e: any) {
+    cacheOk.value = false
+    cacheMessage.value = e?.response?.data?.message || 'Failed to clear cache'
+  } finally {
+    clearing.value = false
   }
 }
 
