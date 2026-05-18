@@ -160,6 +160,7 @@
         <div class="sticky bottom-0 bg-slate-900/95 backdrop-blur-sm flex items-center gap-2 p-4 border-t border-slate-700">
           <button @click="$emit('render', item.id)" class="px-4 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-500 text-sm font-medium transition-colors">Re-Render</button>
           <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-sm font-medium transition-colors">Publish Now</button>
+          <button v-if="item.status === 'sent'" @click="$emit('send', item.id, true)" class="px-4 py-2 rounded-xl bg-sky-600 text-white hover:bg-sky-500 text-sm font-medium transition-colors">Resend</button>
           <button @click="$emit('find-poster', item.id)" class="px-3 py-2 rounded-xl bg-fuchsia-700 text-white hover:bg-fuchsia-600 text-sm font-medium transition-colors">Find Poster</button>
           <button @click="$emit('find-tv-info', item.id)" class="px-3 py-2 rounded-xl bg-sky-700 text-white hover:bg-sky-600 text-sm font-medium transition-colors">Find TV Info</button>
           <button @click="$emit('refresh-scraped-data', item.id)" class="px-3 py-2 rounded-xl bg-violet-700 text-white hover:bg-violet-600 text-sm font-medium transition-colors">Refresh Scraped</button>

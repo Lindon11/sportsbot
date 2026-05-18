@@ -1,7 +1,7 @@
 <template>
   <div :class="[accentBorder]" class="rounded-2xl bg-slate-800/50 border overflow-hidden hover:border-slate-500/70 transition-all duration-200 group">
     <div class="relative bg-slate-900/90 aspect-video flex items-center justify-center overflow-hidden cursor-pointer" @click="$emit('preview', item)">
-      <template v-if="item.card_path && item.status === 'ready'">
+      <template v-if="item.card_path && ['ready', 'sent'].includes(item.status)">
         <img :src="`/sportsbot/fixture-queue/${item.id}/card`" :alt="title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy">
         <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent"></div>
         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -85,6 +85,9 @@
         </button>
         <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium transition-colors disabled:opacity-40">
           {{ busyId === item.id && busyAction === 'send' ? '...' : 'Send' }}
+        </button>
+        <button v-if="item.status === 'sent'" @click="$emit('send', item.id, true)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          {{ busyId === item.id && busyAction === 'send' ? '...' : 'Resend' }}
         </button>
         <button @click="$emit('find-poster', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-fuchsia-500/10 text-fuchsia-300 hover:bg-fuchsia-500/20 text-xs font-medium transition-colors disabled:opacity-40">
           {{ busyId === item.id && busyAction === 'find-poster' ? '...' : 'Find Poster' }}

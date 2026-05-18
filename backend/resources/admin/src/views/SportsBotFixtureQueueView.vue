@@ -278,14 +278,16 @@ async function reRender(id) {
   }
 }
 
-async function publishNow(id) {
+async function publishNow(id, force = false) {
+  if (force && !confirm('Resend this fixture card to Telegram even though it is already marked sent?')) return
+
   pendingActions.value.set(id, 'send')
   try {
-    const { data } = await api.post(`/admin/sportsbot/fixture-queue/${id}/publish`)
+    const { data } = await api.post(`/admin/sportsbot/fixture-queue/${id}/publish`, { force })
     if (data.published) {
-      toast.success('Published!')
+      toast.success(data.resent ? 'Resent!' : 'Published!')
     } else if (data.already_sent) {
-      toast.error('Already sent')
+      toast.error('Already sent. Use Resend to send it again.')
     } else {
       toast.error(data.error || 'Publish failed')
     }

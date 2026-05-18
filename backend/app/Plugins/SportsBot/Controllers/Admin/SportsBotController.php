@@ -641,9 +641,11 @@ class SportsBotController extends Controller
         return response()->json($queue->reRenderItem($id));
     }
 
-    public function fixtureQueuePublishNow(int $id, FixtureQueueService $queue): JsonResponse
+    public function fixtureQueuePublishNow(int $id, Request $request, FixtureQueueService $queue): JsonResponse
     {
-        return response()->json($queue->publishNow($id));
+        return response()->json($queue->publishNow($id, [
+            'force' => $request->boolean('force'),
+        ]));
     }
 
     public function fixtureQueueFindPoster(int $id, FixtureQueueService $queue): JsonResponse

@@ -677,14 +677,19 @@ class FixtureQueueService
         }
     }
 
-    public function publishNow(int $id): array
+    public function publishNow(int $id, array $options = []): array
     {
         $entry = $this->find($id);
         if (!$entry) {
             return ['error' => "Queue item {$id} not found"];
         }
 
-        if ($entry->status === SportsBotFixtureQueue::STATUS_SENT || $entry->sent_at !== null || $entry->telegram_message_id !== null) {
+        $force = (bool) ($options['force'] ?? false);
+        $alreadySent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
+            || $entry->sent_at !== null
+            || $entry->telegram_message_id !== null;
+
+        if ($alreadySent && !$force) {
             return ['published' => false, 'id' => $id, 'already_sent' => true, 'message_id' => $entry->telegram_message_id];
         }
 
@@ -694,10 +699,19 @@ class FixtureQueueService
             return ['error' => "Unknown sport: {$sportKey}"];
         }
 
-        if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
+        if ($entry->status !== SportsBotFixtureQueue::STATUS_READY && !$alreadySent) {
             $result = $this->reRenderItem($id);
             if (!($result['re_rendered'] ?? false)) {
                 return ['published' => false, 'error' => $result['error'] ?? 'Cannot publish item'];
+            }
+
+            $entry = $this->find($id);
+        }
+
+        if ($alreadySent && !$this->hasCurrentCard($entry, $this->desiredCardVersion($sportKey, $config))) {
+            $result = $this->reRenderItem($id);
+            if (!($result['re_rendered'] ?? false)) {
+                return ['published' => false, 'error' => $result['error'] ?? 'Cannot re-render sent item for resend'];
             }
 
             $entry = $this->find($id);
@@ -715,10 +729,11 @@ class FixtureQueueService
             $entry->sent_at = now();
             $entry->telegram_message_id = $results['message_id'] ?? null;
             $entry->topic_id = $results['topic_id'] ?? null;
-            $entry->payload = array_merge((array) $entry->payload, ['publish_results' => $results]);
+            $payloadKey = $alreadySent && $force ? 'republish_results' : 'publish_results';
+            $entry->payload = array_merge((array) $entry->payload, [$payloadKey => $results]);
             $entry->save();
 
-            return ['published' => true, 'id' => $id, 'results' => $results];
+            return ['published' => true, 'resent' => $alreadySent && $force, 'id' => $id, 'results' => $results];
         } catch (Throwable $error) {
             $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
             $entry->error = mb_substr($error->getMessage(), 0, 1000);
