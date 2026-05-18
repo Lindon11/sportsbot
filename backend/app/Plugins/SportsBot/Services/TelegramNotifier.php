@@ -19,7 +19,7 @@ class TelegramNotifier implements NotifierInterface
 
     public function send(string $message, array $options = []): array
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $requestedRouteKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
         $type = trim((string) ($options['type'] ?? 'MESSAGE'));
 
@@ -135,7 +135,7 @@ class TelegramNotifier implements NotifierInterface
      */
     public function sendPhoto(string $photoPath, string $caption, array $options = []): array
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $requestedRouteKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
         $type = trim((string) ($options['type'] ?? 'PHOTO'));
 
@@ -319,7 +319,7 @@ class TelegramNotifier implements NotifierInterface
 
     public function configured(): bool
     {
-        if (trim((string) config('plugins.SportsBot.telegram.bot_token', '')) === '') {
+        if (trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken()) === '') {
             return false;
         }
 
@@ -340,7 +340,7 @@ class TelegramNotifier implements NotifierInterface
      */
     private function telegramPost(string $method, array $payload): bool
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return false;
         }
@@ -374,7 +374,7 @@ class TelegramNotifier implements NotifierInterface
      */
     private function telegramMultipart(string $method, array $payload, string $field, string $path): bool
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '' || !is_file($path)) {
             return false;
         }

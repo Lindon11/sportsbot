@@ -22,7 +22,7 @@ class DeleteWebhookCommand extends Command
             return self::FAILURE;
         }
 
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $dropPending = (bool) $this->option('drop-pending-updates');
 
         $this->info('Deleting Telegram webhook...');

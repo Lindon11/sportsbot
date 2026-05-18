@@ -1410,9 +1410,44 @@ class SportsBotController extends Controller
         ]);
     }
 
+    public function telegramSettings(SportsBotSettingsService $settings): JsonResponse
+    {
+        $token = $settings->resolveBotToken();
+
+        return response()->json([
+            'bot_token_configured' => $token !== '',
+            'bot_token' => $token !== '' ? substr($token, 0, 6) . '...' : '',
+            'webhook_enabled' => $settings->resolveWebhookEnabled(),
+            'webhook_url' => url(route('sportsbot.telegram.webhook', [], false)),
+        ]);
+    }
+
+    public function saveTelegramSettings(Request $request, SportsBotSettingsService $settings): JsonResponse
+    {
+        $validated = $request->validate([
+            'bot_token' => ['nullable', 'string', 'max:200'],
+            'webhook_enabled' => ['sometimes', 'boolean'],
+        ]);
+
+        if (isset($validated['bot_token'])) {
+            $settings->set('telegram_bot_token', $validated['bot_token']);
+        }
+
+        if (isset($validated['webhook_enabled'])) {
+            $settings->set('telegram_webhook_enabled', $validated['webhook_enabled']);
+        }
+
+        Log::info('sportsbot.admin.telegram_settings_saved');
+
+        return response()->json([
+            'saved' => true,
+            'bot_token_configured' => $settings->resolveBotToken() !== '',
+        ]);
+    }
+
     public function telegramWebhookDiagnostics(): JsonResponse
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $webhookEnabled = (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
         $webhookUrl = url(route('sportsbot.telegram.webhook', [], false));
         $lastUpdate = null;
@@ -1515,7 +1550,7 @@ class SportsBotController extends Controller
             'drop_pending_updates' => ['sometimes', 'boolean'],
         ]);
 
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return response()->json([
                 'set' => false,
@@ -1586,7 +1621,7 @@ class SportsBotController extends Controller
             'drop_pending_updates' => ['sometimes', 'boolean'],
         ]);
 
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return response()->json([
                 'deleted' => false,

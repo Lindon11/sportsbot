@@ -35,5 +35,17 @@
         "web": true,
         "api": false,
         "admin": true
+    },
+    "frontend": {
+        "routes": [
+            {
+                "path": "/sportsbot/telegram-settings",
+                "name": "sportsbot-telegram-settings",
+                "component": "TelegramSettingsView",
+                "meta": {
+                    "title": "Telegram Settings"
+                }
+            }
+        ]
     }
 }

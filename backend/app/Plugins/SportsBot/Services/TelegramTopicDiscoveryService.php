@@ -22,7 +22,7 @@ class TelegramTopicDiscoveryService
      */
     public function sync(int $limit = 100, int $timeout = 0, bool $resetOffset = false): array
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
 
         if ($token === '') {
             throw new RuntimeException('Telegram bot token is not configured.');
@@ -114,7 +114,7 @@ class TelegramTopicDiscoveryService
      */
     public function diagnostics(): array
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $legacyPath = (string) config('plugins.SportsBot.legacy.state_db');
         $legacyTopicCount = null;
 

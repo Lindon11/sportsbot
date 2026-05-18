@@ -60,6 +60,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::get('/telegram/routes', [SportsBotController::class, 'telegramRoutesIndex'])->name('telegram.routes');
     Route::post('/telegram/routes', [SportsBotController::class, 'saveTelegramRoute'])->name('telegram.routes.save');
     Route::delete('/telegram/routes/{routeKey}', [SportsBotController::class, 'deleteTelegramRoute'])->name('telegram.routes.delete');
+    Route::get('/telegram/settings', [SportsBotController::class, 'telegramSettings'])->name('telegram.settings');
+    Route::post('/telegram/settings', [SportsBotController::class, 'saveTelegramSettings'])->name('telegram.settings.save');
     Route::get('/telegram/webhook/diagnostics', [SportsBotController::class, 'telegramWebhookDiagnostics'])->name('telegram.webhook.diagnostics');
     Route::post('/telegram/webhook/set', [SportsBotController::class, 'setTelegramWebhook'])->name('telegram.webhook.set');
     Route::delete('/telegram/webhook', [SportsBotController::class, 'deleteTelegramWebhook'])->name('telegram.webhook.delete');

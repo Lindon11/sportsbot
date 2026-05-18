@@ -22,7 +22,7 @@ class WebhookInfoCommand extends Command
             return self::FAILURE;
         }
 
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $enabled = config('plugins.SportsBot.telegram.webhook_enabled', false);
         $webhookUrl = route('sportsbot.telegram.webhook', [], false);
         $fullUrl = url($webhookUrl);

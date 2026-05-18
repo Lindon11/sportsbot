@@ -25,7 +25,7 @@ class SetWebhookCommand extends Command
             return self::FAILURE;
         }
 
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         $url = (string) ($this->option('url') ?: route('sportsbot.telegram.webhook', [], false));
         $secret = (string) ($this->option('secret') ?: config('plugins.SportsBot.telegram.webhook_secret', ''));
         $maxConnections = (int) $this->option('max-connections');

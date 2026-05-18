@@ -62,4 +62,24 @@ class SportsBotSettingsService
             return [];
         }
     }
+
+    public function resolveBotToken(): string
+    {
+        $fromDb = trim((string) $this->get('telegram_bot_token', ''));
+        if ($fromDb !== '') {
+            return $fromDb;
+        }
+
+        return trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+    }
+
+    public function resolveWebhookEnabled(): bool
+    {
+        $fromDb = $this->get('telegram_webhook_enabled');
+        if ($fromDb !== null) {
+            return (bool) $fromDb;
+        }
+
+        return (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
+    }
 }

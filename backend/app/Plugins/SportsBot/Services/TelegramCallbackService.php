@@ -336,7 +336,7 @@ class TelegramCallbackService
 
     private function answerCallbackQuery(string $callbackQueryId, ?string $text = null): void
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return;
         }
@@ -366,7 +366,7 @@ class TelegramCallbackService
      */
     private function editMessageText(string $chatId, mixed $messageId, string $text, array $replyMarkup, mixed $messageThreadId = null): bool
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return false;
         }
@@ -418,7 +418,7 @@ class TelegramCallbackService
      */
     private function sendMessageWithKeyboard(string $chatId, string $text, array $replyMarkup, mixed $messageThreadId = null): void
     {
-        $token = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $token = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
         if ($token === '') {
             return;
         }

@@ -133,6 +133,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/telegram-settings',
+                'label' => 'Telegram Settings',
+                'icon' => 'Cog6ToothIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/webhook-diagnostics',
                 'label' => 'Webhook Diagnostics',
                 'icon' => 'CommandLineIcon',

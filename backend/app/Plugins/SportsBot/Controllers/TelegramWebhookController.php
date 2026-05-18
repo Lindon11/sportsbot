@@ -77,7 +77,7 @@ class TelegramWebhookController extends Controller
     public function health(Request $request): JsonResponse
     {
         $enabled = (bool) config('plugins.SportsBot.telegram.webhook_enabled', false);
-        $botToken = trim((string) config('plugins.SportsBot.telegram.bot_token', ''));
+        $botToken = trim((string) app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class)->resolveBotToken());
 
         $latestUpdate = SportsBotTelegramUpdateState::query()
             ->orderByDesc('id')
