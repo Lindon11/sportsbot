@@ -579,8 +579,5 @@ return [
         'force_sync_target' => env('SPORTSBOT_UPDATER_FORCE_SYNC_TARGET', env('SPORTSBOT_UPDATER_REMOTE', 'origin') . '/main'),
         'admin_frontend_path' => env('SPORTSBOT_UPDATER_ADMIN_FRONTEND_PATH', 'resources/admin'),
         'repair_permissions_enabled' => env('SPORTSBOT_UPDATER_REPAIR_PERMISSIONS_ENABLED', true),
-        'repair_permissions_owner' => env('SPORTSBOT_UPDATER_REPAIR_PERMISSIONS_OWNER', 'criminal-empire.co.u_fpkzsf24orw'),
-        'repair_permissions_group' => env('SPORTSBOT_UPDATER_REPAIR_PERMISSIONS_GROUP', 'psaserv'),
-        'repair_permissions_paths' => $csv(env('SPORTSBOT_UPDATER_REPAIR_PERMISSIONS_PATHS', 'storage,bootstrap/cache')),
     ],
 ];

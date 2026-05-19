@@ -12,6 +12,8 @@ use Throwable;
 
 class UpdateController extends Controller
 {
+    private const PERMISSIONS_HELPER = '/usr/local/bin/sportsbot-fix-permissions';
+
     public function check(): JsonResponse
     {
         if ($response = $this->adminOnlyResponse()) {
@@ -248,7 +250,10 @@ class UpdateController extends Controller
         }
 
         try {
-            $ok = $this->runSteps($this->adminRebuildSteps($this->adminFrontendPath()), $logs);
+            $ok = $this->runSteps(array_merge(
+                $this->adminRebuildSteps($this->adminFrontendPath()),
+                $this->deploymentFinalizeSteps()
+            ), $logs);
         } finally {
             optional($lock)->release();
         }
@@ -299,6 +304,14 @@ class UpdateController extends Controller
                 'php' => false,
                 'composer' => false,
                 'npm' => false,
+            ],
+            'deployment' => [
+                'permission_helper' => [
+                    'path' => self::PERMISSIONS_HELPER,
+                    'available' => is_file(self::PERMISSIONS_HELPER),
+                    'executable' => is_executable(self::PERMISSIONS_HELPER),
+                    'command' => 'sudo ' . self::PERMISSIONS_HELPER,
+                ],
             ],
         ];
 
@@ -436,12 +449,19 @@ class UpdateController extends Controller
     {
         return [
             ['name' => 'Install PHP dependencies', 'cmd' => ['composer', 'install', '--no-dev', '--prefer-dist', '--optimize-autoloader', '--no-interaction'], 'cwd' => base_path(), 'timeout' => 300],
-            ...$this->permissionRepairSteps('Repair Laravel writable permissions before cache work'),
-            ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
-            ['name' => 'Ensure storage link', 'cmd' => ['php', 'artisan', 'storage:link'], 'cwd' => base_path(), 'timeout' => 120],
             ...$this->adminRebuildSteps($adminFrontend),
-            ...$this->permissionRepairSteps('Repair Laravel writable permissions after update'),
+            ['name' => 'Run database migrations', 'cmd' => ['php', 'artisan', 'migrate', '--force'], 'cwd' => base_path(), 'timeout' => 300],
+            ...$this->deploymentFinalizeSteps(),
+        ];
+    }
+
+    private function deploymentFinalizeSteps(): array
+    {
+        return [
+            ['name' => 'Clear optimized Laravel caches', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
+            ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
+            ...$this->permissionRepairSteps('Repair Laravel writable permissions'),
+            ['name' => 'Run deployment health check', 'cmd' => ['php', 'artisan', 'sportsbot:health', '--json'], 'cwd' => base_path(), 'timeout' => 180],
         ];
     }
 
@@ -463,11 +483,6 @@ class UpdateController extends Controller
             }],
             ['name' => 'Build admin frontend', 'cmd' => ['npm', 'run', 'build'], 'cwd' => $adminFrontend, 'timeout' => 600],
             ['name' => 'Verify admin assets changed', 'run' => fn (): array => $this->verifyAdminAssetsChanged($before)],
-            ...$this->permissionRepairSteps('Repair Laravel writable permissions before cache rebuild'),
-            ['name' => 'Clear Laravel caches after admin rebuild', 'cmd' => ['php', 'artisan', 'optimize:clear'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Cache config', 'cmd' => ['php', 'artisan', 'config:cache'], 'cwd' => base_path(), 'timeout' => 120],
-            ['name' => 'Cache views', 'cmd' => ['php', 'artisan', 'view:cache'], 'cwd' => base_path(), 'timeout' => 120],
-            ...$this->permissionRepairSteps('Repair Laravel writable permissions after cache rebuild'),
         ];
     }
 
@@ -484,64 +499,76 @@ class UpdateController extends Controller
 
     private function repairLaravelWritablePermissions(): array
     {
-        $paths = $this->permissionRepairPaths();
-        if ($paths === []) {
+        $startedAt = microtime(true);
+        $startedLabel = now()->toIso8601String();
+        $command = ['sudo', self::PERMISSIONS_HELPER];
+
+        Log::info('sportsbot.admin.permission_repair_started', [
+            'helper' => self::PERMISSIONS_HELPER,
+            'cwd' => base_path(),
+        ]);
+
+        try {
+            $process = new Process($command, base_path());
+            $process->setTimeout(180);
+            $process->run();
+
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+            $ok = $process->isSuccessful();
+            $exitCode = $process->getExitCode();
+            $stdout = trim($process->getOutput());
+            $stderr = trim($process->getErrorOutput());
+
+            Log::info('sportsbot.admin.permission_repair_finished', [
+                'ok' => $ok,
+                'helper' => self::PERMISSIONS_HELPER,
+                'exit_code' => $exitCode,
+                'duration_ms' => $durationMs,
+            ]);
+
             return [
-                'ok' => true,
-                'exit_code' => 0,
-                'output' => 'No permission repair paths configured.',
+                'ok' => $ok,
+                'exit_code' => $exitCode,
+                'output' => implode("\n", array_filter([
+                    'Permission repair started: ' . $startedLabel,
+                    'Permission repair finished: ' . now()->toIso8601String(),
+                    'Helper executed: yes',
+                    'Helper path: ' . self::PERMISSIONS_HELPER,
+                    'Command: sudo ' . self::PERMISSIONS_HELPER,
+                    'Exit code: ' . (string) ($exitCode ?? 'unknown'),
+                    'Duration: ' . $durationMs . 'ms',
+                    'Status: ' . ($ok ? 'success' : 'failure'),
+                    'STDOUT:',
+                    $stdout !== '' ? $stdout : '(no stdout)',
+                    'STDERR:',
+                    $stderr !== '' ? $stderr : '(no stderr)',
+                ], static fn (string $line): bool => $line !== '')),
+            ];
+        } catch (Throwable $error) {
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+            Log::error('sportsbot.admin.permission_repair_failed', [
+                'helper' => self::PERMISSIONS_HELPER,
+                'duration_ms' => $durationMs,
+                'error' => $error->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'exit_code' => null,
+                'output' => implode("\n", [
+                    'Permission repair started: ' . $startedLabel,
+                    'Permission repair finished: ' . now()->toIso8601String(),
+                    'Helper executed: no',
+                    'Helper path: ' . self::PERMISSIONS_HELPER,
+                    'Command: sudo ' . self::PERMISSIONS_HELPER,
+                    'Exit code: unknown',
+                    'Duration: ' . $durationMs . 'ms',
+                    'Status: failure',
+                    'Error: ' . $error->getMessage(),
+                ]),
             ];
         }
-
-        $owner = trim((string) config('plugins.SportsBot.updater.repair_permissions_owner', ''));
-        $group = trim((string) config('plugins.SportsBot.updater.repair_permissions_group', ''));
-        $logs = [];
-        $ok = true;
-        $exitCode = 0;
-
-        if ($owner !== '' || $group !== '') {
-            $result = $this->runCommand(['sudo', '/usr/local/bin/sportsbot-fix-permissions'], base_path(), 180);
-            $ok = $ok && $result['ok'];
-            $exitCode = $result['exit_code'] ?? $exitCode;
-            $logs[] = '$ sudo /usr/local/bin/sportsbot-fix-permissions';
-            $logs[] = $result['output'] !== '' ? $result['output'] : '(no output)';
-        }
-
-        $chmod = $this->runCommand(['chmod', '-R', 'ug+rwX', ...$paths], base_path(), 180);
-        $ok = $ok && $chmod['ok'];
-        $exitCode = $chmod['exit_code'] ?? $exitCode;
-        $logs[] = '$ chmod -R ug+rwX ' . implode(' ', $paths);
-        $logs[] = $chmod['output'] !== '' ? $chmod['output'] : '(no output)';
-
-        return [
-            'ok' => $ok,
-            'exit_code' => $ok ? 0 : $exitCode,
-            'output' => implode("\n", $logs),
-        ];
-    }
-
-    private function permissionRepairPaths(): array
-    {
-        $configured = (array) config('plugins.SportsBot.updater.repair_permissions_paths', ['storage', 'bootstrap/cache']);
-        $paths = [];
-
-        foreach ($configured as $path) {
-            $path = trim((string) $path);
-            if ($path === '') {
-                continue;
-            }
-
-            $fullPath = str_starts_with($path, '/') ? $path : base_path($path);
-            if (!file_exists($fullPath)) {
-                @mkdir($fullPath, 0775, true);
-            }
-
-            if (file_exists($fullPath)) {
-                $paths[] = str_starts_with($path, '/') ? $fullPath : $path;
-            }
-        }
-
-        return array_values(array_unique($paths));
     }
 
     private function normalizeAdminBuildArtifacts(string $root): array

@@ -161,6 +161,7 @@ const requirementItems = computed(() => {
     { name: 'PHP', ok: Boolean(requirements.php) },
     { name: 'Composer', ok: Boolean(requirements.composer) },
     { name: 'NPM', ok: Boolean(requirements.npm) },
+    { name: 'Permission Helper', ok: Boolean(status.value?.deployment?.permission_helper?.available) },
   ]
 })
 
