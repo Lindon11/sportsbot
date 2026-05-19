@@ -11,7 +11,7 @@ echo
 echo "== Required files =="
 test -f app/Plugins/SportsBot/Services/SportsBotCardRenderer.php
 test -f resources/sportsbot/v3-card-renderer.cjs
-test -f backend/package.json
+test -f package.json
 test -f license_public.pem || echo "WARN license_public.pem missing; valid LARAVEL_CP_LICENSE may still work only if signed by bundled production key."
 test -f storage/license_key || test -n "${LARAVEL_CP_LICENSE:-}" || echo "WARN no storage/license_key file and LARAVEL_CP_LICENSE env not exported in this shell."
 
