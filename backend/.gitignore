@@ -43,6 +43,5 @@ license_private.pem
 frontend/.npm-cache
 .npm-cache
 
-# SportsBot environment audit snapshots
-sportsbot-env-*.json
+# SportsBot environment audit snapshots (auto-generated live reports, not the committed local baseline)
 storage/app/sportsbot/env/
