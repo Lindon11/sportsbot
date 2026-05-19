@@ -308,8 +308,8 @@ class UpdateController extends Controller
             'deployment' => [
                 'permission_helper' => [
                     'path' => self::PERMISSIONS_HELPER,
-                    'available' => is_file(self::PERMISSIONS_HELPER),
-                    'executable' => is_executable(self::PERMISSIONS_HELPER),
+                    'configured' => true,
+                    'inspection' => 'skipped_open_basedir_safe',
                     'command' => 'sudo ' . self::PERMISSIONS_HELPER,
                 ],
             ],
@@ -530,6 +530,9 @@ class UpdateController extends Controller
                 'ok' => $ok,
                 'exit_code' => $exitCode,
                 'output' => implode("\n", array_filter([
+                    $ok
+                        ? 'Permission repair completed successfully.'
+                        : 'Permission repair failed: sudo helper exited with code ' . (string) ($exitCode ?? 'unknown') . '.',
                     'Permission repair started: ' . $startedLabel,
                     'Permission repair finished: ' . now()->toIso8601String(),
                     'Helper executed: yes',
@@ -557,6 +560,7 @@ class UpdateController extends Controller
                 'ok' => false,
                 'exit_code' => null,
                 'output' => implode("\n", [
+                    'Permission repair failed before helper completed: ' . $error->getMessage(),
                     'Permission repair started: ' . $startedLabel,
                     'Permission repair finished: ' . now()->toIso8601String(),
                     'Helper executed: no',
