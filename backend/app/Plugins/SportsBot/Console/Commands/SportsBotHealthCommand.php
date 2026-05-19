@@ -132,6 +132,23 @@ class SportsBotHealthCommand extends Command
             $checks[] = $this->check('Database table: ' . $table, $this->hasTable($table), 'Run php artisan migrate --force.');
         }
 
+        foreach ([
+            'renderer_used',
+            'render_duration_ms',
+            'template_used',
+            'theme_used',
+            'fallback_reason',
+            'browser_failure_reason',
+            'asset_failures',
+            'render_diagnostics',
+        ] as $column) {
+            $checks[] = $this->check(
+                'Database column: sportsbot_fixture_queue.' . $column,
+                $this->hasColumn('sportsbot_fixture_queue', $column),
+                'Run php artisan migrate --force.'
+            );
+        }
+
         return $checks;
     }
 
@@ -281,10 +298,27 @@ class SportsBotHealthCommand extends Command
             ], 'v3');
 
             $path = (string) ($card['path'] ?? '');
+            $renderer = (string) ($card['renderer_used'] ?? '');
+            $type = (string) ($card['type'] ?? '');
+            $version = (string) ($card['card_version'] ?? '');
+            $file = basename($path);
+            $isBrowserV3 = $renderer === 'browser_v3'
+                && $version === 'v3'
+                && $type === 'no-fixtures-v3-browser'
+                && str_starts_with($file, 'no-fixtures-v3-browser-')
+                && $path !== ''
+                && is_file($path)
+                && filesize($path) > 0;
 
-            return $this->check('V3 card render smoke test', $path !== '' && is_file($path) && filesize($path) > 0, $this->shortPath($path));
+            return $this->check(
+                'Browser v3 card render smoke test',
+                $isBrowserV3,
+                $isBrowserV3
+                    ? $this->shortPath($path)
+                    : 'Expected renderer_used=browser_v3, card_version=v3, type=no-fixtures-v3-browser. Got renderer_used=' . ($renderer ?: '-') . ', card_version=' . ($version ?: '-') . ', type=' . ($type ?: '-') . ', file=' . ($file ?: '-')
+            );
         } catch (Throwable $error) {
-            return $this->check('V3 card render smoke test', false, $error->getMessage());
+            return $this->check('Browser v3 card render smoke test', false, $error->getMessage());
         }
     }
 
@@ -323,6 +357,15 @@ class SportsBotHealthCommand extends Command
     {
         try {
             return Schema::hasTable($table);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        try {
+            return Schema::hasTable($table) && Schema::hasColumn($table, $column);
         } catch (Throwable) {
             return false;
         }

@@ -460,7 +460,81 @@ class FixtureQueueService
             $config['default_card_version'] ?? 'v3'
         )));
 
+        return $this->normalizeCardVersion($version);
+    }
+
+    private function normalizeCardVersion(string $version): string
+    {
+        $version = strtolower(trim($version));
+
         return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
+    }
+
+    private function actualCardVersion(SportsBotFixtureQueue $entry, string $cardPath): string
+    {
+        $diagnostics = (array) ($entry->render_diagnostics ?? []);
+        $diagnosticVersion = $this->normalizeCardVersion((string) ($diagnostics['card_version'] ?? ''));
+        if (($diagnostics['card_version'] ?? null) !== null && $diagnosticVersion !== '') {
+            return $diagnosticVersion;
+        }
+
+        $pathVersion = $this->cardVersionFromPath($cardPath);
+        if ($pathVersion !== null) {
+            return $pathVersion;
+        }
+
+        $payload = (array) ($entry->payload ?? []);
+        $options = (array) ($payload['render_options'] ?? []);
+        if (isset($options['card_version'])) {
+            return $this->normalizeCardVersion((string) $options['card_version']);
+        }
+
+        return $this->desiredCardVersion((string) $entry->sport_key, SportsFixtureConfig::for((string) $entry->sport_key) ?: []);
+    }
+
+    private function cardVersionFromPath(string $cardPath): ?string
+    {
+        $file = basename($cardPath);
+        if (preg_match('/(?:fixture|no-fixtures)-v([123])(?:-|\\.)/', $file, $matches) === 1) {
+            return 'v' . $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function renderProof(SportsBotFixtureQueue $entry, string $cardPath, string $cardVersion): array
+    {
+        $renderer = (string) ($entry->renderer_used ?? '');
+        $diagnostics = (array) ($entry->render_diagnostics ?? []);
+        $fileName = $cardPath !== '' ? basename($cardPath) : '';
+        $fileIndicatesBrowserV3 = str_starts_with($fileName, 'fixture-v3-browser-')
+            || str_starts_with($fileName, 'no-fixtures-v3-browser-');
+        $fallbackActive = $renderer === 'gd_v3' || trim((string) ($entry->fallback_reason ?? '')) !== '';
+        $verifiedBrowserV3 = $renderer === 'browser_v3'
+            && $cardVersion === 'v3'
+            && $fileIndicatesBrowserV3
+            && !$fallbackActive;
+
+        return [
+            'status' => $verifiedBrowserV3 ? 'verified_browser_v3' : ($fallbackActive ? 'gd_fallback' : 'unverified'),
+            'label' => $verifiedBrowserV3 ? 'Verified Browser v3' : ($fallbackActive ? 'GD fallback' : 'Unverified render'),
+            'verified_browser_v3' => $verifiedBrowserV3,
+            'fallback_active' => $fallbackActive,
+            'actual_card_version' => $cardVersion,
+            'expected_card_version' => $this->desiredCardVersion((string) $entry->sport_key, SportsFixtureConfig::for((string) $entry->sport_key) ?: []),
+            'renderer_used' => $renderer,
+            'renderer_type' => (string) ($diagnostics['renderer_type'] ?? ''),
+            'template_used' => (string) ($entry->template_used ?? ''),
+            'theme_used' => (string) ($entry->theme_used ?? ''),
+            'file_name' => $fileName,
+            'file_indicates_browser_v3' => $fileIndicatesBrowserV3,
+            'fallback_reason' => $entry->fallback_reason,
+            'browser_failure_reason' => $entry->browser_failure_reason,
+            'asset_failures_count' => count((array) ($entry->asset_failures ?? [])),
+        ];
     }
 
     private function hasCurrentCard(SportsBotFixtureQueue $entry, string $cardVersion): bool
@@ -639,7 +713,11 @@ class FixtureQueueService
         $data = $entry->toArray();
         $data['raw_fixture_data'] = $data['fixture_data'] ?? [];
         $data['fixture_data'] = $this->effectiveFixtureData($entry);
-        $data['card_path'] = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
+        $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
+        $cardVersion = $this->actualCardVersion($entry, $cardPath);
+        $data['card_path'] = $cardPath;
+        $data['card_version'] = $cardVersion;
+        $data['render_proof'] = $this->renderProof($entry, $cardPath, $cardVersion);
 
         return $data;
     }
@@ -965,7 +1043,18 @@ class FixtureQueueService
         $entry->fallback_reason = $card['fallback_reason'] ?? null;
         $entry->browser_failure_reason = $card['browser_failure_reason'] ?? null;
         $entry->asset_failures = (array) ($assetResult['failures'] ?? []);
+        $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
+        $cardVersion = $this->normalizeCardVersion((string) (
+            $card['card_version']
+            ?? $this->cardVersionFromPath($cardPath)
+            ?? $this->desiredCardVersion((string) $entry->sport_key, SportsFixtureConfig::for((string) $entry->sport_key) ?: [])
+        ));
         $entry->render_diagnostics = array_merge((array) ($card['render_diagnostics'] ?? []), [
+            'card_version' => $cardVersion,
+            'template_type' => (string) ($card['template_type'] ?? ''),
+            'renderer_type' => (string) ($card['type'] ?? ''),
+            'file_name' => $cardPath !== '' ? basename($cardPath) : '',
+            'proof' => $this->renderProof($entry, $cardPath, $cardVersion),
             'output' => $card['output'] ?? [],
             'video_ready' => $card['video_ready'] ?? [],
             'asset_summary' => $assetResult['summary'] ?? [],
@@ -989,6 +1078,8 @@ class FixtureQueueService
                 [[
                     'renderer' => $entry->renderer_used,
                     'duration_ms' => $entry->render_duration_ms,
+                    'card_version' => $cardVersion,
+                    'renderer_type' => (string) ($card['type'] ?? ''),
                     'template' => $entry->template_used,
                     'theme' => $entry->theme_used,
                     'fallback_reason' => $entry->fallback_reason,

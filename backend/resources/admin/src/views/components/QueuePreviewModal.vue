@@ -29,6 +29,28 @@
             </template>
           </div>
 
+          <div :class="proofBannerClass" class="rounded-xl border p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold">{{ proofTitle }}</p>
+                <p class="mt-1 text-xs opacity-80">
+                  Renderer: <strong>{{ renderProof.renderer_used || item.renderer_used || '-' }}</strong>
+                  · Card: <strong>{{ renderProof.actual_card_version || item.card_version || '-' }}</strong>
+                  · File: <strong class="font-mono">{{ renderProof.file_name || fileName || '-' }}</strong>
+                </p>
+              </div>
+              <span :class="proofPillClass" class="self-start rounded-lg px-3 py-1 text-xs font-bold uppercase tracking-wide">
+                {{ proofPill }}
+              </span>
+            </div>
+            <p v-if="renderProof.fallback_reason" class="mt-2 text-xs text-amber-100">
+              Fallback reason: {{ renderProof.fallback_reason }}
+            </p>
+            <p v-if="renderProof.browser_failure_reason" class="mt-1 text-xs text-red-100">
+              Browser failure: {{ renderProof.browser_failure_reason }}
+            </p>
+          </div>
+
           <div class="rounded-xl bg-slate-800/60 border border-slate-700/50 p-4 space-y-2">
             <p class="text-white font-semibold text-sm">{{ title }}</p>
             <p class="text-slate-400 text-xs">{{ fixture.league || 'League TBC' }}</p>
@@ -71,8 +93,20 @@
                 <p class="text-white">{{ item.asset_status || 'pending' }}</p>
               </div>
               <div>
+                <p class="text-slate-500">Card Version</p>
+                <p class="text-white font-semibold">{{ item.card_version || renderProof.actual_card_version || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">V3 Proof</p>
+                <p :class="isBrowserV3 ? 'text-emerald-300' : 'text-amber-300'" class="font-semibold">{{ proofTitle }}</p>
+              </div>
+              <div>
                 <p class="text-slate-500">Card Path</p>
                 <p class="text-white font-mono text-[11px] truncate">{{ item.card_path || 'not rendered' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">File Name</p>
+                <p class="text-white font-mono text-[11px] truncate">{{ renderProof.file_name || fileName || '-' }}</p>
               </div>
               <div>
                 <p class="text-slate-500">Renderer</p>
@@ -89,6 +123,12 @@
               <div>
                 <p class="text-slate-500">Theme</p>
                 <p class="text-white">{{ item.theme_used || '-' }}</p>
+              </div>
+              <div>
+                <p class="text-slate-500">Browser v3 File</p>
+                <p :class="renderProof.file_indicates_browser_v3 ? 'text-emerald-300' : 'text-amber-300'">
+                  {{ renderProof.file_indicates_browser_v3 ? 'yes' : 'no' }}
+                </p>
               </div>
               <div v-if="item.fallback_reason" class="col-span-2">
                 <p class="text-slate-500">Fallback Reason</p>
@@ -262,6 +302,32 @@ const fixture = computed(() => props.item?.fixture_data || {})
 const payload = computed(() => props.item?.payload || {})
 const assetFailures = computed(() => props.item?.asset_failures || [])
 const renderDiagnostics = computed(() => props.item?.render_diagnostics || {})
+const renderProof = computed(() => props.item?.render_proof || {})
+const fileName = computed(() => {
+  const path = props.item?.card_path || ''
+  return path ? path.split('/').pop() : ''
+})
+const isBrowserV3 = computed(() => Boolean(renderProof.value.verified_browser_v3))
+const proofTitle = computed(() => {
+  if (isBrowserV3.value) return 'Verified Browser v3 render'
+  if (renderProof.value.fallback_active || props.item?.renderer_used === 'gd_v3') return 'GD fallback render, not Browser v3'
+  return 'Render proof incomplete'
+})
+const proofPill = computed(() => {
+  if (isBrowserV3.value) return 'Browser v3'
+  if (renderProof.value.fallback_active || props.item?.renderer_used === 'gd_v3') return 'GD fallback'
+  return 'Unverified'
+})
+const proofBannerClass = computed(() => {
+  if (isBrowserV3.value) return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+  if (renderProof.value.fallback_active || props.item?.renderer_used === 'gd_v3') return 'border-amber-500/50 bg-amber-500/10 text-amber-100'
+  return 'border-slate-600 bg-slate-800/60 text-slate-200'
+})
+const proofPillClass = computed(() => {
+  if (isBrowserV3.value) return 'bg-emerald-400 text-slate-950'
+  if (renderProof.value.fallback_active || props.item?.renderer_used === 'gd_v3') return 'bg-amber-400 text-slate-950'
+  return 'bg-slate-700 text-slate-200'
+})
 const templateNames = computed(() => Object.keys(props.templates?.templates || {}))
 const themeNames = computed(() => Object.keys(props.templates?.themes || {}))
 const renderForm = reactive({ template: '', theme: '', manual_text: '', custom_poster_url: '', custom_background_url: '' })

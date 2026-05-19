@@ -21,7 +21,7 @@
       <div class="absolute top-3 left-3 flex items-center gap-2">
         <span class="text-lg drop-shadow-lg">{{ emoji }}</span>
         <QueueStatusBadge :status="item.status" size="sm" />
-        <span v-if="item.renderer_used" class="text-[10px] uppercase tracking-wide text-white/80 bg-black/40 px-2 py-1 rounded-lg backdrop-blur-sm">{{ item.renderer_used }}</span>
+        <span v-if="proofLabel" :class="proofBadgeClass" class="text-[10px] uppercase tracking-wide px-2 py-1 rounded-lg backdrop-blur-sm">{{ proofLabel }}</span>
       </div>
 
       <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
@@ -71,6 +71,8 @@
       </div>
 
       <div v-if="renderSummary" class="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+        <span class="truncate">Card: <strong class="text-slate-300">{{ item.card_version || renderProof.actual_card_version || '-' }}</strong></span>
+        <span class="truncate">Renderer: <strong :class="isBrowserV3 ? 'text-emerald-300' : 'text-slate-300'">{{ item.renderer_used || '-' }}</strong></span>
         <span class="truncate">Template: <strong class="text-slate-300">{{ item.template_used || '-' }}</strong></span>
         <span class="truncate">Theme: <strong class="text-slate-300">{{ item.theme_used || '-' }}</strong></span>
         <span v-if="item.render_duration_ms">Render: <strong class="text-slate-300">{{ item.render_duration_ms }}ms</strong></span>
@@ -145,6 +147,18 @@ const scraperConfidence = computed(() => {
 const hasScrapedFields = computed(() => Object.keys(scraper.value?.normalized?.fields || {}).length > 0)
 const acceptedScrape = computed(() => Boolean(payload.value.accepted_scraped_data))
 const rejectedScrape = computed(() => Boolean(payload.value.rejected_scraped_data))
+const renderProof = computed(() => props.item.render_proof || {})
+const isBrowserV3 = computed(() => Boolean(renderProof.value.verified_browser_v3))
+const proofLabel = computed(() => {
+  if (isBrowserV3.value) return 'browser v3'
+  if (renderProof.value.fallback_active || props.item.renderer_used === 'gd_v3') return 'gd fallback'
+  return props.item.renderer_used || ''
+})
+const proofBadgeClass = computed(() => {
+  if (isBrowserV3.value) return 'text-emerald-950 bg-emerald-300/90'
+  if (renderProof.value.fallback_active || props.item.renderer_used === 'gd_v3') return 'text-amber-950 bg-amber-300/90'
+  return 'text-white/80 bg-black/40'
+})
 const renderSummary = computed(() => Boolean(props.item.renderer_used || props.item.template_used || props.item.theme_used || props.item.fallback_reason))
 const scraperStatusClass = computed(() => {
   if (scraperStatus.value === 'found') return 'bg-emerald-500/10 text-emerald-300'

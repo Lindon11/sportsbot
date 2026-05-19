@@ -174,6 +174,8 @@ class SportsBotCardRenderer
         return array_merge([
             'renderer_used' => $renderer,
             'render_duration_ms' => max(0, (int) round((microtime(true) - $startedAt) * 1000)),
+            'card_version' => (string) ($context['card_version'] ?? 'v3'),
+            'template_type' => (string) ($context['template_type'] ?? ''),
             'template_used' => (string) ($context['template'] ?? ''),
             'theme_used' => (string) ($context['theme'] ?? ''),
             'fallback_reason' => null,
