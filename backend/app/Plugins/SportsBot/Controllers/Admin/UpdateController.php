@@ -500,11 +500,10 @@ class UpdateController extends Controller
         $exitCode = 0;
 
         if ($owner !== '' || $group !== '') {
-            $target = $owner . ($group !== '' ? ':' . $group : '');
-            $result = $this->runCommand(['chown', '-R', $target, ...$paths], base_path(), 180);
+            $result = $this->runCommand(['sudo', '/usr/local/bin/sportsbot-fix-permissions'], base_path(), 180);
             $ok = $ok && $result['ok'];
             $exitCode = $result['exit_code'] ?? $exitCode;
-            $logs[] = '$ chown -R ' . $target . ' ' . implode(' ', $paths);
+            $logs[] = '$ sudo /usr/local/bin/sportsbot-fix-permissions';
             $logs[] = $result['output'] !== '' ? $result['output'] : '(no output)';
         }
 
