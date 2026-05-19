@@ -260,9 +260,9 @@ const router = createRouter({
           component: () => import('../views/SportsBotSportFixturesView.vue'),
           props: {
             label: 'USA Sports Fixtures TV',
-            routeKey: 'USA_SPORTS',
+            routeKey: 'BASKETBALL',
             emoji: '🇺🇸',
-            description: 'Preview and publish NBA, MLB, NFL and NHL fixtures to the USA_SPORTS Telegram topic.',
+            description: 'Preview and publish NBA, MLB, NFL and NHL fixtures to their assigned Telegram topics.',
             sports: [
               { sport: 'basketball', label: 'Basketball' },
               { sport: 'baseball', label: 'Baseball' },
@@ -277,9 +277,9 @@ const router = createRouter({
           component: () => import('../views/SportsBotSportFixturesView.vue'),
           props: {
             label: 'Other Sports Fixtures TV',
-            routeKey: 'OTHER_SPORTS',
+            routeKey: 'TENNIS',
             emoji: '🏅',
-            description: 'Preview and publish tennis, cricket, golf and other sport fixtures to the OTHER_SPORTS Telegram topic.',
+            description: 'Preview and publish tennis, cricket and golf fixtures to their assigned Telegram topics.',
             sports: [
               { sport: 'tennis', label: 'Tennis' },
               { sport: 'cricket', label: 'Cricket' },

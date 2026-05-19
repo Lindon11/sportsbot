@@ -243,16 +243,22 @@ class TelegramTopicDiscoveryService
 
             $routeKey = TelegramRouteKeys::normalize((string) ($row['route'] ?? ''));
             if ($importRoutes && in_array($routeKey, TelegramRouteKeys::all(), true) && $routeKey !== TelegramRouteKeys::DEFAULT) {
-                SportsBotTelegramRoute::query()->updateOrCreate(
-                    ['route_key' => $routeKey],
-                    [
-                        'label' => $title !== '' ? $title : $routeKey,
+                $route = SportsBotTelegramRoute::query()
+                    ->where('route_key', $routeKey)
+                    ->where('chat_id', $chatId)
+                    ->where('message_thread_id', $threadId)
+                    ->first() ?? new SportsBotTelegramRoute([
+                        'route_key' => $routeKey,
                         'chat_id' => $chatId,
                         'message_thread_id' => $threadId,
-                        'enabled' => true,
-                        'fallback' => false,
-                    ]
-                );
+                    ]);
+
+                $route->fill([
+                    'label' => $title !== '' ? $title : $routeKey,
+                    'enabled' => true,
+                    'fallback' => false,
+                ]);
+                $route->save();
                 $routesImported++;
             }
         }

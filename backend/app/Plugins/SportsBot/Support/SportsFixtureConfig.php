@@ -48,7 +48,7 @@ class SportsFixtureConfig
             'fights' => [
                 'sport'                  => 'fights',
                 'emoji'                  => '🥊',
-                'topic_key'              => TelegramRouteKeys::FIGHTS,
+                'topic_key'              => TelegramRouteKeys::COMBAT_OTHER,
                 'provider_sport'         => 'Fighting',
                 'card_template'          => self::CARD_TEMPLATE_FIGHTER_VS_FIGHTER,
                 'caption_formatter'      => self::CAPTION_COMBAT,
@@ -90,7 +90,7 @@ class SportsFixtureConfig
             'basketball' => [
                 'sport'                  => 'basketball',
                 'emoji'                  => '🏀',
-                'topic_key'              => TelegramRouteKeys::USA_SPORTS,
+                'topic_key'              => TelegramRouteKeys::BASKETBALL,
                 'provider_sport'         => 'Basketball',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -104,7 +104,7 @@ class SportsFixtureConfig
             'baseball' => [
                 'sport'                  => 'baseball',
                 'emoji'                  => '⚾',
-                'topic_key'              => TelegramRouteKeys::USA_SPORTS,
+                'topic_key'              => TelegramRouteKeys::BASEBALL,
                 'provider_sport'         => 'Baseball',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -118,7 +118,7 @@ class SportsFixtureConfig
             'tennis' => [
                 'sport'                  => 'tennis',
                 'emoji'                  => '🎾',
-                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
+                'topic_key'              => TelegramRouteKeys::TENNIS,
                 'provider_sport'         => 'Tennis',
                 'card_template'          => self::CARD_TEMPLATE_GENERIC,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -132,7 +132,7 @@ class SportsFixtureConfig
             'cricket' => [
                 'sport'                  => 'cricket',
                 'emoji'                  => '🏏',
-                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
+                'topic_key'              => TelegramRouteKeys::CRICKET,
                 'provider_sport'         => 'Cricket',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -146,7 +146,7 @@ class SportsFixtureConfig
             'golf' => [
                 'sport'                  => 'golf',
                 'emoji'                  => '⛳',
-                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
+                'topic_key'              => TelegramRouteKeys::GOLF,
                 'provider_sport'         => 'Golf',
                 'card_template'          => self::CARD_TEMPLATE_GENERIC,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -160,7 +160,7 @@ class SportsFixtureConfig
             'other_sports' => [
                 'sport'                  => 'other_sports',
                 'emoji'                  => '🏟',
-                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
+                'topic_key'              => TelegramRouteKeys::DEFAULT,
                 'provider_sport'         => '',
                 'card_template'          => self::CARD_TEMPLATE_GENERIC,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -174,7 +174,7 @@ class SportsFixtureConfig
             'formula_1' => [
                 'sport'                  => 'formula_1',
                 'emoji'                  => '🏎',
-                'topic_key'              => TelegramRouteKeys::MOTORSPORT,
+                'topic_key'              => TelegramRouteKeys::FORMULA_1,
                 'provider_sport'         => 'Motorsport',
                 'card_template'          => self::CARD_TEMPLATE_RACE_EVENT,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -188,7 +188,7 @@ class SportsFixtureConfig
             'american_football' => [
                 'sport'                  => 'american_football',
                 'emoji'                  => '🏈',
-                'topic_key'              => TelegramRouteKeys::USA_SPORTS,
+                'topic_key'              => TelegramRouteKeys::AMERICAN_FOOTBALL,
                 'provider_sport'         => 'American Football',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -202,7 +202,7 @@ class SportsFixtureConfig
             'ice_hockey' => [
                 'sport'                  => 'ice_hockey',
                 'emoji'                  => '🏒',
-                'topic_key'              => TelegramRouteKeys::USA_SPORTS,
+                'topic_key'              => TelegramRouteKeys::ICE_HOCKEY,
                 'provider_sport'         => 'Ice Hockey',
                 'card_template'          => self::CARD_TEMPLATE_TEAM_VS_TEAM,
                 'caption_formatter'      => self::CAPTION_GENERIC,
@@ -238,6 +238,32 @@ class SportsFixtureConfig
         return (string) (self::for($sportKey)['topic_key'] ?? TelegramRouteKeys::DEFAULT);
     }
 
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    public static function routeKeyForFixture(string $sportKey, array $fixture): string
+    {
+        $explicitRoute = trim((string) ($fixture['route_key'] ?? ''));
+        if ($explicitRoute !== '') {
+            $routeKey = TelegramRouteKeys::normalize($explicitRoute);
+            if (in_array($routeKey, TelegramRouteKeys::all(), true)) {
+                return $routeKey;
+            }
+        }
+
+        $normalized = SportsBotSports::normalize($sportKey);
+
+        if (in_array($normalized, ['fights', 'mma', 'boxing'], true)) {
+            return self::combatRouteKey($fixture, $normalized);
+        }
+
+        if (in_array($normalized, ['formula_1', 'motorsport'], true)) {
+            return self::motorsportRouteKey($fixture);
+        }
+
+        return TelegramRouteKeys::normalize(self::topicKey($normalized));
+    }
+
     public static function emoji(string $sportKey): string
     {
         return (string) (self::for($sportKey)['emoji'] ?? '🏟');
@@ -256,6 +282,87 @@ class SportsFixtureConfig
     public static function captionsEnabledDefault(string $sportKey): bool
     {
         return (bool) (self::for($sportKey)['captions_enabled_default'] ?? false);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private static function motorsportRouteKey(array $fixture): string
+    {
+        $leagueId = trim((string) ($fixture['league_id'] ?? $fixture['idLeague'] ?? ''));
+
+        $byLeagueId = [
+            '4370' => TelegramRouteKeys::FORMULA_1,
+            '4486' => TelegramRouteKeys::FORMULA_2,
+            '4487' => TelegramRouteKeys::FORMULA_3,
+            '4371' => TelegramRouteKeys::FORMULA_E,
+            '4407' => TelegramRouteKeys::MOTOGP,
+            '4436' => TelegramRouteKeys::MOTO2,
+            '4437' => TelegramRouteKeys::MOTO3,
+            '4372' => TelegramRouteKeys::BTCC,
+            '4373' => TelegramRouteKeys::INDYCAR,
+            '4393' => TelegramRouteKeys::NASCAR,
+            '4409' => TelegramRouteKeys::WRC,
+            '4413' => TelegramRouteKeys::WEC,
+            '4438' => TelegramRouteKeys::DTM,
+            '4447' => TelegramRouteKeys::DAKAR,
+            '4488' => TelegramRouteKeys::IMSA,
+            '5264' => TelegramRouteKeys::WORLDSBK,
+            '5600' => TelegramRouteKeys::SPEEDWAY,
+        ];
+
+        if ($leagueId !== '' && isset($byLeagueId[$leagueId])) {
+            return $byLeagueId[$leagueId];
+        }
+
+        $league = strtolower((string) ($fixture['league'] ?? $fixture['strLeague'] ?? $fixture['event_name'] ?? $fixture['strEvent'] ?? ''));
+
+        return match (true) {
+            str_contains($league, 'formula 2') || str_contains($league, 'f2') => TelegramRouteKeys::FORMULA_2,
+            str_contains($league, 'formula 3') || str_contains($league, 'f3') => TelegramRouteKeys::FORMULA_3,
+            str_contains($league, 'formula e') => TelegramRouteKeys::FORMULA_E,
+            str_contains($league, 'motogp') => TelegramRouteKeys::MOTOGP,
+            str_contains($league, 'moto2') => TelegramRouteKeys::MOTO2,
+            str_contains($league, 'moto3') => TelegramRouteKeys::MOTO3,
+            str_contains($league, 'indycar') => TelegramRouteKeys::INDYCAR,
+            str_contains($league, 'nascar') => TelegramRouteKeys::NASCAR,
+            str_contains($league, 'wrc') || str_contains($league, 'world rally') => TelegramRouteKeys::WRC,
+            str_contains($league, 'formula 1') || str_contains($league, 'f1') => TelegramRouteKeys::FORMULA_1,
+            default => TelegramRouteKeys::MOTORSPORT_OTHER,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     */
+    private static function combatRouteKey(array $fixture, string $sportKey): string
+    {
+        if ($sportKey === 'mma') {
+            return TelegramRouteKeys::MMA;
+        }
+
+        if ($sportKey === 'boxing') {
+            return TelegramRouteKeys::BOXING;
+        }
+
+        $leagueId = trim((string) ($fixture['league_id'] ?? $fixture['idLeague'] ?? ''));
+        $byLeagueId = [
+            '4443' => TelegramRouteKeys::MMA,
+            '4445' => TelegramRouteKeys::BOXING,
+            '4567' => TelegramRouteKeys::COMBAT_OTHER,
+        ];
+
+        if ($leagueId !== '' && isset($byLeagueId[$leagueId])) {
+            return $byLeagueId[$leagueId];
+        }
+
+        $league = strtolower((string) ($fixture['league'] ?? $fixture['strLeague'] ?? $fixture['event_name'] ?? $fixture['strEvent'] ?? ''));
+
+        return match (true) {
+            str_contains($league, 'ufc') || str_contains($league, 'mma') => TelegramRouteKeys::MMA,
+            str_contains($league, 'boxing') => TelegramRouteKeys::BOXING,
+            default => TelegramRouteKeys::COMBAT_OTHER,
+        };
     }
 
     public static function dataFetchWindow(string $sportKey): int

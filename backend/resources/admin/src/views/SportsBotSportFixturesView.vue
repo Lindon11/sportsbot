@@ -35,7 +35,7 @@
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 class="text-lg font-semibold text-white">{{ emoji }} {{ label }} Preview</h2>
-          <p class="text-xs text-slate-400">Route: {{ routeKey }} · one card per event</p>
+          <p class="text-xs text-slate-400">Routes: {{ displayRoutes }} · one card per event</p>
         </div>
         <div class="flex items-center gap-2">
           <select v-model="cardVersion" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" @change="loadPreview">
@@ -48,16 +48,16 @@
             Include captions
           </label>
           <button @click="testRoute" :disabled="testingRoute" class="px-4 py-2 rounded-xl bg-cyan-700 text-white hover:bg-cyan-600 disabled:opacity-60">
-            {{ testingRoute ? 'Testing...' : `Test ${routeKey} Route` }}
+            {{ testingRoute ? 'Testing...' : 'Test Routes' }}
           </button>
           <button @click="sendFixtures" :disabled="sending" class="px-4 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-60">
-            {{ sending ? 'Sending...' : `Send to ${routeKey} Topic` }}
+            {{ sending ? 'Sending...' : 'Send to Assigned Topics' }}
           </button>
         </div>
       </div>
 
       <div v-if="routeStatus.fallback" class="rounded-xl border border-amber-600/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-        {{ routeKey }} is falling back to the default Telegram target. Assign the {{ routeKey }} route in Telegram Routes before sending to the topic.
+        One or more selected routes are falling back to the default Telegram target. Assign each sport route in Telegram Routes before sending.
       </div>
 
       <pre class="whitespace-pre-wrap text-sm text-slate-100 bg-slate-900/80 border border-slate-700 rounded-xl p-4 min-h-[260px]">{{ previewMessage || 'No preview loaded yet.' }}</pre>
@@ -79,7 +79,7 @@
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
-      <h2 class="text-lg font-semibold text-white mb-4">Recent {{ routeKey }} Sends</h2>
+      <h2 class="text-lg font-semibold text-white mb-4">Recent Assigned Route Sends</h2>
       <div v-if="recentMessages.length === 0" class="text-sm text-slate-400">No recent sends.</div>
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -134,6 +134,7 @@ const cardPreviews = ref([])
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
+const routeKeysForActions = ref([])
 
 const sportEntries = computed(() => {
   if (props.sports.length > 0) {
@@ -147,6 +148,12 @@ const sportEntries = computed(() => {
   }]
 })
 
+const displayRoutes = computed(() => {
+  const keys = routeKeysForActions.value.length > 0 ? routeKeysForActions.value : fallbackRouteKeys()
+
+  return keys.join(', ')
+})
+
 function statusClass(status) {
   if (status === 'sent') return 'bg-emerald-500/20 text-emerald-400'
   if (status === 'failed') return 'bg-red-500/20 text-red-400'
@@ -156,10 +163,15 @@ function statusClass(status) {
 
 async function loadRecentMessages() {
   try {
-    const { data } = await api.get('/admin/sportsbot/telegram/messages', {
-      params: { route_key: props.routeKey, limit: 20 },
-    })
-    recentMessages.value = data.messages || []
+    const responses = await Promise.all(fallbackRouteKeys().map((routeKey) => (
+      api.get('/admin/sportsbot/telegram/messages', {
+        params: { route_key: routeKey, limit: 20 },
+      })
+    )))
+    recentMessages.value = responses
+      .flatMap((response) => response.data?.messages || [])
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .slice(0, 20)
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to load recent sends')
   }
@@ -177,11 +189,14 @@ async function loadPreview() {
       entry: sportEntries.value[index],
       data: response.data || {},
     }))
+    routeKeysForActions.value = uniqueRouteKeys(previews.map(({ entry, data }) => (
+      data.route_key || entry.routeKey || routeKeyForSport(entry.sport) || props.routeKey
+    )))
 
     previewMessage.value = previews
       .map(({ entry, data }) => [`${entry.label || entry.sport}`, data.message || 'No fixtures found.'].join('\n'))
       .join('\n\n')
-    routeStatus.value = previews[0]?.data?.route_status || {}
+    routeStatus.value = aggregateRouteStatuses(previews.map(({ data }) => data.route_status || {}))
     summary.value = previews.reduce((carry, { data }) => {
       carry.fixtures_total += Number(data.summary?.fixtures_total || 0)
       return carry
@@ -202,12 +217,15 @@ async function loadPreview() {
 async function testRoute() {
   testingRoute.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/test-route', {
-      route_key: props.routeKey,
-      send: true,
-    })
-    routeStatus.value = data.resolved || routeStatus.value
-    toast.success(`${props.routeKey} route test sent (${(data.results || []).length} target(s))`)
+    const responses = await Promise.all(fallbackRouteKeys().map((routeKey) => (
+      api.post('/admin/sportsbot/test-route', {
+        route_key: routeKey,
+        send: true,
+      })
+    )))
+    const sentCount = responses.reduce((carry, response) => carry + (response.data?.results || []).length, 0)
+    routeStatus.value = aggregateRouteStatuses(responses.map((response) => response.data?.resolved || {}))
+    toast.success(`Route tests sent (${sentCount} target(s))`)
     await loadRecentMessages()
   } catch (error) {
     toast.error(error?.response?.data?.error || 'Route test failed')
@@ -232,6 +250,7 @@ async function sendFixtures() {
       .map(({ entry, data }) => [`${entry.label || entry.sport}`, data.message || 'Sent.'].join('\n'))
       .join('\n\n')
     routeStatus.value = responses[0]?.data?.route_status || routeStatus.value
+    routeStatus.value = aggregateRouteStatuses(responses.map(({ data }) => data.route_status || {}))
     summary.value = responses.reduce((carry, { data }) => {
       carry.fixtures_total += Number(data.summary?.fixtures_total || 0)
       return carry
@@ -247,4 +266,48 @@ async function sendFixtures() {
 }
 
 onMounted(loadPreview)
+
+function fallbackRouteKeys() {
+  if (routeKeysForActions.value.length > 0) {
+    return routeKeysForActions.value
+  }
+
+  return uniqueRouteKeys(sportEntries.value.map((entry) => entry.routeKey || routeKeyForSport(entry.sport) || props.routeKey))
+}
+
+function routeKeyForSport(sport) {
+  const key = String(sport || '')
+  const map = {
+    basketball: 'BASKETBALL',
+    baseball: 'BASEBALL',
+    american_football: 'AMERICAN_FOOTBALL',
+    ice_hockey: 'ICE_HOCKEY',
+    tennis: 'TENNIS',
+    cricket: 'CRICKET',
+    golf: 'GOLF',
+    formula_1: 'FORMULA_1',
+    motorsport: 'MOTORSPORT_OTHER',
+    mma: 'MMA',
+    boxing: 'BOXING',
+  }
+
+  return map[key] || ''
+}
+
+function uniqueRouteKeys(items) {
+  return [...new Set(items.map(item => String(item || '').trim()).filter(Boolean))]
+}
+
+function aggregateRouteStatuses(statuses) {
+  const filtered = statuses.filter(Boolean)
+
+  return {
+    route_key: displayRoutes.value,
+    resolved_route_key: uniqueRouteKeys(filtered.map(status => status.resolved_route_key || status.route_key)).join(', '),
+    fallback: filtered.some(status => Boolean(status.fallback)),
+    target_count: filtered.reduce((total, status) => total + Number(status.target_count || 0), 0),
+    targets: filtered.flatMap(status => status.targets || []),
+    source: uniqueRouteKeys(filtered.map(status => status.source)).join(', '),
+  }
+}
 </script>

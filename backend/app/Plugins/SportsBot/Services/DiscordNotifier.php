@@ -116,7 +116,7 @@ class DiscordNotifier implements NotifierInterface
         $routeWebhooks = $this->routeWebhooks();
         $defaultWebhook = trim((string) $this->settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')));
 
-        foreach ([$routeKey, strtolower($routeKey), 'default', TelegramRouteKeys::DEFAULT] as $key) {
+        foreach ([$routeKey, ...TelegramRouteKeys::fallbackRouteKeys($routeKey), TelegramRouteKeys::DEFAULT] as $key) {
             $url = trim((string) ($routeWebhooks[$key] ?? ''));
             if ($url !== '') {
                 $webhooks[$key] = $url;
@@ -151,10 +151,25 @@ class DiscordNotifier implements NotifierInterface
         }
 
         $webhooks = [];
+        $supported = array_fill_keys(TelegramRouteKeys::all(), true);
+        $legacy = TelegramRouteKeys::legacyGroupRouteMap();
         foreach ($value as $key => $url) {
             $key = TelegramRouteKeys::normalize((string) $key);
             $url = trim((string) $url);
-            if ($key !== '' && $url !== '') {
+
+            if ($url === '') {
+                continue;
+            }
+
+            if (isset($legacy[$key])) {
+                foreach ($legacy[$key] as $expandedRouteKey) {
+                    $webhooks[$expandedRouteKey] ??= $url;
+                }
+
+                continue;
+            }
+
+            if (isset($supported[$key])) {
                 $webhooks[$key] = $url;
             }
         }

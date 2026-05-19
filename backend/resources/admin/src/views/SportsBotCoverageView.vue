@@ -86,7 +86,7 @@
 
         <div>
           <label class="block text-sm font-medium text-slate-300 mb-2">Route webhooks</label>
-          <textarea v-model="discordRoutesText" rows="6" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="FOOTBALL=https://discord.com/api/webhooks/...\nMOTORSPORT=https://discord.com/api/webhooks/..." />
+          <textarea v-model="discordRoutesText" rows="6" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="FOOTBALL=https://discord.com/api/webhooks/...\nFORMULA_1=https://discord.com/api/webhooks/..." />
           <p class="text-xs text-slate-500 mt-2">One route per line. If a route is missing, the default webhook is used.</p>
         </div>
       </div>

@@ -28,10 +28,23 @@ class TelegramRoutingService
             $targets = $this->namedRouteTargets($normalizedRouteKey);
 
             if ($targets === []) {
-                $targets = $this->defaultTargets();
-                $resolvedRouteKey = TelegramRouteKeys::DEFAULT;
-                $fallback = true;
-                $source = 'default_fallback';
+                foreach (TelegramRouteKeys::fallbackRouteKeys($normalizedRouteKey) as $fallbackRouteKey) {
+                    $targets = $this->namedRouteTargets($fallbackRouteKey);
+
+                    if ($targets !== []) {
+                        $resolvedRouteKey = $fallbackRouteKey;
+                        $fallback = true;
+                        $source = 'route_group_fallback';
+                        break;
+                    }
+                }
+
+                if ($targets === []) {
+                    $targets = $this->defaultTargets();
+                    $resolvedRouteKey = TelegramRouteKeys::DEFAULT;
+                    $fallback = true;
+                    $source = 'default_fallback';
+                }
             } else {
                 $source = 'named_route';
             }

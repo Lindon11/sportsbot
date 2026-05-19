@@ -36,6 +36,14 @@ class TheSportsDbClient implements SportsDataProviderInterface
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function searchLeague(string $query): array
+    {
+        return $this->fetch('/search/league/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.metadata', 86400), ['leagues', 'league']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function listTeams(string $leagueId): array
     {
         return $this->fetch('/list/teams/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.team', 86400), ['teams']);
@@ -60,6 +68,14 @@ class TheSportsDbClient implements SportsDataProviderInterface
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function lookupTeamEquipment(string $teamId): array
+    {
+        return $this->fetch('/lookup/team_equipment/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.team', 86400), ['equipment', 'equipments']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function listPlayers(string $teamId): array
     {
         return $this->fetch('/list/players/' . rawurlencode($teamId), (int) config('plugins.SportsBot.cache.player', 86400), ['players', 'player']);
@@ -79,6 +95,46 @@ class TheSportsDbClient implements SportsDataProviderInterface
     public function searchPlayer(string $query): array
     {
         return $this->fetch('/search/player/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.player', 86400), ['players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupPlayerContracts(string $playerId): array
+    {
+        return $this->fetch('/lookup/player_contracts/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['contracts', 'players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupPlayerResults(string $playerId): array
+    {
+        return $this->fetch('/lookup/player_results/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['results', 'players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupPlayerHonours(string $playerId): array
+    {
+        return $this->fetch('/lookup/player_honours/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['honours', 'players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupPlayerMilestones(string $playerId): array
+    {
+        return $this->fetch('/lookup/player_milestones/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['milestones', 'players', 'player']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupPlayerTeams(string $playerId): array
+    {
+        return $this->fetch('/lookup/player_teams/' . rawurlencode($playerId), (int) config('plugins.SportsBot.cache.player', 86400), ['formerteams', 'teams', 'players']);
     }
 
     /**
@@ -227,6 +283,30 @@ class TheSportsDbClient implements SportsDataProviderInterface
     }
 
     /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function nextVenueEvents(string $venueId): array
+    {
+        return $this->fetch('/schedule/next/venue/' . rawurlencode($venueId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'next']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function previousVenueEvents(string $venueId): array
+    {
+        return $this->fetch('/schedule/previous/venue/' . rawurlencode($venueId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['schedule', 'events', 'previous']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function searchEvent(string $query): array
+    {
+        return $this->fetch('/search/event/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.fixtures', 900), ['events', 'event']);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function lookupEvent(string $eventId): ?array
@@ -240,6 +320,14 @@ class TheSportsDbClient implements SportsDataProviderInterface
     public function lookupEventStats(string $eventId): array
     {
         return $this->fetch('/lookup/event_stats/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['stats', 'statistics', 'eventstats']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function lookupEventResults(string $eventId): array
+    {
+        return $this->fetch('/lookup/event_results/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['results', 'events', 'event']);
     }
 
     /**
@@ -272,6 +360,30 @@ class TheSportsDbClient implements SportsDataProviderInterface
     public function lookupEventTv(string $eventId): array
     {
         return $this->fetch('/lookup/event_tv/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.tv_guide', 1800), ['lookup', 'tv', 'tvevents', 'events']);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function lookupVenue(string $venueId): ?array
+    {
+        return $this->first('/lookup/venue/' . rawurlencode($venueId), (int) config('plugins.SportsBot.cache.metadata', 86400), ['venues', 'venue']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function searchVenue(string $query): array
+    {
+        return $this->fetch('/search/venue/' . rawurlencode($this->slug($query)), (int) config('plugins.SportsBot.cache.metadata', 86400), ['venues', 'venue']);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listSeasons(string $leagueId): array
+    {
+        return $this->fetch('/list/seasons/' . rawurlencode($leagueId), (int) config('plugins.SportsBot.cache.metadata', 86400), ['seasons']);
     }
 
     /**
@@ -329,6 +441,14 @@ class TheSportsDbClient implements SportsDataProviderInterface
     public function tvByChannel(string $channel): array
     {
         return $this->fetchTvByChannel($this->slug($channel));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function tvByChannelId(string $channelId): array
+    {
+        return $this->fetch('/filter/tv/channelid/' . rawurlencode($channelId), (int) config('plugins.SportsBot.tv.cache_ttl', 900), ['filter', 'tvevents', 'tv', 'events']);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services;
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
+use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -209,6 +210,7 @@ class SportsBotPublisher
             $card = $this->cards->fixtureCard($fixture, $cardVersion);
             $fixtureOptions = $options;
             unset($fixtureOptions['reply_markup']);
+            $fixtureOptions['route_key'] = $this->routeKeyForFixture($fixture, $options);
             $fixtureOptions['payload'] = array_merge((array) ($options['payload'] ?? []), [
                 'event_id' => (string) ($fixture['event_id'] ?? ''),
                 'card_version' => $cardVersion,
@@ -233,6 +235,30 @@ class SportsBotPublisher
         }
 
         return $results;
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @param array<string, mixed> $options
+     */
+    private function routeKeyForFixture(array $fixture, array $options): string
+    {
+        $explicitRoute = trim((string) ($fixture['route_key'] ?? ''));
+        if ($explicitRoute !== '') {
+            $routeKey = TelegramRouteKeys::normalize($explicitRoute);
+            if (in_array($routeKey, TelegramRouteKeys::all(), true)) {
+                return $routeKey;
+            }
+        }
+
+        $sportKey = trim((string) ($options['payload']['sport_key'] ?? $fixture['sport_key'] ?? ''));
+        if ($sportKey !== '') {
+            return SportsFixtureConfig::routeKeyForFixture($sportKey, $fixture);
+        }
+
+        $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? ''));
+
+        return in_array($routeKey, TelegramRouteKeys::all(), true) ? $routeKey : '';
     }
 
     /**

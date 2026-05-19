@@ -67,6 +67,7 @@ class SportsBotAssetCache
                         'render_source' => 'data_uri',
                         'mime_type' => $dataUri['mime_type'],
                     ];
+                    $this->writeCollectionAsset('fixture', $fixture, $field, $type, $url, $localPath, $result, $dataUri['mime_type']);
                     continue;
                 }
 
@@ -126,6 +127,80 @@ class SportsBotAssetCache
                 'missing' => count(array_filter($failures, static fn (array $failure): bool => ($failure['render_source'] ?? null) === 'missing')),
                 'status' => $failures === [] ? 'cached' : 'failed',
             ],
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{items:int,assets:int,cached:int,failed:int,failures:array<int,array<string,string>>}
+     */
+    public function cacheProviderRows(array $rows, string $entityType, array $context = []): array
+    {
+        $summary = [
+            'items' => 0,
+            'assets' => 0,
+            'cached' => 0,
+            'failed' => 0,
+            'failures' => [],
+        ];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $result = $this->cacheProviderArtwork($row, $entityType, $context);
+            $summary['items']++;
+            $summary['assets'] += count($result['assets']);
+            $summary['cached'] += count(array_filter($result['assets'], static fn (array $asset): bool => (bool) ($asset['cached'] ?? false)));
+            $summary['failed'] += count($result['failures']);
+            $summary['failures'] = array_merge($summary['failures'], $result['failures']);
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @return array{entity_type:string,entity_id:string,assets:array<int,array<string,mixed>>,failures:array<int,array<string,string>>}
+     */
+    public function cacheProviderArtwork(array $row, string $entityType, array $context = []): array
+    {
+        $entityType = $this->normalizeType($entityType);
+        $assets = [];
+        $failures = [];
+
+        foreach ($this->providerArtworkFields($row) as $field => $url) {
+            $assetType = $this->providerAssetType($entityType, $field);
+            $result = $this->cacheUrl($url, $assetType);
+
+            if (($result['ok'] ?? false) === true) {
+                $asset = [
+                    'field' => $field,
+                    'type' => $assetType,
+                    'source_url' => $url,
+                    'local_path' => (string) ($result['local_path'] ?? ''),
+                    'bytes' => $result['bytes'] ?? null,
+                    'sha256' => $result['sha256'] ?? null,
+                    'cached' => (bool) ($result['cached'] ?? false),
+                ];
+                $assets[] = $asset;
+                $this->writeCollectionAsset($entityType, $row, $field, $assetType, $url, $asset['local_path'], $result, null, $context);
+                continue;
+            }
+
+            $failures[] = [
+                'field' => $field,
+                'type' => $assetType,
+                'source_url' => $url,
+                'reason' => (string) ($result['reason'] ?? 'asset_cache_failed'),
+            ];
+        }
+
+        return [
+            'entity_type' => $entityType,
+            'entity_id' => $this->entityId($entityType, $row),
+            'assets' => $assets,
+            'failures' => $failures,
         ];
     }
 
@@ -237,6 +312,7 @@ class SportsBotAssetCache
             'files' => count(array_filter($files, 'is_file')),
             'bytes' => $bytes,
             'unreadable' => $missing,
+            'collection_items' => $this->collectionItemCount(),
             'cleanup_after_days' => (int) config('plugins.SportsBot.cards.asset_cache_stale_days', 30),
         ];
     }
@@ -357,6 +433,176 @@ class SportsBotAssetCache
         ], JSON_UNESCAPED_SLASHES), LOCK_EX);
     }
 
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $result
+     * @param array<string, mixed> $context
+     */
+    private function writeCollectionAsset(
+        string $entityType,
+        array $row,
+        string $field,
+        string $assetType,
+        string $sourceUrl,
+        string $localPath,
+        array $result,
+        ?string $mimeType = null,
+        array $context = []
+    ): void {
+        $entityId = $this->entityId($entityType, $row);
+        if ($entityId === '') {
+            $entityId = sha1(json_encode($row));
+        }
+
+        $path = $this->collectionPath($entityType, $entityId);
+        $dir = dirname($path);
+        if (!@is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        $existing = is_file($path) ? json_decode((string) file_get_contents($path), true) : [];
+        $data = is_array($existing) ? $existing : [];
+        $data['entity_type'] = $entityType;
+        $data['entity_id'] = $entityId;
+        $data['name'] = $this->entityName($row);
+        $data['provider'] = 'thesportsdb';
+        $data['context'] = array_merge((array) ($data['context'] ?? []), $context);
+        $data['source_row'] = array_merge((array) ($data['source_row'] ?? []), $this->compactSourceRow($row));
+        $data['updated_at'] = now()->toIso8601String();
+
+        $assets = (array) ($data['assets'] ?? []);
+        $assetKey = $field . ':' . sha1($sourceUrl);
+        $assets[$assetKey] = [
+            'field' => $field,
+            'type' => $assetType,
+            'source_url' => $sourceUrl,
+            'local_path' => $localPath,
+            'bytes' => $result['bytes'] ?? null,
+            'sha256' => $result['sha256'] ?? null,
+            'mime_type' => $mimeType,
+            'cached_at' => now()->toIso8601String(),
+        ];
+        $data['assets'] = $assets;
+
+        @file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function providerArtworkFields(array $row): array
+    {
+        $fields = [];
+
+        foreach ($row as $field => $value) {
+            $url = trim((string) $value);
+            if ($url === '' || !preg_match('#^https?://#i', $url)) {
+                continue;
+            }
+
+            if (!preg_match('/(badge|logo|icon|banner|poster|thumb|fanart|cutout|render|jersey|equipment|trophy|image|art|map|flag)/i', (string) $field)) {
+                continue;
+            }
+
+            $fields[(string) $field] = $url;
+        }
+
+        return $fields;
+    }
+
+    private function providerAssetType(string $entityType, string $field): string
+    {
+        $field = strtolower($field);
+
+        if (str_contains($field, 'equipment') || str_contains($field, 'jersey')) {
+            return 'team_equipment';
+        }
+
+        if (str_contains($field, 'player') || str_contains($field, 'cutout') || str_contains($field, 'render')) {
+            return 'player_image';
+        }
+
+        if (str_contains($field, 'venue') || str_contains($field, 'map')) {
+            return 'venue_image';
+        }
+
+        if (str_contains($field, 'poster') || str_contains($field, 'thumb')) {
+            return $entityType . '_poster';
+        }
+
+        if (str_contains($field, 'fanart') || str_contains($field, 'banner')) {
+            return $entityType . '_fanart';
+        }
+
+        if (str_contains($field, 'badge') || str_contains($field, 'logo') || str_contains($field, 'icon') || str_contains($field, 'trophy')) {
+            return $entityType . '_logo';
+        }
+
+        return $entityType . '_image';
+    }
+
+    private function entityId(string $entityType, array $row): string
+    {
+        $candidates = match ($entityType) {
+            'league' => ['idLeague', 'league_id', 'id'],
+            'team' => ['idTeam', 'team_id', 'id'],
+            'player' => ['idPlayer', 'player_id', 'id'],
+            'event', 'fixture' => ['idEvent', 'event_id', 'id'],
+            'venue' => ['idVenue', 'venue_id', 'id'],
+            default => ['id', 'idLeague', 'idTeam', 'idPlayer', 'idEvent', 'idVenue'],
+        };
+
+        foreach ($candidates as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function entityName(array $row): string
+    {
+        foreach (['strLeague', 'strTeam', 'strPlayer', 'strEvent', 'strVenue', 'name', 'title'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function compactSourceRow(array $row): array
+    {
+        return array_filter($row, static function (mixed $value, mixed $key): bool {
+            $key = (string) $key;
+
+            return is_scalar($value) && (
+                str_starts_with($key, 'id')
+                || str_starts_with($key, 'str')
+                || in_array($key, ['event_id', 'league_id', 'team_id', 'player_id'], true)
+            );
+        }, ARRAY_FILTER_USE_BOTH);
+    }
+
+    private function collectionPath(string $entityType, string $entityId): string
+    {
+        return $this->rootDirectory() . '/collection/' . $this->normalizeType($entityType) . '/' . preg_replace('/[^a-z0-9_.-]+/i', '-', $entityId) . '.json';
+    }
+
+    private function collectionItemCount(): int
+    {
+        $root = $this->rootDirectory() . '/collection';
+        $files = is_dir($root) ? glob($root . '/*/*.json') ?: [] : [];
+
+        return count(array_filter($files, 'is_file'));
+    }
+
     private function sourceMapPath(string $url): string
     {
         return $this->rootDirectory() . '/sources/' . sha1($url) . '.json';
@@ -364,7 +610,12 @@ class SportsBotAssetCache
 
     private function assetDirectory(string $type): string
     {
-        return $this->rootDirectory() . '/' . preg_replace('/[^a-z0-9_-]+/i', '-', $type);
+        return $this->rootDirectory() . '/' . $this->normalizeType($type);
+    }
+
+    private function normalizeType(string $type): string
+    {
+        return trim((string) preg_replace('/[^a-z0-9_-]+/i', '-', strtolower($type)), '-') ?: 'image';
     }
 
     private function rootDirectory(): string

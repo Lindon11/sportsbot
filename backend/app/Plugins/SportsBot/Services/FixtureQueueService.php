@@ -74,7 +74,7 @@ class FixtureQueueService
 
             if ($existing) {
                 if ($existing->payload_hash === $hash) {
-                    $routeKey = (string) ($config['topic_key'] ?? '');
+                    $routeKey = $this->routeKeyForFixture($sportKey, $fixture, $config);
                     if ($routeKey !== '' && $existing->route_key !== $routeKey) {
                         $existing->route_key = $routeKey;
                         $existing->save();
@@ -88,7 +88,7 @@ class FixtureQueueService
 
                 $existing->fill([
                     'fixture_data' => $fixture,
-                    'route_key' => $config['topic_key'] ?? null,
+                    'route_key' => $this->routeKeyForFixture($sportKey, $fixture, $config),
                     'payload_hash' => $hash,
                     'status' => SportsBotFixtureQueue::STATUS_DRAFT,
                     'asset_status' => SportsBotFixtureQueue::ASSET_PENDING,
@@ -104,7 +104,7 @@ class FixtureQueueService
                     'asset_status' => SportsBotFixtureQueue::ASSET_PENDING,
                     'payload_hash' => $hash,
                     'fixture_data' => $fixture,
-                    'route_key' => $config['topic_key'] ?? null,
+                    'route_key' => $this->routeKeyForFixture($sportKey, $fixture, $config),
                     'last_refreshed_at' => now(),
                 ]);
                 $created++;
@@ -576,7 +576,7 @@ class FixtureQueueService
         $entry->card_path = $cardPath;
         $this->applyRenderMetadata($entry, $card, $assetResult);
         $entry->caption = $this->buildCaption($fixture, $config);
-        $entry->route_key = $config['topic_key'] ?? $entry->route_key;
+        $entry->route_key = $this->routeKeyForEntry($entry, $config);
         $entry->status = SportsBotFixtureQueue::STATUS_READY;
         $entry->error = null;
         $entry->save();
@@ -584,7 +584,7 @@ class FixtureQueueService
 
     private function syncRouteKey(SportsBotFixtureQueue $entry, array $config): void
     {
-        $routeKey = (string) ($config['topic_key'] ?? '');
+        $routeKey = $this->routeKeyForEntry($entry, $config);
         if ($routeKey === '' || $entry->route_key === $routeKey) {
             return;
         }
@@ -677,27 +677,41 @@ class FixtureQueueService
 
     private function routeKeyForEntry(SportsBotFixtureQueue $entry, array $config): string
     {
-        $configuredRoute = (string) ($config['topic_key'] ?? '');
-        $storedRoute = (string) ($entry->route_key ?? '');
+        $sportKey = (string) ($entry->sport_key ?? '');
+        $fixtureRoute = $this->routeKeyForFixture($sportKey, $this->effectiveFixtureData($entry), $config);
 
-        if ($configuredRoute === TelegramRouteKeys::USA_SPORTS && in_array($storedRoute, [
-            TelegramRouteKeys::BASKETBALL,
-            TelegramRouteKeys::BASEBALL,
-            TelegramRouteKeys::AMERICAN_FOOTBALL,
-            TelegramRouteKeys::ICE_HOCKEY,
-        ], true)) {
-            return $configuredRoute;
+        if ($fixtureRoute !== TelegramRouteKeys::DEFAULT) {
+            return $fixtureRoute;
         }
 
-        if ($configuredRoute === TelegramRouteKeys::OTHER_SPORTS && in_array($storedRoute, [
-            TelegramRouteKeys::TENNIS,
-            TelegramRouteKeys::CRICKET,
-            TelegramRouteKeys::GOLF,
-        ], true)) {
-            return $configuredRoute;
+        $storedRoute = TelegramRouteKeys::normalize((string) ($entry->route_key ?? ''));
+        $configuredRoute = TelegramRouteKeys::normalize((string) ($config['topic_key'] ?? ''));
+        $supportedRoutes = array_fill_keys(TelegramRouteKeys::all(), true);
+
+        if (!isset($supportedRoutes[$storedRoute])) {
+            $storedRoute = TelegramRouteKeys::DEFAULT;
         }
 
-        return $storedRoute !== '' ? $storedRoute : ($configuredRoute !== '' ? $configuredRoute : TelegramRouteKeys::DEFAULT);
+        if (!isset($supportedRoutes[$configuredRoute])) {
+            $configuredRoute = TelegramRouteKeys::DEFAULT;
+        }
+
+        return $storedRoute !== TelegramRouteKeys::DEFAULT
+            ? $storedRoute
+            : ($configuredRoute !== TelegramRouteKeys::DEFAULT ? $configuredRoute : TelegramRouteKeys::DEFAULT);
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @param array<string, mixed> $config
+     */
+    private function routeKeyForFixture(string $sportKey, array $fixture, array $config): string
+    {
+        if ($sportKey !== '') {
+            return SportsFixtureConfig::routeKeyForFixture($sportKey, $fixture);
+        }
+
+        return TelegramRouteKeys::normalize((string) ($config['topic_key'] ?? TelegramRouteKeys::DEFAULT));
     }
 
     public function find(int $id): ?SportsBotFixtureQueue
@@ -760,7 +774,7 @@ class FixtureQueueService
             $entry->card_path = $cardPath;
             $this->applyRenderMetadata($entry, $card, $assetResult);
             $entry->caption = $this->buildCaption($fixture, $config);
-            $entry->route_key = $config['topic_key'] ?? $entry->route_key;
+            $entry->route_key = $this->routeKeyForEntry($entry, $config);
             $entry->status = $preserveSent ? SportsBotFixtureQueue::STATUS_SENT : SportsBotFixtureQueue::STATUS_READY;
             $entry->error = null;
             $entry->save();

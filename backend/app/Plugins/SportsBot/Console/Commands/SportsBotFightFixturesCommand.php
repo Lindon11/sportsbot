@@ -10,7 +10,7 @@ use Throwable;
 class SportsBotFightFixturesCommand extends Command
 {
     protected $signature = 'sportsbot:fight-fixtures
-        {--send : Send fight fixture TV cards to Telegram route FIGHTS}';
+        {--send : Send fight fixture TV cards to assigned combat routes}';
 
     protected $description = 'Build and optionally send upcoming boxing and MMA events with UK TV listings';
 

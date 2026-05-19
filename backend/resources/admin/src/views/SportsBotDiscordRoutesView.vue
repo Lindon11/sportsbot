@@ -65,10 +65,11 @@
         <h2 class="text-lg font-semibold text-white">Add Route Webhook</h2>
 
         <label class="block">
-          <span class="text-sm text-slate-300">Route Key</span>
-          <select v-model="form.route_key" class="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 text-white px-3 py-2">
+          <span class="text-sm text-slate-300">Route Keys</span>
+          <select v-model="form.route_keys" multiple size="10" class="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 text-white px-3 py-2">
             <option v-for="key in routeKeys" :key="key" :value="key">{{ key }}</option>
           </select>
+          <span class="block text-xs text-slate-500 mt-1">Select every route that should post to this webhook.</span>
         </label>
 
         <label class="block">
@@ -91,11 +92,11 @@
             {{ savingRoute ? 'Saving...' : 'Save Route' }}
           </button>
           <button
-            @click="testRoute(form.route_key)"
-            :disabled="testingRouteKey === form.route_key || !settingsForm.discord_enabled"
+            @click="testRoute(form.route_keys[0])"
+            :disabled="testingRouteKey === form.route_keys[0] || !settingsForm.discord_enabled || form.route_keys.length === 0"
             class="px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 disabled:opacity-60"
           >
-            {{ testingRouteKey === form.route_key ? 'Testing...' : 'Test Route' }}
+            {{ testingRouteKey === form.route_keys[0] ? 'Testing...' : 'Test First Route' }}
           </button>
         </div>
       </div>
@@ -172,7 +173,7 @@ const settingsForm = reactive({
 })
 
 const form = reactive({
-  route_key: 'MOTORSPORT',
+  route_keys: ['FORMULA_1'],
   webhook_url: '',
 })
 
@@ -195,7 +196,7 @@ function maskedWebhook(value) {
 }
 
 function editRoute(route) {
-  form.route_key = route.route_key
+  form.route_keys = [route.route_key]
   form.webhook_url = route.webhook_url || ''
 }
 
@@ -231,7 +232,10 @@ async function saveSettings() {
 async function saveRoute() {
   savingRoute.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/discord/routes', form)
+    const { data } = await api.post('/admin/sportsbot/discord/routes', {
+      ...form,
+      route_key: form.route_keys[0] || '',
+    })
     routes.value = data.routes || routes.value
     routeStatuses.value = data.route_statuses || routeStatuses.value
     toast.success('Discord route saved')

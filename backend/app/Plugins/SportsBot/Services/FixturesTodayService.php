@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use Carbon\CarbonImmutable;
 use DateTimeZone;
 use Illuminate\Support\Facades\Log;
@@ -220,7 +221,7 @@ class FixturesTodayService
 
                 $homeTeamMeta = $this->lookupTeamMeta(trim((string) ($row['idHomeTeam'] ?? '')));
 
-                $fixtures[] = [
+                $fixture = [
                     'event_id' => $eventId,
                     'sport' => $sport,
                     'league' => $leagueName !== '' ? $leagueName : 'Competition TBC',
@@ -245,6 +246,12 @@ class FixturesTodayService
                     'home_team_id' => trim((string) ($row['idHomeTeam'] ?? '')),
                     'away_team_id' => trim((string) ($row['idAwayTeam'] ?? '')),
                 ];
+
+                if ($sportKey !== null) {
+                    $fixture['route_key'] = SportsFixtureConfig::routeKeyForFixture($sportKey, $fixture);
+                }
+
+                $fixtures[] = $fixture;
             }
         }
 

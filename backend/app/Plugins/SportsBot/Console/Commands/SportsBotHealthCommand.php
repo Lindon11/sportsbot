@@ -293,7 +293,7 @@ class SportsBotHealthCommand extends Command
                 'sport' => 'other_sports',
                 'sport_label' => 'Other Sports',
                 'title' => 'Other Sports Fixtures TV',
-                'route_key' => 'OTHER_SPORTS',
+                'route_key' => 'DEFAULT',
                 'date' => now()->toDateString(),
             ], 'v3');
 

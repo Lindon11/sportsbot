@@ -10,7 +10,7 @@ use Throwable;
 class SportsBotMotorsportFixturesCommand extends Command
 {
     protected $signature = 'sportsbot:motorsport-fixtures
-        {--send : Send motorsport fixture TV cards to Telegram route MOTORSPORT}';
+        {--send : Send motorsport fixture TV cards to assigned series routes}';
 
     protected $description = 'Build and optionally send today\'s motorsport fixtures with UK TV listings';
 

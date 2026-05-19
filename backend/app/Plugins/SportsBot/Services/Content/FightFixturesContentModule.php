@@ -29,7 +29,7 @@ class FightFixturesContentModule implements SportsBotContentModuleInterface
 
     public function routeKey(): string
     {
-        return TelegramRouteKeys::FIGHTS;
+        return TelegramRouteKeys::COMBAT_OTHER;
     }
 
     public function buildSummary(): array

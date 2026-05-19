@@ -129,10 +129,11 @@
         <h2 class="text-lg font-semibold text-white">Assign Route</h2>
 
         <label class="block">
-          <span class="text-sm text-slate-300">Route Key</span>
-          <select v-model="form.route_key" class="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 text-white px-3 py-2">
+          <span class="text-sm text-slate-300">Route Keys</span>
+          <select v-model="form.route_keys" multiple size="10" class="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 text-white px-3 py-2">
             <option v-for="key in routeKeys" :key="key" :value="key">{{ key }}</option>
           </select>
+          <span class="block text-xs text-slate-500 mt-1">Select every route that should post into this topic.</span>
         </label>
 
         <label class="block">
@@ -187,7 +188,7 @@
         <div v-else class="space-y-3">
           <div
             v-for="route in routes"
-            :key="route.route_key"
+            :key="route.id || `${route.route_key}:${route.chat_id}:${route.message_thread_id ?? '-'}`"
             class="rounded-xl bg-slate-900 border border-slate-700 p-3 flex items-center justify-between gap-3"
           >
             <button class="text-left flex-1" @click="editRoute(route)">
@@ -201,7 +202,7 @@
             >
               {{ testingRouteKey === route.route_key ? 'Testing...' : 'Test' }}
             </button>
-            <button class="text-xs text-red-300 hover:text-red-200" @click.stop="deleteRoute(route.route_key)">Delete</button>
+            <button class="text-xs text-red-300 hover:text-red-200" @click.stop="deleteRoute(route.id || route.route_key)">Delete</button>
           </div>
         </div>
       </div>
@@ -235,7 +236,7 @@
                     :disabled="saving"
                     @click="assignTopicToCurrentRoute(topic)"
                   >
-                    Assign to {{ form.route_key }}
+                    Assign to selected routes
                   </button>
                 </div>
               </td>
@@ -268,7 +269,7 @@ const diagnostics = ref({})
 const selectedTopicKey = ref('')
 
 const form = reactive({
-  route_key: 'FIXTURES_TODAY',
+  route_keys: ['FIXTURES_TODAY'],
   label: 'Fixtures Today',
   chat_id: '',
   message_thread_id: '',
@@ -308,12 +309,12 @@ function applySelectedTopic() {
 function useTopic(topic) {
   form.chat_id = topic.chat_id || ''
   form.message_thread_id = topic.message_thread_id || ''
-  form.label = topic.title || form.route_key
+  form.label = topic.title || selectedRouteLabel()
   selectedTopicKey.value = topicKey(topic)
 }
 
 function editRoute(route) {
-  form.route_key = route.route_key
+  form.route_keys = [route.route_key]
   form.label = route.label || route.route_key
   form.chat_id = route.chat_id || ''
   form.message_thread_id = route.message_thread_id || ''
@@ -403,6 +404,7 @@ async function saveRoute() {
   try {
     const payload = {
       ...form,
+      route_key: form.route_keys[0] || '',
       message_thread_id: optionalThreadId(form.message_thread_id),
     }
     const { data } = await api.post('/admin/sportsbot/telegram/routes', payload)
@@ -449,6 +451,10 @@ async function deleteRoute(routeKey) {
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to delete route')
   }
+}
+
+function selectedRouteLabel() {
+  return form.route_keys.length === 1 ? form.route_keys[0] : 'Selected routes'
 }
 
 onMounted(loadRouting)

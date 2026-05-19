@@ -11,18 +11,18 @@ class SportsBotSports
     {
         return [
             'football' => ['label' => 'Football', 'sport' => 'Soccer', 'icon' => '⚽', 'route_key' => TelegramRouteKeys::FOOTBALL, 'aliases' => ['soccer', 'football']],
-            'basketball' => ['label' => 'Basketball', 'sport' => 'Basketball', 'icon' => '🏀', 'route_key' => TelegramRouteKeys::USA_SPORTS, 'aliases' => ['basketball', 'nba']],
-            'baseball' => ['label' => 'Baseball', 'sport' => 'Baseball', 'icon' => '⚾', 'route_key' => TelegramRouteKeys::USA_SPORTS, 'aliases' => ['baseball', 'mlb']],
-            'american_football' => ['label' => 'American Football', 'sport' => 'American Football', 'icon' => '🏈', 'route_key' => TelegramRouteKeys::USA_SPORTS, 'aliases' => ['american football', 'nfl']],
-            'tennis' => ['label' => 'Tennis', 'sport' => 'Tennis', 'icon' => '🎾', 'route_key' => TelegramRouteKeys::OTHER_SPORTS, 'aliases' => ['tennis']],
-            'fights' => ['label' => 'Fights', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::FIGHTS, 'aliases' => ['fights', 'fight', 'fighting', 'combat', 'ppv']],
+            'basketball' => ['label' => 'Basketball', 'sport' => 'Basketball', 'icon' => '🏀', 'route_key' => TelegramRouteKeys::BASKETBALL, 'aliases' => ['basketball', 'nba']],
+            'baseball' => ['label' => 'Baseball', 'sport' => 'Baseball', 'icon' => '⚾', 'route_key' => TelegramRouteKeys::BASEBALL, 'aliases' => ['baseball', 'mlb']],
+            'american_football' => ['label' => 'American Football', 'sport' => 'American Football', 'icon' => '🏈', 'route_key' => TelegramRouteKeys::AMERICAN_FOOTBALL, 'aliases' => ['american football', 'nfl']],
+            'tennis' => ['label' => 'Tennis', 'sport' => 'Tennis', 'icon' => '🎾', 'route_key' => TelegramRouteKeys::TENNIS, 'aliases' => ['tennis']],
+            'fights' => ['label' => 'Fights', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::COMBAT_OTHER, 'aliases' => ['fights', 'fight', 'fighting', 'combat', 'ppv']],
             'mma' => ['label' => 'MMA / UFC', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::MMA, 'aliases' => ['mma', 'ufc', 'fighting']],
             'rugby' => ['label' => 'Rugby', 'sport' => 'Rugby', 'icon' => '🏉', 'route_key' => TelegramRouteKeys::RUGBY, 'aliases' => ['rugby']],
-            'cricket' => ['label' => 'Cricket', 'sport' => 'Cricket', 'icon' => '🏏', 'route_key' => TelegramRouteKeys::OTHER_SPORTS, 'aliases' => ['cricket']],
-            'formula_1' => ['label' => 'Formula 1', 'sport' => 'Motorsport', 'icon' => '🏎', 'route_key' => TelegramRouteKeys::MOTORSPORT, 'aliases' => ['formula 1', 'f1', 'motorsport']],
-            'ice_hockey' => ['label' => 'Ice Hockey', 'sport' => 'Ice Hockey', 'icon' => '🏒', 'route_key' => TelegramRouteKeys::USA_SPORTS, 'aliases' => ['ice hockey', 'hockey', 'nhl']],
-            'golf' => ['label' => 'Golf', 'sport' => 'Golf', 'icon' => '⛳', 'route_key' => TelegramRouteKeys::OTHER_SPORTS, 'aliases' => ['golf']],
-            'motorsport' => ['label' => 'Motorsport', 'sport' => 'Motorsport', 'icon' => '🏁', 'route_key' => TelegramRouteKeys::MOTORSPORT, 'aliases' => ['motorsport', 'racing']],
+            'cricket' => ['label' => 'Cricket', 'sport' => 'Cricket', 'icon' => '🏏', 'route_key' => TelegramRouteKeys::CRICKET, 'aliases' => ['cricket']],
+            'formula_1' => ['label' => 'Formula 1', 'sport' => 'Motorsport', 'icon' => '🏎', 'route_key' => TelegramRouteKeys::FORMULA_1, 'aliases' => ['formula 1', 'f1']],
+            'ice_hockey' => ['label' => 'Ice Hockey', 'sport' => 'Ice Hockey', 'icon' => '🏒', 'route_key' => TelegramRouteKeys::ICE_HOCKEY, 'aliases' => ['ice hockey', 'hockey', 'nhl']],
+            'golf' => ['label' => 'Golf', 'sport' => 'Golf', 'icon' => '⛳', 'route_key' => TelegramRouteKeys::GOLF, 'aliases' => ['golf']],
+            'motorsport' => ['label' => 'Motorsport', 'sport' => 'Motorsport', 'icon' => '🏁', 'route_key' => TelegramRouteKeys::MOTORSPORT_OTHER, 'aliases' => ['motorsport', 'racing']],
             'boxing' => ['label' => 'Boxing', 'sport' => 'Fighting', 'icon' => '🥊', 'route_key' => TelegramRouteKeys::BOXING, 'aliases' => ['boxing']],
         ];
     }

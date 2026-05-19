@@ -406,12 +406,12 @@ class SportsBotController extends Controller
             return response()->json($publisher->send($module, 'admin_api'));
         } catch (Throwable $error) {
             Log::error('sportsbot.admin.fight_fixtures_send_failed', [
-                'route_key' => TelegramRouteKeys::FIGHTS,
+                'route_key' => TelegramRouteKeys::COMBAT_OTHER,
                 'error' => $error->getMessage(),
             ]);
 
             return response()->json([
-                'route_key' => TelegramRouteKeys::FIGHTS,
+                'route_key' => TelegramRouteKeys::COMBAT_OTHER,
                 'sent' => false,
                 'error' => $error->getMessage(),
             ], 422);
@@ -463,12 +463,12 @@ class SportsBotController extends Controller
             return response()->json($publisher->send($module, 'admin_api'));
         } catch (Throwable $error) {
             Log::error('sportsbot.admin.motorsport_fixtures_send_failed', [
-                'route_key' => TelegramRouteKeys::MOTORSPORT,
+                'route_key' => TelegramRouteKeys::FORMULA_1,
                 'error' => $error->getMessage(),
             ]);
 
             return response()->json([
-                'route_key' => TelegramRouteKeys::MOTORSPORT,
+                'route_key' => TelegramRouteKeys::FORMULA_1,
                 'sent' => false,
                 'error' => $error->getMessage(),
             ], 422);
@@ -831,6 +831,7 @@ class SportsBotController extends Controller
                         'event_id' => (string) ($fixture['event_id'] ?? ''),
                         'title' => $this->fixtureTitle($fixture),
                         'league' => (string) ($fixture['league'] ?? ''),
+                        'route_key' => (string) ($fixture['route_key'] ?? ''),
                         'time' => (string) ($fixture['kickoff_label'] ?? $fixture['time'] ?? ''),
                         'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
                         'card_version' => $cardVersion,
@@ -946,6 +947,10 @@ class SportsBotController extends Controller
     {
         $cardDir = storage_path('app/sportsbot/cards');
         $cardFiles = is_dir($cardDir) ? glob($cardDir . '/*.png') ?: [] : [];
+        $storedSettings = $settings->all();
+        $storedSettings['discord_route_webhooks'] = $this->normalizeDiscordWebhookMapValue(
+            $storedSettings['discord_route_webhooks'] ?? config('plugins.SportsBot.discord.route_webhooks', [])
+        );
 
         return response()->json([
             'sports' => SportsBotSports::all(),
@@ -962,7 +967,7 @@ class SportsBotController extends Controller
                 'discord_username' => (string) config('plugins.SportsBot.discord.username', 'SportsBot'),
                 'discord_avatar_url' => (string) config('plugins.SportsBot.discord.avatar_url', ''),
                 'discord_route_webhooks' => (array) config('plugins.SportsBot.discord.route_webhooks', []),
-            ], $settings->all()),
+            ], $storedSettings),
             'route_statuses' => $this->routeStatuses($routingService),
             'card_generation' => [
                 'gd_loaded' => extension_loaded('gd'),
@@ -1002,6 +1007,10 @@ class SportsBotController extends Controller
         ]);
 
         foreach ($validated as $key => $value) {
+            if ($key === 'discord_route_webhooks') {
+                $value = $this->normalizeDiscordWebhookMapValue($value);
+            }
+
             $settings->set($key, $value);
         }
 
@@ -1263,7 +1272,9 @@ class SportsBotController extends Controller
     public function saveTelegramRoute(Request $request, TelegramRoutingService $routingService): JsonResponse
     {
         $validated = $request->validate([
-            'route_key' => ['required', 'string', 'max:100'],
+            'route_key' => ['sometimes', 'string', 'max:100'],
+            'route_keys' => ['sometimes', 'array'],
+            'route_keys.*' => ['string', 'max:100'],
             'label' => ['sometimes', 'nullable', 'string', 'max:255'],
             'chat_id' => ['required', 'string', 'max:255'],
             'message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
@@ -1271,12 +1282,11 @@ class SportsBotController extends Controller
             'fallback' => ['sometimes', 'boolean'],
         ]);
 
-        $routeKey = TelegramRouteKeys::normalize((string) $validated['route_key']);
-
-        if (!in_array($routeKey, TelegramRouteKeys::all(), true)) {
+        $routeKeys = $this->routeKeysFromPayload($validated);
+        if ($routeKeys === []) {
             return response()->json([
                 'saved' => false,
-                'error' => 'Unsupported SportsBot route key.',
+                'error' => 'Choose at least one supported SportsBot route key.',
             ], 422);
         }
 
@@ -1293,28 +1303,45 @@ class SportsBotController extends Controller
             ], 422);
         }
 
-        $route = SportsBotTelegramRoute::query()->updateOrCreate(
-            ['route_key' => $routeKey],
-            [
-                'label' => trim((string) ($validated['label'] ?? '')) ?: $routeKey,
+        $routes = [];
+        foreach ($routeKeys as $routeKey) {
+            $query = SportsBotTelegramRoute::query()
+                ->where('route_key', $routeKey)
+                ->where('chat_id', $target['chat_id']);
+
+            if ($target['message_thread_id'] === null) {
+                $query->whereNull('message_thread_id');
+            } else {
+                $query->where('message_thread_id', $target['message_thread_id']);
+            }
+
+            $route = $query->first() ?? new SportsBotTelegramRoute([
+                'route_key' => $routeKey,
                 'chat_id' => $target['chat_id'],
                 'message_thread_id' => $target['message_thread_id'],
+            ]);
+
+            $route->fill([
+                'label' => trim((string) ($validated['label'] ?? '')) ?: $routeKey,
                 'enabled' => (bool) ($validated['enabled'] ?? true),
                 'fallback' => (bool) ($validated['fallback'] ?? ($routeKey === TelegramRouteKeys::DEFAULT)),
-            ]
-        );
+            ]);
+            $route->save();
+            $routes[] = $route;
 
-        Log::info('sportsbot.admin.telegram_route_saved', [
-            'route_key' => $routeKey,
-            'chat_id' => $route->chat_id,
-            'message_thread_id' => $route->message_thread_id,
-            'enabled' => $route->enabled,
-            'fallback' => $route->fallback,
-        ]);
+            Log::info('sportsbot.admin.telegram_route_saved', [
+                'route_key' => $routeKey,
+                'chat_id' => $route->chat_id,
+                'message_thread_id' => $route->message_thread_id,
+                'enabled' => $route->enabled,
+                'fallback' => $route->fallback,
+            ]);
+        }
 
         return response()->json([
             'saved' => true,
-            'route' => $route,
+            'route' => $routes[0] ?? null,
+            'saved_routes' => $routes,
             'routes' => $this->telegramRoutes(),
             'route_statuses' => $this->routeStatuses($routingService),
         ]);
@@ -1323,9 +1350,15 @@ class SportsBotController extends Controller
     public function deleteTelegramRoute(string $routeKey, TelegramRoutingService $routingService): JsonResponse
     {
         $normalized = TelegramRouteKeys::normalize($routeKey);
-        SportsBotTelegramRoute::query()
-            ->where('route_key', $normalized)
-            ->delete();
+        $query = SportsBotTelegramRoute::query();
+
+        if (ctype_digit($routeKey)) {
+            $query->where('id', (int) $routeKey);
+        } else {
+            $query->where('route_key', $normalized);
+        }
+
+        $query->delete();
 
         return response()->json([
             'deleted' => true,
@@ -1381,16 +1414,17 @@ class SportsBotController extends Controller
     public function saveDiscordRoute(Request $request, SportsBotSettingsService $settings): JsonResponse
     {
         $validated = $request->validate([
-            'route_key' => ['required', 'string', 'max:100'],
+            'route_key' => ['sometimes', 'string', 'max:100'],
+            'route_keys' => ['sometimes', 'array'],
+            'route_keys.*' => ['string', 'max:100'],
             'webhook_url' => ['required', 'string', 'max:500'],
         ]);
 
-        $routeKey = TelegramRouteKeys::normalize((string) $validated['route_key']);
-
-        if (!in_array($routeKey, TelegramRouteKeys::all(), true)) {
+        $routeKeys = $this->routeKeysFromPayload($validated);
+        if ($routeKeys === []) {
             return response()->json([
                 'saved' => false,
-                'error' => 'Unsupported SportsBot route key.',
+                'error' => 'Choose at least one supported SportsBot route key.',
             ], 422);
         }
 
@@ -1402,16 +1436,19 @@ class SportsBotController extends Controller
             ], 422);
         }
 
-        if ($routeKey === TelegramRouteKeys::DEFAULT) {
-            $settings->set('discord_default_webhook_url', $webhookUrl);
-        } else {
-            $routes = $this->discordWebhookMap($settings);
-            $routes[$routeKey] = $webhookUrl;
-            $settings->set('discord_route_webhooks', $routes);
+        $routes = $this->discordWebhookMap($settings);
+        foreach ($routeKeys as $routeKey) {
+            if ($routeKey === TelegramRouteKeys::DEFAULT) {
+                $settings->set('discord_default_webhook_url', $webhookUrl);
+            } else {
+                $routes[$routeKey] = $webhookUrl;
+            }
         }
 
+        $settings->set('discord_route_webhooks', $routes);
+
         Log::info('sportsbot.admin.discord_route_saved', [
-            'route_key' => $routeKey,
+            'route_keys' => $routeKeys,
             'has_webhook' => $webhookUrl !== '',
         ]);
 
@@ -1829,6 +1866,8 @@ class SportsBotController extends Controller
 
         return SportsBotTelegramRoute::query()
             ->orderBy('route_key')
+            ->orderBy('chat_id')
+            ->orderBy('message_thread_id')
             ->get()
             ->all();
     }
@@ -1909,6 +1948,14 @@ class SportsBotController extends Controller
     {
         $value = $settings->get('discord_route_webhooks', config('plugins.SportsBot.discord.route_webhooks', []));
 
+        return $this->normalizeDiscordWebhookMapValue($value);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function normalizeDiscordWebhookMapValue(mixed $value): array
+    {
         if (is_string($value)) {
             $decoded = json_decode($value, true);
             $value = is_array($decoded) ? $decoded : [];
@@ -1919,11 +1966,26 @@ class SportsBotController extends Controller
         }
 
         $routes = [];
+        $supported = array_fill_keys(TelegramRouteKeys::all(), true);
+        $legacy = TelegramRouteKeys::legacyGroupRouteMap();
+
         foreach ($value as $key => $url) {
             $routeKey = TelegramRouteKeys::normalize((string) $key);
             $url = trim((string) $url);
 
-            if ($routeKey !== '' && $url !== '' && $this->isDiscordWebhookUrl($url)) {
+            if ($url === '' || !$this->isDiscordWebhookUrl($url)) {
+                continue;
+            }
+
+            if (isset($legacy[$routeKey])) {
+                foreach ($legacy[$routeKey] as $expandedRouteKey) {
+                    $routes[$expandedRouteKey] ??= $url;
+                }
+
+                continue;
+            }
+
+            if (isset($supported[$routeKey])) {
                 $routes[$routeKey] = $url;
             }
         }
@@ -2168,6 +2230,36 @@ class SportsBotController extends Controller
             static fn (mixed $item): string => trim((string) $item),
             $items
         ))));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<int, string>
+     */
+    private function routeKeysFromPayload(array $payload): array
+    {
+        $raw = [];
+
+        if (isset($payload['route_keys']) && is_array($payload['route_keys'])) {
+            $raw = array_merge($raw, $payload['route_keys']);
+        }
+
+        if (isset($payload['route_key'])) {
+            $raw[] = $payload['route_key'];
+        }
+
+        $supported = array_fill_keys(TelegramRouteKeys::all(), true);
+        $routeKeys = [];
+
+        foreach ($raw as $item) {
+            $routeKey = TelegramRouteKeys::normalize((string) $item);
+
+            if (isset($supported[$routeKey])) {
+                $routeKeys[$routeKey] = $routeKey;
+            }
+        }
+
+        return array_values($routeKeys);
     }
 
     /**

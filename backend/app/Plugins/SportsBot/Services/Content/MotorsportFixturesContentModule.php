@@ -32,7 +32,7 @@ class MotorsportFixturesContentModule implements SportsBotContentModuleInterface
 
     public function routeKey(): string
     {
-        return TelegramRouteKeys::MOTORSPORT;
+        return TelegramRouteKeys::FORMULA_1;
     }
 
     public function buildSummary(): array

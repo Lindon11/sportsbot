@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
         <h1 class="text-2xl font-bold text-white">SportsBot Motorsport Fixtures TV</h1>
-        <p class="text-slate-400 text-sm mt-1">Preview today's F1, MotoGP, NASCAR, IndyCar, WRC and race listings for the MOTORSPORT Telegram topic.</p>
+        <p class="text-slate-400 text-sm mt-1">Preview today's F1, MotoGP, NASCAR, IndyCar, WRC and race listings for their assigned Telegram topics.</p>
       </div>
       <button
         @click="loadPreview"
@@ -39,7 +39,7 @@
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 class="text-lg font-semibold text-white">Motorsport Topic Preview</h2>
-          <p class="text-xs text-slate-400">Route: MOTORSPORT · one card per event · no inline buttons</p>
+          <p class="text-xs text-slate-400">Routes: {{ displayRoutes }} · one card per event · no inline buttons</p>
         </div>
         <div class="flex items-center gap-2">
           <select v-model="cardVersion" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" @change="loadPreview">
@@ -52,16 +52,16 @@
             Include captions
           </label>
           <button @click="testRoute" :disabled="testingRoute" class="px-4 py-2 rounded-xl bg-cyan-700 text-white hover:bg-cyan-600 disabled:opacity-60">
-            {{ testingRoute ? 'Testing...' : 'Test Motorsport Route' }}
+            {{ testingRoute ? 'Testing...' : 'Test Routes' }}
           </button>
           <button @click="sendMotorsportFixtures" :disabled="sending" class="px-4 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-60">
-            {{ sending ? 'Sending...' : 'Send to Motorsport Topic' }}
+            {{ sending ? 'Sending...' : 'Send to Assigned Topics' }}
           </button>
         </div>
       </div>
 
       <div v-if="routeStatus.fallback" class="rounded-xl border border-amber-600/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-        MOTORSPORT is falling back to the default Telegram target. Assign the MOTORSPORT route in Telegram Routes before sending to the topic.
+        One or more motorsport routes are falling back to the default Telegram target. Assign the series routes in Telegram Routes before sending.
       </div>
 
       <pre class="whitespace-pre-wrap text-sm text-slate-100 bg-slate-900/80 border border-slate-700 rounded-xl p-4 min-h-[260px]">{{ previewMessage || 'No preview loaded yet.' }}</pre>
@@ -83,7 +83,7 @@
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
-      <h2 class="text-lg font-semibold text-white mb-4">Recent MOTORSPORT Sends</h2>
+      <h2 class="text-lg font-semibold text-white mb-4">Recent Motorsport Sends</h2>
       <div v-if="recentMessages.length === 0" class="text-sm text-slate-400">No recent motorsport sends.</div>
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -114,7 +114,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 
@@ -129,6 +129,9 @@ const cardPreviews = ref([])
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
+const routeKeysForActions = ref(['FORMULA_1'])
+
+const displayRoutes = computed(() => routeKeysForActions.value.join(', '))
 
 function statusClass(status) {
   if (status === 'sent') return 'bg-emerald-500/20 text-emerald-400'
@@ -139,10 +142,15 @@ function statusClass(status) {
 
 async function loadRecentMessages() {
   try {
-    const { data } = await api.get('/admin/sportsbot/telegram/messages', {
-      params: { route_key: 'MOTORSPORT', limit: 20 },
-    })
-    recentMessages.value = data.messages || []
+    const responses = await Promise.all(routeKeysForActions.value.map((routeKey) => (
+      api.get('/admin/sportsbot/telegram/messages', {
+        params: { route_key: routeKey, limit: 20 },
+      })
+    )))
+    recentMessages.value = responses
+      .flatMap((response) => response.data?.messages || [])
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .slice(0, 20)
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to load recent motorsport sends')
   }
@@ -158,6 +166,10 @@ async function loadPreview() {
     routeStatus.value = data.route_status || {}
     summary.value = data.summary || {}
     cardPreviews.value = data.card_previews || []
+    routeKeysForActions.value = uniqueRouteKeys([
+      data.route_key,
+      ...(data.card_previews || []).map((card) => card.route_key),
+    ])
     captionsEnabled.value = Boolean(data.captions_enabled)
     cardVersion.value = data.card_version || cardVersion.value
     await loadRecentMessages()
@@ -171,12 +183,15 @@ async function loadPreview() {
 async function testRoute() {
   testingRoute.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/test-route', {
-      route_key: 'MOTORSPORT',
-      send: true,
-    })
-    routeStatus.value = data.resolved || routeStatus.value
-    toast.success(`Motorsport route test sent (${(data.results || []).length} target(s))`)
+    const responses = await Promise.all(routeKeysForActions.value.map((routeKey) => (
+      api.post('/admin/sportsbot/test-route', {
+        route_key: routeKey,
+        send: true,
+      })
+    )))
+    const sentCount = responses.reduce((carry, response) => carry + (response.data?.results || []).length, 0)
+    routeStatus.value = aggregateRouteStatuses(responses.map((response) => response.data?.resolved || {}))
+    toast.success(`Motorsport route tests sent (${sentCount} target(s))`)
     await loadRecentMessages()
   } catch (error) {
     toast.error(error?.response?.data?.error || 'Motorsport route test failed')
@@ -205,4 +220,20 @@ async function sendMotorsportFixtures() {
 }
 
 onMounted(loadPreview)
+
+function uniqueRouteKeys(items) {
+  const keys = [...new Set(items.map(item => String(item || '').trim()).filter(Boolean))]
+
+  return keys.length > 0 ? keys : ['FORMULA_1']
+}
+
+function aggregateRouteStatuses(statuses) {
+  const filtered = statuses.filter(Boolean)
+
+  return {
+    resolved_route_key: uniqueRouteKeys(filtered.map(status => status.resolved_route_key || status.route_key)).join(', '),
+    fallback: filtered.some(status => Boolean(status.fallback)),
+    target_count: filtered.reduce((total, status) => total + Number(status.target_count || 0), 0),
+  }
+}
 </script>
