@@ -42,3 +42,7 @@ license_private.pem
 # Ignore per-project npm cache used during containerized builds
 frontend/.npm-cache
 .npm-cache
+
+# SportsBot environment audit snapshots
+sportsbot-env-*.json
+storage/app/sportsbot/env/
