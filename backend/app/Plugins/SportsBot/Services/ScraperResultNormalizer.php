@@ -34,6 +34,7 @@ class ScraperResultNormalizer
         $sourceUrls = [];
         $providers = [];
         $bestConfidence = 0.0;
+        $consensus = [];
 
         foreach ($results as $result) {
             if (!is_array($result)) {
@@ -69,10 +70,38 @@ class ScraperResultNormalizer
                         'confidence' => $confidence,
                     ];
                 }
+
+                if (in_array($field, ['tv_channels', 'f1_sessions'], true) || $this->isEmptyValue($value)) {
+                    continue;
+                }
+
+                $sig = $this->consensusSignature($field, $value);
+                if ($sig !== null) {
+                    $consensus[$field][$sig][$provider] = true;
+                }
             }
 
             $bestConfidence = max($bestConfidence, $confidence);
         }
+
+        $consensusBoost = 0.0;
+        $agreements = [];
+        foreach ($consensus as $field => $signatures) {
+            foreach ($signatures as $sig => $providersSet) {
+                $uniqueCount = count($providersSet);
+                if ($uniqueCount >= 2) {
+                    $boost = ($uniqueCount - 1) * 0.15;
+                    $consensusBoost = max($consensusBoost, $boost);
+                    $agreements[] = [
+                        'field' => $field,
+                        'agreeing_providers' => $uniqueCount,
+                        'boost' => $boost,
+                    ];
+                }
+            }
+        }
+
+        $finalConfidence = min(0.95, $bestConfidence + $consensusBoost);
 
         return [
             'fields' => $fields,
@@ -80,9 +109,25 @@ class ScraperResultNormalizer
             'fields_found' => array_keys($fields),
             'source_urls' => array_values($sourceUrls),
             'providers' => array_values($providers),
-            'confidence' => $bestConfidence,
+            'confidence' => $finalConfidence,
+            'confidence_breakdown' => [
+                'best_single' => round($bestConfidence, 2),
+                'consensus_boost' => round($consensusBoost, 2),
+                'agreements' => $agreements,
+            ],
             'normalized_at' => now()->toISOString(),
         ];
+    }
+
+    private function consensusSignature(string $field, mixed $value): ?string
+    {
+        if (is_array($value)) {
+            return null;
+        }
+
+        $sig = strtolower(trim(preg_replace('/\s+/', ' ', (string) $value) ?? ''));
+
+        return $sig !== '' ? $sig : null;
     }
 
     /**
