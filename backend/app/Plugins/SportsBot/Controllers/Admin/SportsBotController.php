@@ -14,6 +14,7 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
+use App\Plugins\SportsBot\Services\Content\HighlightsContentModule;
 use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
