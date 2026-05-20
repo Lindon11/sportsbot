@@ -202,7 +202,11 @@
             >
               <button class="text-left flex-1" @click="editRoute(route)">
                 <p class="text-white font-medium">{{ route.route_key }}</p>
-                <p class="text-xs text-slate-400">{{ route.chat_id }}:{{ route.message_thread_id ?? '-' }} · {{ route.label }}</p>
+                <p class="text-xs text-slate-400">
+                  <span v-if="topicName(route)" class="text-emerald-400">{{ topicName(route) }}</span>
+                  <span v-else class="text-slate-500">{{ route.chat_id }}:{{ route.message_thread_id ?? '-' }}</span>
+                  <span class="text-slate-500"> · {{ route.label }}</span>
+                </p>
                 <p v-if="route.branding?.watermark" class="text-xs text-amber-400 mt-1">Watermark: {{ route.branding.watermark }}</p>
               </button>
             <button
@@ -259,7 +263,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 
@@ -277,6 +281,20 @@ const topics = ref([])
 const routeStatuses = ref({})
 const diagnostics = ref({})
 const selectedTopicKey = ref('')
+
+const topicNames = computed(() => {
+  const map = {}
+  for (const topic of topics.value) {
+    const key = `${topic.chat_id}:${topic.message_thread_id ?? ''}`
+    map[key] = topic.title || 'Untitled'
+  }
+  return map
+})
+
+function topicName(route) {
+  const key = `${route.chat_id}:${route.message_thread_id ?? ''}`
+  return topicNames.value[key] || null
+}
 
 const form = reactive({
   route_keys: ['FIXTURES_TODAY'],
