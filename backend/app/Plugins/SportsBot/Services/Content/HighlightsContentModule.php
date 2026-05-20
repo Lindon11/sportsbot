@@ -47,7 +47,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
 
         $highlights = [];
         $sportKeys = array_keys(SportsBotSports::all());
-        $daysBack = 7;
+        $daysBack = 1;
 
         foreach ($sportKeys as $sportKey) {
             try {
