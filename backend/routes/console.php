@@ -127,6 +127,8 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                         'total' => count($result['results'] ?? []),
                         'sent' => (bool) ($result['sent'] ?? false),
                     ]);
+
+                    \App\Plugins\SportsBot\Models\SportsBotHighlightSent::where('sent_at', '<', now()->subDays(3))->delete();
                 } catch (\Throwable $error) {
                     \Illuminate\Support\Facades\Log::warning('sportsbot.highlights.scheduled_failed', [
                         'error' => $error->getMessage(),
