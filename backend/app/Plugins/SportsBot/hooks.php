@@ -36,6 +36,7 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
         'order' => 75,
         'plugin' => 'sportsbot',
         'children' => [
+            // Overview
             [
                 'route' => '/sportsbot/dashboard',
                 'label' => 'Dashboard',
@@ -54,22 +55,18 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'icon' => 'ClockIcon',
                 'plugin' => 'sportsbot',
             ],
+
+            // Fixture Content
             [
                 'route' => '/sportsbot/football-fixtures',
-                'label' => 'Football Fixtures TV',
+                'label' => 'Football TV',
                 'icon' => 'TvIcon',
                 'plugin' => 'sportsbot',
             ],
             [
                 'route' => '/sportsbot/rugby-fixtures',
-                'label' => 'Rugby Fixtures TV',
+                'label' => 'Rugby TV',
                 'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/highlights',
-                'label' => 'Highlights',
-                'icon' => 'PlayIcon',
                 'plugin' => 'sportsbot',
             ],
             [
@@ -97,6 +94,14 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/highlights',
+                'label' => 'Highlights',
+                'icon' => 'PlayIcon',
+                'plugin' => 'sportsbot',
+            ],
+
+            // Routing
+            [
                 'route' => '/sportsbot/routing',
                 'label' => 'Telegram Routes',
                 'icon' => 'MapIcon',
@@ -108,6 +113,8 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'icon' => 'MapIcon',
                 'plugin' => 'sportsbot',
             ],
+
+            // Configuration
             [
                 'route' => '/sportsbot/coverage',
                 'label' => 'Coverage Settings',
@@ -132,6 +139,8 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'icon' => 'CommandLineIcon',
                 'plugin' => 'sportsbot',
             ],
+
+            // Queue & Maintenance
             [
                 'route' => '/sportsbot/fixture-queue',
                 'label' => 'Fixture Queue',
