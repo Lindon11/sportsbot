@@ -46,6 +46,8 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
         }
 
         $highlights = [];
+        $sentCacheKey = 'sportsbot:highlights_sent';
+        $sentIds = \Illuminate\Support\Facades\Cache::get($sentCacheKey, []);
         $sportKeys = array_keys(SportsBotSports::all());
         $daysBack = 1;
 
@@ -60,7 +62,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                             $video = trim((string) ($event['strVideo'] ?? ''));
 
                             $eventId = trim((string) ($event['idEvent'] ?? ''));
-                            if ($eventId === '' || isset($alreadySeen[$eventId])) {
+                            if ($eventId === '' || isset($alreadySeen[$eventId]) || isset($sentIds[$eventId])) {
                                 continue;
                             }
                             $alreadySeen[$eventId] = true;

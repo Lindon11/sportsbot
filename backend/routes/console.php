@@ -107,7 +107,21 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                 $publisher = app(\App\Plugins\SportsBot\Services\SportsBotPublisher::class);
 
                 try {
+                    $summary = $module->buildSummary();
+                    $eventIds = array_map(fn (array $h): string => (string) ($h['event_id'] ?? ''), $summary['highlights'] ?? []);
+
                     $result = $publisher->send($module, 'schedule');
+
+                    // Mark these events as sent so they aren't re-sent next cycle
+                    $sentCacheKey = 'sportsbot:highlights_sent';
+                    $sentIds = \Illuminate\Support\Facades\Cache::get($sentCacheKey, []);
+                    foreach ($eventIds as $eid) {
+                        if ($eid !== '') {
+                            $sentIds[$eid] = true;
+                        }
+                    }
+                    \Illuminate\Support\Facades\Cache::put($sentCacheKey, $sentIds, now()->addHours(36));
+
                     \Illuminate\Support\Facades\Log::info('sportsbot.highlights.scheduled_sent', [
                         'total' => count($result['results'] ?? []),
                         'sent' => (bool) ($result['sent'] ?? false),
