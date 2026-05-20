@@ -66,7 +66,7 @@ if ((bool) config('plugins.SportsBot.enabled')) {
     if ((bool) sportsbotSetting('fixture_queue_schedule_enabled', config('plugins.SportsBot.publishing.fixture_queue.enabled'))) {
         if ((bool) sportsbotSetting('fixture_queue_prefetch_enabled', config('plugins.SportsBot.publishing.fixture_queue.prefetch_enabled', true))) {
             Schedule::command('sportsbot:fixtures-prefetch')
-                ->dailyAt((string) sportsbotSetting('fixture_queue_prefetch_time', config('plugins.SportsBot.publishing.fixture_queue.prefetch_time', '05:00')))
+                ->dailyAt((string) sportsbotSetting('fixture_queue_prefetch_time', config('plugins.SportsBot.publishing.fixture_queue.prefetch_time', '00:00')))
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-fixture-queue-prefetch.log'));
@@ -93,12 +93,11 @@ if ((bool) config('plugins.SportsBot.enabled')) {
         }
 
         if ((bool) sportsbotSetting('fixture_queue_publish_enabled', config('plugins.SportsBot.publishing.fixture_queue.publish_enabled', true))) {
-            $publish = Schedule::command('sportsbot:fixtures-publish')
+            Schedule::command('sportsbot:fixtures-publish')
+                ->dailyAt((string) sportsbotSetting('fixture_queue_publish_time', config('plugins.SportsBot.publishing.fixture_queue.publish_time', '00:00')))
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-fixture-queue-publish.log'));
-
-            sportsbotScheduleFrequency($publish, (string) sportsbotSetting('fixture_queue_publish_frequency', config('plugins.SportsBot.publishing.fixture_queue.publish_frequency', 'everyFiveMinutes')));
         }
 
         if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {

@@ -865,7 +865,7 @@ return [
         'fixture_queue' => [
             'enabled' => env('SPORTSBOT_FIXTURE_QUEUE_SCHEDULE_ENABLED', false),
             'prefetch_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_ENABLED', true),
-            'prefetch_time' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_TIME', '05:00'),
+            'prefetch_time' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_TIME', '00:00'),
             'enrich_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_ENABLED', true),
             'enrich_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_FREQUENCY', 'everyThirtyMinutes'),
             'enrich_days' => (int) env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_DAYS', 2),
@@ -874,6 +874,7 @@ return [
             'render_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_RENDER_FREQUENCY', 'everyTenMinutes'),
             'publish_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_PUBLISH_ENABLED', true),
             'publish_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_PUBLISH_FREQUENCY', 'everyFiveMinutes'),
+            'publish_time' => env('SPORTSBOT_FIXTURE_QUEUE_PUBLISH_TIME', '00:00'),
             'allow_gd_fallback_publish' => env('SPORTSBOT_FIXTURE_QUEUE_ALLOW_GD_FALLBACK_PUBLISH', false),
             'fallback_retry_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_FALLBACK_RETRY_ENABLED', true),
             'fallback_retry_minutes' => (int) env('SPORTSBOT_FIXTURE_QUEUE_FALLBACK_RETRY_MINUTES', 30),

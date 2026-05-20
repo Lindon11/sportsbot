@@ -86,7 +86,10 @@
             <input v-model="form.fixture_queue_publish_enabled" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
             Publish cards
           </label>
-          <FrequencySelect v-model="form.fixture_queue_publish_frequency" :frequencies="frequencies" label="Frequency" compact />
+          <label class="block">
+            <span class="block text-xs text-slate-400 mb-1">Daily time</span>
+            <input v-model="form.fixture_queue_publish_time" type="time" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2">
+          </label>
         </div>
       </div>
     </section>
@@ -108,7 +111,7 @@ const form = reactive({
   schedule_frequency: 'everyTwoMinutes',
   fixture_queue_schedule_enabled: false,
   fixture_queue_prefetch_enabled: true,
-  fixture_queue_prefetch_time: '05:00',
+  fixture_queue_prefetch_time: '00:00',
   fixture_queue_enrich_enabled: true,
   fixture_queue_enrich_frequency: 'everyThirtyMinutes',
   fixture_queue_enrich_days: 2,
@@ -116,7 +119,7 @@ const form = reactive({
   fixture_queue_render_enabled: true,
   fixture_queue_render_frequency: 'everyTenMinutes',
   fixture_queue_publish_enabled: true,
-  fixture_queue_publish_frequency: 'everyFiveMinutes',
+  fixture_queue_publish_time: '00:00',
   highlights_schedule_enabled: true,
   highlights_schedule_frequency: 'everyThirtyMinutes',
 })
@@ -203,7 +206,7 @@ function flattenSettings(settings) {
     fixture_queue_render_enabled: settings.fixture_queue?.render_enabled ?? true,
     fixture_queue_render_frequency: settings.fixture_queue?.render_frequency || 'everyTenMinutes',
     fixture_queue_publish_enabled: settings.fixture_queue?.publish_enabled ?? true,
-    fixture_queue_publish_frequency: settings.fixture_queue?.publish_frequency || 'everyFiveMinutes',
+    fixture_queue_publish_time: settings.fixture_queue?.publish_time || '00:00',
     highlights_schedule_enabled: settings.highlights?.enabled ?? true,
     highlights_schedule_frequency: settings.highlights?.frequency || 'everyThirtyMinutes',
   }
