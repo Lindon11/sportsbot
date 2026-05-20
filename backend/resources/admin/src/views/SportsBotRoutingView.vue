@@ -315,7 +315,11 @@ const manualTopic = reactive({
 
 function targetText(targets) {
   if (!targets.length) return 'No targets resolved'
-  return targets.map(target => `${target.chat_id}:${target.message_thread_id ?? '-'}`).join(', ')
+  return targets.map(target => {
+    const key = `${target.chat_id}:${target.message_thread_id ?? ''}`
+    const name = topicNames.value[key]
+    return name ? `${name}` : `${target.chat_id}:${target.message_thread_id ?? '-'}`
+  }).join(', ')
 }
 
 function topicKey(topic) {
