@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Controllers\Admin;
 
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
+use App\Plugins\SportsBot\Models\SportsBotHighlightSent;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotPipelineRun;
 use App\Plugins\SportsBot\Models\SportsBotRun;
@@ -777,12 +778,13 @@ class SportsBotController extends Controller
                 }
             }
 
-            $sentCacheKey = 'sportsbot:highlights_sent';
-            $sentIds = \Illuminate\Support\Facades\Cache::get($sentCacheKey, []);
             foreach (array_keys($sentEventIds) as $eid) {
-                $sentIds[$eid] = true;
+                SportsBotHighlightSent::query()->upsert(
+                    ['event_id' => $eid, 'sent_at' => now()],
+                    'event_id',
+                    ['sent_at' => now()]
+                );
             }
-            \Illuminate\Support\Facades\Cache::put($sentCacheKey, $sentIds, now()->addHours(36));
 
             return response()->json([
                 'sent' => $results !== [],

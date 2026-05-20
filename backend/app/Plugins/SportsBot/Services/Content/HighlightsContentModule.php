@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services\Content;
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
+use App\Plugins\SportsBot\Models\SportsBotHighlightSent;
 use App\Plugins\SportsBot\Services\TheSportsDbClient;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
@@ -43,8 +44,11 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
     public function buildSummary(): array
     {
         $candidates = [];
-        $sentCacheKey = 'sportsbot:highlights_sent';
-        $sentIds = Cache::get($sentCacheKey, []);
+        $sentIds = SportsBotHighlightSent::query()
+            ->where('sent_at', '>', now()->subHours(36))
+            ->pluck('event_id')
+            ->flip()
+            ->all();
         $sportKeys = array_keys(SportsBotSports::all());
         $daysBack = 1;
         $providerTotal = 0;
@@ -127,7 +131,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             }
 
             $matchedTotal++;
-            if ($this->sentCacheContains((array) $sentIds, $eventId)) {
+            if (isset($sentIds[$eventId])) {
                 $alreadySentTotal++;
                 continue;
             }
@@ -483,18 +487,6 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             'target' => (string) ($delivery->target ?? ''),
             'sent_at' => $delivery->sent_at?->toIso8601String(),
         ];
-    }
-
-    /**
-     * @param array<string, mixed> $sentIds
-     */
-    private function sentCacheContains(array $sentIds, string $eventId): bool
-    {
-        if (isset($sentIds[$eventId])) {
-            return true;
-        }
-
-        return in_array($eventId, array_map('strval', array_values($sentIds)), true);
     }
 
     /**
