@@ -150,6 +150,9 @@ class SportsBotPublisher
                                 ['text' => '▶️ Watch Highlights', 'url' => $videoUrl],
                             ]],
                         ];
+                        $cardOptions['embed_url'] = $videoUrl;
+                        $cardOptions['embed_title'] = '▶ Watch Highlights';
+                        $cardOptions['embed_footer'] = 'Highlights';
                     }
                     foreach ($this->notifier->sendPhoto((string) $card['path'], '', $cardOptions) as $result) {
                         $results[] = $result;
