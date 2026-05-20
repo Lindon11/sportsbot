@@ -6,8 +6,6 @@ class TelegramRouteKeys
 {
     public const DEFAULT = 'default';
     public const FIXTURES_TODAY = 'FIXTURES_TODAY';
-
-    public const LEAGUE_TABLES = 'LEAGUE_TABLES';
     public const FOOTBALL = 'FOOTBALL';
     public const BASKETBALL = 'BASKETBALL';
     public const BASEBALL = 'BASEBALL';
@@ -52,7 +50,6 @@ class TelegramRouteKeys
         return [
             self::DEFAULT,
             self::FIXTURES_TODAY,
-            self::LEAGUE_TABLES,
             self::FOOTBALL,
             self::BASKETBALL,
             self::BASEBALL,
