@@ -163,10 +163,47 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
     public function renderCards(array $summary, string $cardVersion = 'v3'): array
     {
         $cards = [];
-        foreach (array_slice($summary['highlights'] ?? [], 0, 10) as $h) {
+        $highlights = array_slice($summary['highlights'] ?? [], 0, 10);
+        $currentLeague = null;
+
+        foreach ($highlights as $h) {
+            $leagueName = trim((string) ($h['league'] ?? ''));
+
+            // League header card when league changes
+            if ($leagueName !== '' && $leagueName !== $currentLeague) {
+                $currentLeague = $leagueName;
+
+                $leagueInfo = [
+                    'name' => $leagueName,
+                    'sport' => SportsBotSports::providerSport($h['sport_key']),
+                    'badge' => $h['league_badge'] ?? '',
+                    'logo' => $h['league_badge'] ?? '',
+                    'date' => $h['date'] ?? '',
+                ];
+
+                try {
+                    $leagueCard = $this->cards->leagueCard($leagueInfo, $cardVersion, [
+                        'route_key' => TelegramRouteKeys::HIGHLIGHTS,
+                    ]);
+                    $leaguePath = (string) ($leagueCard['path'] ?? '');
+                    if ($leaguePath !== '' && is_file($leaguePath)) {
+                        $cards[] = [
+                            'path' => $leaguePath,
+                            'type' => 'league_header',
+                            'event_name' => $leagueName . ' Results',
+                            'video_url' => '',
+                        ];
+                    }
+                } catch (Throwable) {
+                    // Skip header if render fails
+                }
+            }
+
+            // Result card
             try {
                 $eventId = $h['event_id'] ?? '';
                 $stats = [];
+
                 if ($eventId !== '') {
                     try {
                         $rows = $this->provider->lookupEventStats($eventId);
@@ -227,6 +264,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                 if ($path !== '' && is_file($path)) {
                     $cards[] = [
                         'path' => $path,
+                        'type' => 'result',
                         'event_name' => $h['event_name'],
                         'video_url' => $h['video_url'],
                         'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),

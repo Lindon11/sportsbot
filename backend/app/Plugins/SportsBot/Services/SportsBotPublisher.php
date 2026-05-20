@@ -143,23 +143,28 @@ class SportsBotPublisher
                         continue;
                     }
                     $cardOptions = $options;
-                    $videoUrl = trim((string) ($card['video_url'] ?? ''));
-                    if ($videoUrl !== '') {
-                        $cardOptions['reply_markup'] = [
-                            'inline_keyboard' => [[
-                                ['text' => '▶️ Watch Highlights', 'url' => $videoUrl],
-                            ]],
-                        ];
-                        $cardOptions['embed_url'] = $videoUrl;
-                        $cardOptions['embed_title'] = '▶ Watch Highlights';
-                        $cardOptions['embed_footer'] = 'Highlights';
-                    } else {
-                        $cardOptions['reply_markup'] = [
-                            'inline_keyboard' => [[
-                                ['text' => '❌ No Highlights Available', 'callback_data' => 'none'],
-                            ]],
-                        ];
+                    $cardType = $card['type'] ?? 'result';
+
+                    if ($cardType === 'result') {
+                        $videoUrl = trim((string) ($card['video_url'] ?? ''));
+                        if ($videoUrl !== '') {
+                            $cardOptions['reply_markup'] = [
+                                'inline_keyboard' => [[
+                                    ['text' => '▶️ Watch Highlights', 'url' => $videoUrl],
+                                ]],
+                            ];
+                            $cardOptions['embed_url'] = $videoUrl;
+                            $cardOptions['embed_title'] = '▶ Watch Highlights';
+                            $cardOptions['embed_footer'] = 'Highlights';
+                        } else {
+                            $cardOptions['reply_markup'] = [
+                                'inline_keyboard' => [[
+                                    ['text' => '❌ No Highlights Available', 'callback_data' => 'none'],
+                                ]],
+                            ];
+                        }
                     }
+
                     foreach ($this->notifier->sendPhoto((string) $card['path'], '', $cardOptions) as $result) {
                         $results[] = $result;
                     }
