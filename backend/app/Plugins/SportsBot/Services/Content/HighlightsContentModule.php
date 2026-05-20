@@ -58,9 +58,6 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                         $events = $this->provider->previousLeagueEvents((string) $leagueId);
                         foreach ($events as $event) {
                             $video = trim((string) ($event['strVideo'] ?? ''));
-                            if ($video === '') {
-                                continue;
-                            }
 
                             $eventId = trim((string) ($event['idEvent'] ?? ''));
                             if ($eventId === '' || isset($alreadySeen[$eventId])) {
