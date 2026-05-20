@@ -3,12 +3,15 @@
 namespace App\Plugins\SportsBot\Services\Content;
 
 use App\Plugins\SportsBot\Contracts\SportsBotContentModuleInterface;
+use App\Plugins\SportsBot\Models\SportsBotDelivery;
+use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Services\TheSportsDbClient;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -39,22 +42,19 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
 
     public function buildSummary(): array
     {
-        $cacheKey = 'sportsbot:highlights_summary';
-        $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        $highlights = [];
+        $candidates = [];
         $sentCacheKey = 'sportsbot:highlights_sent';
-        $sentIds = \Illuminate\Support\Facades\Cache::get($sentCacheKey, []);
+        $sentIds = Cache::get($sentCacheKey, []);
         $sportKeys = array_keys(SportsBotSports::all());
         $daysBack = 1;
+        $providerTotal = 0;
+        $emptyEventIds = 0;
+        $duplicateEventIds = 0;
+        $outsideWindow = 0;
 
         foreach ($sportKeys as $sportKey) {
             try {
                 $leagueIds = $this->leagueIdsForSport($sportKey);
-                $alreadySeen = [];
                 foreach ($leagueIds as $leagueId) {
                     try {
                         $events = $this->provider->previousLeagueEvents((string) $leagueId);
@@ -62,13 +62,19 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                             $video = trim((string) ($event['strVideo'] ?? ''));
 
                             $eventId = trim((string) ($event['idEvent'] ?? ''));
-                            if ($eventId === '' || isset($alreadySeen[$eventId]) || isset($sentIds[$eventId])) {
+                            if ($eventId === '') {
+                                $emptyEventIds++;
                                 continue;
                             }
-                            $alreadySeen[$eventId] = true;
+
+                            if (isset($candidates[$eventId])) {
+                                $duplicateEventIds++;
+                                continue;
+                            }
 
                             $eventDate = trim((string) ($event['dateEvent'] ?? ''));
                             if ($eventDate < Carbon::today()->subDays($daysBack)->toDateString()) {
+                                $outsideWindow++;
                                 continue;
                             }
 
@@ -79,7 +85,8 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                             $awayScore = $event['intAwayScore'] ?? null;
                             $score = $homeScore !== null && $awayScore !== null ? "{$homeScore}-{$awayScore}" : '';
 
-                            $highlights[] = [
+                            $providerTotal++;
+                            $candidates[$eventId] = [
                                 'event_id' => $eventId,
                                 'sport' => SportsBotSports::label($sportKey),
                                 'sport_key' => $sportKey,
@@ -108,6 +115,26 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             }
         }
 
+        $highlights = [];
+        $matchedTotal = 0;
+        $alreadySentTotal = 0;
+        $sentFixtures = $this->sentFixturesByEventId(array_keys($candidates));
+
+        foreach ($candidates as $eventId => $highlight) {
+            $fixtureEntry = $sentFixtures[$eventId] ?? null;
+            if (!$fixtureEntry instanceof SportsBotFixtureQueue) {
+                continue;
+            }
+
+            $matchedTotal++;
+            if ($this->sentCacheContains((array) $sentIds, $eventId)) {
+                $alreadySentTotal++;
+                continue;
+            }
+
+            $highlights[] = $this->withPostedFixtureMetadata($highlight, $fixtureEntry);
+        }
+
         usort($highlights, fn (array $a, array $b): int => ($b['date'] ?? '') <=> ($a['date'] ?? ''));
 
         $summary = [
@@ -115,10 +142,27 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             'title' => 'Match Highlights',
             'highlights' => $highlights,
             'total' => count($highlights),
+            'provider_total' => $providerTotal,
+            'matched_total' => $matchedTotal,
+            'filtered_unposted_total' => max(0, $providerTotal - $matchedTotal),
+            'already_sent_total' => $alreadySentTotal,
+            'filtered_out_total' => max(0, $providerTotal - count($highlights)),
+            'filter' => [
+                'source' => 'sportsbot_fixture_queue',
+                'required_status' => SportsBotFixtureQueue::STATUS_SENT,
+                'requires_sent_at' => true,
+                'requires_delivery_proof' => [
+                    'telegram_message_id',
+                    'sportsbot_deliveries:discord',
+                    'sportsbot_deliveries:discord_bot',
+                ],
+                'match_key' => 'event_id',
+                'empty_event_ids' => $emptyEventIds,
+                'duplicate_event_ids' => $duplicateEventIds,
+                'outside_window' => $outsideWindow,
+            ],
             'generated_at' => Carbon::now()->toIso8601String(),
         ];
-
-        \Illuminate\Support\Facades\Cache::put($cacheKey, $summary, now()->addMinutes(60));
 
         return $summary;
     }
@@ -192,6 +236,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                         $cards[] = [
                             'path' => $leaguePath,
                             'type' => 'league_header',
+                            'event_id' => '',
                             'event_name' => $leagueName . ' Results',
                             'video_url' => '',
                         ];
@@ -267,6 +312,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                     $cards[] = [
                         'path' => $path,
                         'type' => 'result',
+                        'event_id' => (string) ($h['event_id'] ?? ''),
                         'event_name' => $h['event_name'],
                         'video_url' => $h['video_url'],
                         'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
@@ -277,6 +323,223 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             }
         }
         return $cards;
+    }
+
+    /**
+     * @param array<int, string> $eventIds
+     * @return array<string, SportsBotFixtureQueue>
+     */
+    private function sentFixturesByEventId(array $eventIds): array
+    {
+        $eventIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $eventId): string => trim((string) $eventId),
+            $eventIds
+        ), static fn (string $eventId): bool => $eventId !== '')));
+
+        if ($eventIds === []) {
+            return [];
+        }
+
+        try {
+            $rows = SportsBotFixtureQueue::query()
+                ->whereIn('event_id', $eventIds)
+                ->where('status', SportsBotFixtureQueue::STATUS_SENT)
+                ->whereNotNull('sent_at')
+                ->orderByDesc('sent_at')
+                ->orderByDesc('id')
+                ->get();
+        } catch (Throwable $error) {
+            Log::warning('sportsbot.highlights.fixture_queue_lookup_failed', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        $discordProofs = $this->discordDeliveryProofsForFixtures($rows->all(), $eventIds);
+        $sent = [];
+        foreach ($rows as $row) {
+            $eventId = (string) $row->event_id;
+            if ($eventId === '' || isset($sent[$eventId])) {
+                continue;
+            }
+
+            $proof = $this->deliveryProofForFixture($row, $discordProofs);
+            if ($proof === null) {
+                continue;
+            }
+
+            $row->setAttribute('delivery_proof', $proof);
+            if ($eventId !== '') {
+                $sent[$eventId] = $row;
+            }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * @param array<int, SportsBotFixtureQueue> $entries
+     * @param array<int, string> $eventIds
+     * @return array{by_queue_id:array<int,array<string,mixed>>,by_event_id:array<string,array<string,mixed>>}
+     */
+    private function discordDeliveryProofsForFixtures(array $entries, array $eventIds): array
+    {
+        $queueIds = [];
+        foreach ($entries as $entry) {
+            if ($entry instanceof SportsBotFixtureQueue) {
+                $queueIds[] = (int) $entry->id;
+            }
+        }
+
+        $queueLookup = array_fill_keys($queueIds, true);
+        $eventLookup = array_fill_keys($eventIds, true);
+        $proofs = [
+            'by_queue_id' => [],
+            'by_event_id' => [],
+        ];
+
+        if ($queueLookup === [] && $eventLookup === []) {
+            return $proofs;
+        }
+
+        try {
+            $deliveries = SportsBotDelivery::query()
+                ->whereIn('platform', ['discord', 'discord_bot'])
+                ->where('status', 'sent')
+                ->whereNotNull('message_id')
+                ->where(function ($query): void {
+                    $query->where('sent_at', '>=', now()->subDays(3))
+                        ->orWhere('created_at', '>=', now()->subDays(3));
+                })
+                ->orderByDesc('sent_at')
+                ->orderByDesc('id')
+                ->limit(1000)
+                ->get();
+        } catch (Throwable $error) {
+            Log::warning('sportsbot.highlights.discord_delivery_lookup_failed', [
+                'error' => $error->getMessage(),
+            ]);
+
+            return $proofs;
+        }
+
+        foreach ($deliveries as $delivery) {
+            $messageId = trim((string) ($delivery->message_id ?? ''));
+            if ($messageId === '') {
+                continue;
+            }
+
+            $payload = (array) ($delivery->payload ?? []);
+            $queueId = (int) ($payload['fixture_queue_id'] ?? 0);
+            $eventId = trim((string) ($payload['event_id'] ?? ''));
+
+            if ($queueId > 0 && isset($queueLookup[$queueId]) && !isset($proofs['by_queue_id'][$queueId])) {
+                $proofs['by_queue_id'][$queueId] = $this->deliveryProofFromDiscordDelivery($delivery);
+            }
+
+            if ($eventId !== '' && isset($eventLookup[$eventId]) && !isset($proofs['by_event_id'][$eventId])) {
+                $proofs['by_event_id'][$eventId] = $this->deliveryProofFromDiscordDelivery($delivery);
+            }
+        }
+
+        return $proofs;
+    }
+
+    /**
+     * @param array{by_queue_id:array<int,array<string,mixed>>,by_event_id:array<string,array<string,mixed>>} $discordProofs
+     * @return array<string,mixed>|null
+     */
+    private function deliveryProofForFixture(SportsBotFixtureQueue $entry, array $discordProofs): ?array
+    {
+        if ($entry->telegram_message_id !== null) {
+            return [
+                'source' => 'sportsbot_fixture_queue',
+                'platform' => 'telegram',
+                'message_id' => (string) $entry->telegram_message_id,
+                'sent_at' => $entry->sent_at?->toIso8601String(),
+            ];
+        }
+
+        $queueId = (int) $entry->id;
+        $eventId = (string) $entry->event_id;
+
+        return $discordProofs['by_queue_id'][$queueId]
+            ?? $discordProofs['by_event_id'][$eventId]
+            ?? null;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function deliveryProofFromDiscordDelivery(SportsBotDelivery $delivery): array
+    {
+        return [
+            'source' => 'sportsbot_deliveries',
+            'platform' => (string) $delivery->platform,
+            'message_id' => (string) $delivery->message_id,
+            'delivery_id' => (int) $delivery->id,
+            'route_key' => (string) ($delivery->route_key ?? ''),
+            'target' => (string) ($delivery->target ?? ''),
+            'sent_at' => $delivery->sent_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $sentIds
+     */
+    private function sentCacheContains(array $sentIds, string $eventId): bool
+    {
+        if (isset($sentIds[$eventId])) {
+            return true;
+        }
+
+        return in_array($eventId, array_map('strval', array_values($sentIds)), true);
+    }
+
+    /**
+     * @param array<string, mixed> $highlight
+     * @return array<string, mixed>
+     */
+    private function withPostedFixtureMetadata(array $highlight, SportsBotFixtureQueue $entry): array
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+
+        foreach ([
+            'league' => ['league', 'strLeague'],
+            'event_name' => ['event_name', 'strEvent'],
+            'home_team' => ['home_team', 'strHomeTeam'],
+            'away_team' => ['away_team', 'strAwayTeam'],
+            'home_badge' => ['home_badge', 'strHomeTeamBadge', 'strHomeBadge'],
+            'away_badge' => ['away_badge', 'strAwayTeamBadge', 'strAwayBadge'],
+            'league_badge' => ['league_badge', 'strLeagueBadge'],
+            'thumb' => ['event_thumb', 'strThumb'],
+        ] as $highlightKey => $fixtureKeys) {
+            if (trim((string) ($highlight[$highlightKey] ?? '')) !== '') {
+                continue;
+            }
+
+            foreach ($fixtureKeys as $fixtureKey) {
+                $value = trim((string) ($fixture[$fixtureKey] ?? ''));
+                if ($value !== '') {
+                    $highlight[$highlightKey] = $value;
+                    break;
+                }
+            }
+        }
+
+        $highlight['fixture_queue_id'] = (int) $entry->id;
+        $highlight['fixture_posted_at'] = $entry->sent_at?->toIso8601String();
+        $proof = (array) ($entry->getAttribute('delivery_proof') ?? []);
+        $highlight['fixture_message_id'] = $proof['message_id'] ?? $entry->telegram_message_id;
+        $highlight['fixture_delivery_platform'] = (string) ($proof['platform'] ?? ($entry->telegram_message_id !== null ? 'telegram' : ''));
+        $highlight['fixture_delivery_proof'] = $proof;
+        $highlight['fixture_telegram_message_id'] = $entry->telegram_message_id;
+        $highlight['fixture_route_key'] = (string) ($entry->route_key ?? '');
+        $highlight['fixture_publish_date'] = $entry->publish_date?->toDateString();
+        $highlight['posted_fixture_payload'] = $fixture;
+
+        return $highlight;
     }
 
     private function leagueIdsForSport(string $sportKey): array

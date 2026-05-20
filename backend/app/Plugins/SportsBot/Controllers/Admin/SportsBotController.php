@@ -615,6 +615,23 @@ class SportsBotController extends Controller
             $results = [];
             $limit = min((int) ($validated['limit'] ?? 10), 10);
             $selected = array_slice($summary['highlights'] ?? [], 0, $limit);
+            $sentEventIds = [];
+
+            if ($selected === []) {
+                Log::info('sportsbot.admin.highlights.no_eligible_highlights', [
+                    'provider_total' => (int) ($summary['provider_total'] ?? 0),
+                    'filtered_out_total' => (int) ($summary['filtered_out_total'] ?? 0),
+                    'already_sent_total' => (int) ($summary['already_sent_total'] ?? 0),
+                ]);
+
+                return response()->json([
+                    'sent' => false,
+                    'no_eligible_highlights' => true,
+                    'total' => 0,
+                    'results' => [],
+                    'summary' => $summary,
+                ]);
+            }
 
             $leagueGroups = [];
             foreach ($selected as $h) {
@@ -712,31 +729,62 @@ class SportsBotController extends Controller
                         $sportKey = $h['sport_key'] ?? 'football';
                         $watchLabel = $this->watchLabel($sportKey, $fixture);
                         $videoUrl = $h['video_url'];
+                        $idempotencyKey = $this->highlightIdempotencyKey((string) $eventId, TelegramRouteKeys::HIGHLIGHTS);
 
-                        $sendResults = $notifier->sendPhoto($path, '', [
+                        $sendOptions = [
                             'route_key' => TelegramRouteKeys::HIGHLIGHTS,
+                            'type' => 'HIGHLIGHTS',
+                            'idempotency_key' => $idempotencyKey,
                             'parse_mode' => 'HTML',
-                            'reply_markup' => [
+                            'embed_color' => $this->embedColor($sportKey),
+                            'embed_footer' => $league,
+                            'payload' => [
+                                'source' => 'admin_api',
+                                'content_key' => 'HIGHLIGHTS',
+                                'idempotency_key' => $idempotencyKey,
+                                'event_id' => (string) $eventId,
+                                'fixture_queue_id' => $h['fixture_queue_id'] ?? null,
+                            ],
+                        ];
+
+                        if (trim((string) $videoUrl) !== '') {
+                            $sendOptions['reply_markup'] = [
                                 'inline_keyboard' => [[
                                     ['text' => $watchLabel, 'url' => $videoUrl],
                                 ]],
-                            ],
-                            'embed_url' => $videoUrl,
-                            'embed_title' => $watchLabel,
-                            'embed_color' => $this->embedColor($sportKey),
-                            'embed_footer' => $league,
-                        ]);
+                            ];
+                            $sendOptions['embed_url'] = $videoUrl;
+                            $sendOptions['embed_title'] = $watchLabel;
+                        }
+
+                        $sendResults = $notifier->sendPhoto($path, '', $sendOptions);
+                        $sent = false;
                         foreach ($sendResults as $r) {
                             $results[] = $r;
+                            if (empty($r['error'])) {
+                                $sent = true;
+                            }
+                        }
+                        if ($sent && $eventId !== '') {
+                            $sentEventIds[(string) $eventId] = true;
                         }
                     }
                 } catch (Throwable) {
                     continue;
                 }
             }
+
+            $sentCacheKey = 'sportsbot:highlights_sent';
+            $sentIds = \Illuminate\Support\Facades\Cache::get($sentCacheKey, []);
+            foreach (array_keys($sentEventIds) as $eid) {
+                $sentIds[$eid] = true;
+            }
+            \Illuminate\Support\Facades\Cache::put($sentCacheKey, $sentIds, now()->addHours(36));
+
             return response()->json([
-                'sent' => true,
+                'sent' => $results !== [],
                 'total' => count($results),
+                'highlight_count' => count($sentEventIds),
                 'results' => $results,
             ]);
         } catch (Throwable $error) {
@@ -745,6 +793,11 @@ class SportsBotController extends Controller
                 'error' => $error->getMessage(),
             ], 422);
         }
+    }
+
+    private function highlightIdempotencyKey(string $eventId, string $routeKey): string
+    {
+        return mb_substr('highlight:' . $eventId . ':' . TelegramRouteKeys::normalize($routeKey), 0, 160);
     }
 
     private function watchLabel(string $sportKey, array $fixture): string

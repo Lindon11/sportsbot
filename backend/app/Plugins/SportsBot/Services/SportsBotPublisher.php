@@ -130,6 +130,21 @@ class SportsBotPublisher
             ]),
         ]);
 
+        if ($module->key() === 'HIGHLIGHTS' && (int) ($summary['total'] ?? 0) === 0) {
+            Log::info('sportsbot.publisher.no_eligible_highlights', [
+                'route_key' => $module->routeKey(),
+                'provider_total' => (int) ($summary['provider_total'] ?? 0),
+                'filtered_out_total' => (int) ($summary['filtered_out_total'] ?? 0),
+                'already_sent_total' => (int) ($summary['already_sent_total'] ?? 0),
+            ]);
+
+            return array_merge($preview, [
+                'sent' => false,
+                'no_eligible_highlights' => true,
+                'results' => [],
+            ]);
+        }
+
         try {
             $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'BASKETBALL_FIXTURES', 'BASEBALL_FIXTURES', 'AMERICAN_FOOTBALL_FIXTURES', 'TENNIS_FIXTURES', 'RUGBY_FIXTURES', 'CRICKET_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES', 'ICE_HOCKEY_FIXTURES', 'GOLF_FIXTURES'], true);
             if ($isFixtureModule) {
@@ -145,9 +160,19 @@ class SportsBotPublisher
                     $cardOptions = $options;
                     $cardType = $card['type'] ?? 'result';
                     $eventName = trim((string) ($card['event_name'] ?? ''));
+                    $eventId = trim((string) ($card['event_id'] ?? ''));
                     $caption = '';
 
                     if ($cardType === 'result') {
+                        if ($eventId !== '') {
+                            $idempotencyKey = $this->highlightIdempotencyKey($eventId, $module->routeKey());
+                            $cardOptions['idempotency_key'] = $idempotencyKey;
+                            $cardOptions['payload'] = array_merge((array) ($cardOptions['payload'] ?? []), [
+                                'idempotency_key' => $idempotencyKey,
+                                'event_id' => $eventId,
+                            ]);
+                        }
+
                         $videoUrl = trim((string) ($card['video_url'] ?? ''));
                         if ($videoUrl !== '') {
                             $cardOptions['reply_markup'] = [
@@ -433,6 +458,11 @@ class SportsBotPublisher
         $sportKey = (string) ($options['payload']['sport_key'] ?? $summary['sport_filter'] ?? $summary['sport_key'] ?? '');
 
         return 'league_header:' . sha1(implode('|', [$sportKey, $date, $routeKey, $leagueName]));
+    }
+
+    private function highlightIdempotencyKey(string $eventId, string $routeKey): string
+    {
+        return mb_substr('highlight:' . $eventId . ':' . TelegramRouteKeys::normalize($routeKey), 0, 160);
     }
 
     /**

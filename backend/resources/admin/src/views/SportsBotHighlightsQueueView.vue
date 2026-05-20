@@ -17,7 +17,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
-        <p class="text-slate-400 text-sm">Total Results</p>
+        <p class="text-slate-400 text-sm">Sendable Results</p>
         <p class="text-3xl font-bold text-white mt-2">{{ total }}</p>
       </div>
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
@@ -25,13 +25,19 @@
         <p class="text-3xl font-bold text-emerald-400 mt-2">{{ withVideo }}</p>
       </div>
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
-        <p class="text-slate-400 text-sm">Scores Only</p>
-        <p class="text-3xl font-bold text-amber-400 mt-2">{{ total - withVideo }}</p>
+        <p class="text-slate-400 text-sm">Filtered Out</p>
+        <p class="text-3xl font-bold text-amber-400 mt-2">{{ filteredOut }}</p>
       </div>
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
         <p class="text-slate-400 text-sm">Schedule</p>
-        <p class="text-xl font-bold text-white mt-2">Every 30 min</p>
+        <p class="text-xl font-bold text-white mt-2">Daily 09:00</p>
       </div>
+    </div>
+
+    <div v-if="providerTotal || matchedTotal || alreadySent" class="rounded-2xl bg-slate-800/40 border border-slate-700/50 p-4 text-sm text-slate-300">
+      <span class="text-white font-semibold">{{ matchedTotal }}</span> matched posted fixture cards,
+      <span class="text-amber-300 font-semibold">{{ filteredOut }}</span> skipped,
+      <span class="text-slate-400">{{ alreadySent }}</span> already sent.
     </div>
 
     <div v-if="groups.length" class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
@@ -67,6 +73,10 @@ const sending = ref(false)
 const summary = ref({})
 
 const total = computed(() => summary.value.total ?? 0)
+const providerTotal = computed(() => summary.value.provider_total ?? 0)
+const matchedTotal = computed(() => summary.value.matched_total ?? 0)
+const filteredOut = computed(() => summary.value.filtered_out_total ?? 0)
+const alreadySent = computed(() => summary.value.already_sent_total ?? 0)
 const withVideo = computed(() => {
   let c = 0
   for (const h of summary.value.highlights ?? []) {
@@ -105,8 +115,12 @@ async function load() {
 async function sendAll() {
   sending.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/highlights/send', { limit: 20 })
-    toast.success(`Sent ${(data.sent || 0)} cards`)
+    const { data } = await api.post('/admin/sportsbot/highlights/send', { limit: 10 })
+    if (data.no_eligible_highlights) {
+      toast.info('No eligible highlights to send')
+    } else {
+      toast.success(`Sent ${data.highlight_count ?? data.total ?? 0} highlights`)
+    }
   } catch (error) {
     toast.error(error?.response?.data?.error || 'Failed to send')
   } finally {

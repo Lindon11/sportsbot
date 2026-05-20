@@ -102,7 +102,7 @@ if ((bool) config('plugins.SportsBot.enabled')) {
         }
 
         if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {
-            Schedule::call(function (): void {
+            $highlights = Schedule::call(function (): void {
                 $module = app(\App\Plugins\SportsBot\Services\Content\HighlightsContentModule::class);
                 $publisher = app(\App\Plugins\SportsBot\Services\SportsBotPublisher::class);
 
@@ -132,10 +132,14 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                     ]);
                 }
             })->name('sportsbot-highlights')
-                ->everyThirtyMinutes()
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-highlights.log'));
+
+            sportsbotScheduleFrequency(
+                $highlights,
+                (string) sportsbotSetting('highlights_schedule_frequency', config('plugins.SportsBot.publishing.highlights.frequency', 'everyThirtyMinutes'))
+            );
         }
     }
 }
