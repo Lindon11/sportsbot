@@ -108,14 +108,31 @@
       </div>
 
       <div class="flex flex-wrap gap-2 mb-4 p-3 rounded-xl bg-slate-900/60 border border-slate-700/50">
-        <input v-model="newLeagueId" type="text" class="w-28 rounded-lg bg-slate-800 border border-slate-600 text-white p-2 text-xs" placeholder="League ID" />
-        <button @click="lookupNewLeague" :disabled="!newLeagueId.trim() || lookingUp" class="px-3 py-1.5 rounded-lg bg-sky-700 text-white text-xs hover:bg-sky-600 disabled:opacity-50">{{ lookingUp ? '...' : 'Find' }}</button>
+        <div class="flex items-center gap-1 text-xs text-slate-400">
+          <button @click="searchMode = 'id'" :class="searchMode === 'id' ? 'text-white bg-slate-700' : 'text-slate-400 hover:text-white'" class="px-2 py-1 rounded">ID</button>
+          <button @click="searchMode = 'name'" :class="searchMode === 'name' ? 'text-white bg-slate-700' : 'text-slate-400 hover:text-white'" class="px-2 py-1 rounded">Name</button>
+        </div>
+        <input v-model="newLeagueQuery" type="text" class="w-36 rounded-lg bg-slate-800 border border-slate-600 text-white p-2 text-xs" :placeholder="searchMode === 'id' ? 'League ID' : 'League name'" @keydown.enter="lookupNewLeague" />
+        <button @click="lookupNewLeague" :disabled="!newLeagueQuery.trim() || lookingUp" class="px-3 py-1.5 rounded-lg bg-sky-700 text-white text-xs hover:bg-sky-600 disabled:opacity-50">{{ lookingUp ? '...' : 'Find' }}</button>
         <span v-if="newLeagueResult" class="text-xs flex items-center gap-2">
-          <img v-if="newLeagueResult.badge" :src="newLeagueResult.badge" class="w-5 h-5 rounded object-contain" />
-          <span :class="newLeagueResult.found ? 'text-emerald-300' : 'text-red-300'">{{ newLeagueResult.name }}</span>
-          <button v-if="newLeagueResult.found && !newLeagueResult.alreadyFeatured" @click="addLeagueToFeatured(newLeagueResult.id)" class="px-2 py-0.5 rounded bg-emerald-700 text-emerald-200 text-xs hover:bg-emerald-600">+ Add</button>
-          <span v-if="newLeagueResult.alreadyFeatured" class="text-slate-400">already enabled ✓</span>
+          <template v-if="searchMode === 'id'">
+            <img v-if="newLeagueResult.badge" :src="newLeagueResult.badge" class="w-5 h-5 rounded object-contain" />
+            <span :class="newLeagueResult.found ? 'text-emerald-300' : 'text-red-300'">{{ newLeagueResult.name }}</span>
+            <button v-if="newLeagueResult.found && !newLeagueResult.alreadyFeatured" @click="addLeagueToFeatured(newLeagueResult.id)" class="px-2 py-0.5 rounded bg-emerald-700 text-emerald-200 text-xs hover:bg-emerald-600">+ Add</button>
+            <span v-if="newLeagueResult.alreadyFeatured" class="text-slate-400">already enabled ✓</span>
+          </template>
+          <template v-else>
+            <span v-if="newLeagueResult.leagues?.length" class="text-emerald-300">{{ newLeagueResult.total }} results</span>
+            <span v-else class="text-red-300">No leagues found</span>
+          </template>
         </span>
+      </div>
+      <div v-if="searchMode === 'name' && newLeagueResult?.leagues?.length" class="flex flex-wrap gap-1.5 mb-4 px-2">
+        <button v-for="league in newLeagueResult.leagues" :key="league.id" @click="addLeagueToFeatured(league.id)" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-emerald-700/40 hover:border-emerald-600/50">
+          <img v-if="league.badge" :src="league.badge" class="w-4 h-4 rounded object-contain" />
+          <span>{{ league.name }}</span>
+          <span class="text-slate-500">({{ league.sport }})</span>
+        </button>
       </div>
 
       <div v-for="(sport, key) in leaguesBySport" :key="key" class="mb-3 last:mb-0">
@@ -182,7 +199,8 @@ const leaguesBySport = ref({})
 const expandedSports = ref({})
 const searchQuery = ref('')
 const showFeaturedOnly = ref(false)
-const newLeagueId = ref('')
+const searchMode = ref('id')
+const newLeagueQuery = ref('')
 const newLeagueResult = ref(null)
 const lookingUp = ref(false)
 
@@ -289,18 +307,25 @@ async function fetchLeagues() {
 }
 
 async function lookupNewLeague() {
-  const id = newLeagueId.value.trim()
-  if (!id) return
+  const query = newLeagueQuery.value.trim()
+  if (!query) return
   lookingUp.value = true
   newLeagueResult.value = null
   try {
-    const { data } = await api.post('/admin/sportsbot/leagues/lookup', { id })
-    newLeagueResult.value = {
-      ...data,
-      alreadyFeatured: form.featured_league_ids.includes(id)
+    if (searchMode.value === 'id') {
+      const { data } = await api.post('/admin/sportsbot/leagues/lookup', { id: query })
+      newLeagueResult.value = {
+        ...data,
+        alreadyFeatured: form.featured_league_ids.includes(query)
+      }
+    } else {
+      const { data } = await api.post('/admin/sportsbot/leagues/lookup', { name: query })
+      newLeagueResult.value = data
     }
   } catch (error) {
-    newLeagueResult.value = { found: false, id, name: 'League not found' }
+    newLeagueResult.value = searchMode.value === 'id'
+      ? { found: false, id: query, name: 'League not found' }
+      : { found: false, leagues: [], total: 0 }
   } finally {
     lookingUp.value = false
   }
@@ -311,7 +336,7 @@ function addLeagueToFeatured(id) {
     form.featured_league_ids.push(id)
   }
   newLeagueResult.value = null
-  newLeagueId.value = ''
+  newLeagueQuery.value = ''
 }
 
 async function load() {

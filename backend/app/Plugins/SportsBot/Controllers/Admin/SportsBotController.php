@@ -1738,23 +1738,52 @@ class SportsBotController extends Controller
     public function lookupLeague(Request $request, TheSportsDbClient $provider): JsonResponse
     {
         $validated = $request->validate([
-            'id' => ['required', 'string', 'max:40'],
+            'id' => ['sometimes', 'string', 'max:40'],
+            'name' => ['sometimes', 'string', 'max:100'],
         ]);
 
-        $league = $provider->lookupLeague($validated['id']);
+        $id = trim((string) ($validated['id'] ?? ''));
+        $name = trim((string) ($validated['name'] ?? ''));
 
-        if ($league === null || !is_array($league)) {
-            return response()->json(['found' => false], 404);
+        if ($id !== '') {
+            $league = $provider->lookupLeague($id);
+
+            if ($league === null || !is_array($league)) {
+                return response()->json(['found' => false], 404);
+            }
+
+            return response()->json([
+                'found' => true,
+                'id' => $id,
+                'name' => trim((string) ($league['strLeague'] ?? '')),
+                'badge' => trim((string) ($league['strBadge'] ?? '')),
+                'logo' => trim((string) ($league['strLogo'] ?? '')),
+                'sport' => trim((string) ($league['strSport'] ?? '')),
+            ]);
         }
 
-        return response()->json([
-            'found' => true,
-            'id' => $validated['id'],
-            'name' => trim((string) ($league['strLeague'] ?? '')),
-            'badge' => trim((string) ($league['strBadge'] ?? '')),
-            'logo' => trim((string) ($league['strLogo'] ?? '')),
-            'sport' => trim((string) ($league['strSport'] ?? '')),
-        ]);
+        if ($name !== '') {
+            $results = $provider->searchLeague($name);
+
+            $leagues = [];
+            foreach ($results as $r) {
+                $leagues[] = [
+                    'id' => trim((string) ($r['idLeague'] ?? '')),
+                    'name' => trim((string) ($r['strLeague'] ?? '')),
+                    'badge' => trim((string) ($r['strBadge'] ?? '')),
+                    'sport' => trim((string) ($r['strSport'] ?? '')),
+                    'country' => trim((string) ($r['strCountry'] ?? '')),
+                ];
+            }
+
+            return response()->json([
+                'found' => $leagues !== [],
+                'leagues' => $leagues,
+                'total' => count($leagues),
+            ]);
+        }
+
+        return response()->json(['found' => false], 422);
     }
 
     public function scraperSettings(SportsBotSettingsService $settings): JsonResponse
