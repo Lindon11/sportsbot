@@ -55,6 +55,7 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/scraper-settings', [SportsBotController::class, 'saveScraperSettings'])->name('scraper-settings.save');
     Route::post('/telegram/send-diagnostics', [SportsBotController::class, 'sendTelegramDiagnostics'])->name('telegram.send-diagnostics');
     Route::post('/discord/send-diagnostics', [SportsBotController::class, 'sendDiscordDiagnostics'])->name('discord.send-diagnostics');
+    Route::post('/discord/clear-channel', [SportsBotController::class, 'clearDiscordChannel'])->name('discord.clear-channel');
     Route::get('/discord/routes', [SportsBotController::class, 'discordRoutesIndex'])->name('discord.routes');
     Route::post('/discord/settings', [SportsBotController::class, 'saveDiscordSettings'])->name('discord.settings.save');
     Route::post('/discord/routes', [SportsBotController::class, 'saveDiscordRoute'])->name('discord.routes.save');

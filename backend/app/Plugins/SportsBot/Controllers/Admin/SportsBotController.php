@@ -2305,6 +2305,33 @@ class SportsBotController extends Controller
         ]);
     }
 
+    public function clearDiscordChannel(Request $request, DiscordNotifier $notifier): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_id' => ['required', 'string', 'max:100'],
+            'message_ids' => ['required', 'array'],
+            'message_ids.*' => ['string', 'max:100'],
+        ]);
+
+        $channelId = (string) $validated['channel_id'];
+        $messageIds = array_map('strval', (array) $validated['message_ids']);
+
+        try {
+            $ok = $notifier->deleteMessages($channelId, $messageIds);
+
+            return response()->json([
+                'cleared' => $ok,
+                'channel_id' => $channelId,
+                'count' => count($messageIds),
+            ]);
+        } catch (Throwable $error) {
+            return response()->json([
+                'cleared' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
     public function syncTelegramTopics(Request $request, TelegramTopicDiscoveryService $service): JsonResponse
     {
         $validated = $request->validate([

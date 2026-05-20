@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Services;
 use App\Plugins\SportsBot\Contracts\NotifierInterface;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -135,6 +136,41 @@ class DiscordNotifier implements NotifierInterface
         }
 
         return $results;
+    }
+
+    /**
+     * Bulk delete messages from a Discord channel.
+     * Requires bot token mode and 'Manage Messages' permission.
+     *
+     * @param array<int, string> $messageIds
+     */
+    public function deleteMessages(string $channelId, array $messageIds): bool
+    {
+        $token = $this->botToken();
+        if ($token === '' || $messageIds === []) {
+            return false;
+        }
+
+        foreach (array_chunk($messageIds, 100) as $chunk) {
+            $response = Http::withToken($token)
+                ->timeout(15)
+                ->post(self::BOT_API . '/channels/' . rawurlencode($channelId) . '/messages/bulk-delete', [
+                    'messages' => $chunk,
+                ]);
+
+            if (!$response->successful()) {
+                Log::warning('sportsbot.discord.bulk_delete_failed', [
+                    'channel_id' => $channelId,
+                    'count' => count($chunk),
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function configured(?string $routeKey = null): bool
