@@ -182,7 +182,10 @@ class DiscordNotifier implements NotifierInterface
     }
 
     /**
-     * Delete all bot messages from a Discord channel by paginating through history.
+     * Delete all bot and webhook messages from a Discord channel.
+     *
+     * Uses bot token for bot-authored messages, and webhook URLs for
+     * webhook-authored messages. Handles pagination through history.
      *
      * @return array{deleted:int,total:int}
      */
@@ -218,29 +221,70 @@ class DiscordNotifier implements NotifierInterface
                 break;
             }
 
-            $toDelete = [];
+            $botMsgIds = [];
+            $webhookMsgIds = [];
+
             foreach ($messages as $msg) {
                 $lastId = $msg['id'];
-                $authorId = $msg['author']['id'] ?? '';
+                $authorId = (string) ($msg['author']['id'] ?? '');
+                $webhookId = (string) ($msg['webhook_id'] ?? '');
+
                 if ($authorId === $botId) {
-                    $toDelete[] = (string) $msg['id'];
+                    $botMsgIds[] = (string) $msg['id'];
+                } elseif ($webhookId !== '') {
+                    $webhookMsgIds[] = [
+                        'id' => (string) $msg['id'],
+                        'webhook_id' => $webhookId,
+                    ];
                 }
             }
 
-            $totalFound += count($toDelete);
-
-            if ($toDelete !== []) {
-                $this->deleteMessages($channelId, $toDelete);
-                $totalDeleted += count($toDelete);
+            // Delete bot messages
+            $totalFound += count($botMsgIds);
+            if ($botMsgIds !== []) {
+                $this->deleteMessages($channelId, $botMsgIds);
+                $totalDeleted += count($botMsgIds);
             }
 
-            // If fewer than 100 returned, no more messages to fetch
+            // Delete webhook messages using webhook endpoints
+            foreach ($webhookMsgIds as $entry) {
+                $webhookUrl = $this->webhookUrlForId($entry['webhook_id']);
+                if ($webhookUrl === '') {
+                    continue;
+                }
+
+                $resp = Http::timeout(15)->delete(
+                    rtrim($webhookUrl, '/') . '/messages/' . rawurlencode($entry['id'])
+                );
+
+                if ($resp->successful()) {
+                    $totalDeleted++;
+                }
+                $totalFound++;
+            }
+
             if (count($messages) < 100) {
                 break;
             }
         }
 
         return ['deleted' => $totalDeleted, 'total' => $totalFound];
+    }
+
+    /**
+     * Find the webhook URL for a given webhook ID from configured routes.
+     */
+    private function webhookUrlForId(string $webhookId): string
+    {
+        $webhooks = $this->routeWebhooks();
+
+        foreach ($webhooks as $url) {
+            if (str_contains($url, '/webhooks/' . $webhookId . '/')) {
+                return $url;
+            }
+        }
+
+        return '';
     }
 
     private function resolveBotUserId(string $token): string
