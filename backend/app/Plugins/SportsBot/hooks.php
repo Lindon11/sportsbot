@@ -56,12 +56,11 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
 
             ['type' => 'separator', 'label' => 'Configuration'],
             ['route' => '/sportsbot/coverage', 'label' => 'Coverage Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/fixture-queue', 'label' => 'Fixture Queue', 'icon' => 'QueueListIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/scraper-settings', 'label' => 'Scraper Settings', 'icon' => 'MagnifyingGlassIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/telegram-settings', 'label' => 'Telegram Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/webhook-diagnostics', 'label' => 'Webhook Diagnostics', 'icon' => 'CommandLineIcon', 'plugin' => 'sportsbot'],
 
-            ['type' => 'separator', 'label' => 'Queue & Maintenance'],
-            ['route' => '/sportsbot/fixture-queue', 'label' => 'Fixture Queue', 'icon' => 'QueueListIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/update', 'label' => 'Update', 'icon' => 'ArrowPathIcon', 'plugin' => 'sportsbot'],
         ],
     ];
