@@ -331,7 +331,7 @@ class FixturesTodayService
             static fn (string $id): bool => trim($id) !== ''
         )));
         if ($dbValue !== []) {
-            return array_values(array_unique(array_merge($default, $dbValue)));
+            return $dbValue;
         }
         return $default;
     }
