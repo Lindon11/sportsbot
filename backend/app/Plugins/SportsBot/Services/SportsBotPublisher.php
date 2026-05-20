@@ -163,7 +163,7 @@ class SportsBotPublisher
                         } else {
                             $cardOptions['reply_markup'] = [
                                 'inline_keyboard' => [[
-                                    ['text' => '❌ No Highlights Available', 'callback_data' => 'none'],
+                                    ['text' => '❌ No Highlights Available!', 'url' => 'https://google.com'],
                                 ]],
                             ];
                         }

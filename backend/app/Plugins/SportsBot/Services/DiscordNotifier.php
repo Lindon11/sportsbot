@@ -539,8 +539,8 @@ class DiscordNotifier implements NotifierInterface
                     [
                         'type' => 2,
                         'style' => 5,
-                        'label' => '❌ No Highlights',
-                        'url' => 'https://example.com/no-highlights',
+                        'label' => '❌ No Highlights Available!',
+                        'url' => 'https://google.com',
                     ],
                 ],
             ];
