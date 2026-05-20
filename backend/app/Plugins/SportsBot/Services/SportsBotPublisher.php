@@ -134,6 +134,22 @@ class SportsBotPublisher
             $isFixtureModule = in_array($module->key(), ['FOOTBALL_FIXTURES', 'BASKETBALL_FIXTURES', 'BASEBALL_FIXTURES', 'AMERICAN_FOOTBALL_FIXTURES', 'TENNIS_FIXTURES', 'RUGBY_FIXTURES', 'CRICKET_FIXTURES', 'FIGHT_FIXTURES', 'MOTORSPORT_FIXTURES', 'ICE_HOCKEY_FIXTURES', 'GOLF_FIXTURES'], true);
             if ($isFixtureModule) {
                 $results = $this->sendFixtureCards($summary, $message, $options);
+            } elseif ($module->key() === 'HIGHLIGHTS' && method_exists($module, 'renderCards')) {
+                $cards = $module->renderCards($summary);
+                $results = [];
+
+                foreach ($cards as $card) {
+                    if (empty($card['path']) || !is_file($card['path'])) {
+                        continue;
+                    }
+                    foreach ($this->notifier->sendPhoto((string) $card['path'], '', $options) as $result) {
+                        $results[] = $result;
+                    }
+                }
+
+                if ($results === []) {
+                    $results = $this->notifier->send($message, $options);
+                }
             } else {
                 $card = $this->renderCard($module->key(), $summary);
                 if ($card !== null) {
@@ -598,6 +614,7 @@ class SportsBotPublisher
         try {
             return match ($key) {
                 'FIXTURES_TODAY' => $this->firstFixtureCard($summary),
+                'HIGHLIGHTS' => $this->firstResultCard($summary),
                 default => null,
             };
         } catch (Throwable $error) {
@@ -614,6 +631,23 @@ class SportsBotPublisher
      * @param array<string, mixed> $summary
      * @return array<string, mixed>|null
      */
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<string, mixed>|null
+     */
+    private function firstResultCard(array $summary): ?array
+    {
+        $highlights = (array) ($summary['highlights'] ?? []);
+
+        foreach ($highlights as $h) {
+            if (is_array($h)) {
+                return $this->cards->fixtureCard($h, 'v3', ['kind' => 'result']);
+            }
+        }
+
+        return null;
+    }
+
     private function firstFixtureCard(array $summary): ?array
     {
         foreach ((array) ($summary['grouped'] ?? []) as $fixtures) {
