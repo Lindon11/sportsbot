@@ -139,8 +139,10 @@ class DiscordNotifier implements NotifierInterface
     }
 
     /**
-     * Bulk delete messages from a Discord channel.
+     * Delete messages from a Discord channel.
      * Requires bot token mode and 'Manage Messages' permission.
+     *
+     * Uses single delete for 1 message, bulk delete for 2-100.
      *
      * @param array<int, string> $messageIds
      */
@@ -151,15 +153,23 @@ class DiscordNotifier implements NotifierInterface
             return false;
         }
 
+        $base = self::BOT_API . '/channels/' . rawurlencode($channelId);
+
         foreach (array_chunk($messageIds, 100) as $chunk) {
-            $response = Http::withToken($token)
-                ->timeout(15)
-                ->post(self::BOT_API . '/channels/' . rawurlencode($channelId) . '/messages/bulk-delete', [
-                    'messages' => $chunk,
-                ]);
+            if (count($chunk) === 1) {
+                $response = Http::withToken($token)
+                    ->timeout(15)
+                    ->delete($base . '/messages/' . rawurlencode($chunk[0]));
+            } else {
+                $response = Http::withToken($token)
+                    ->timeout(15)
+                    ->post($base . '/messages/bulk-delete', [
+                        'messages' => $chunk,
+                    ]);
+            }
 
             if (!$response->successful()) {
-                Log::warning('sportsbot.discord.bulk_delete_failed', [
+                Log::warning('sportsbot.discord.delete_failed', [
                     'channel_id' => $channelId,
                     'count' => count($chunk),
                     'status' => $response->status(),
