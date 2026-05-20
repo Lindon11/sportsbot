@@ -3,7 +3,6 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
-use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
 use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Support\SportsBotSports;
@@ -16,7 +15,6 @@ class TelegramCallbackService
 {
     public function __construct(
         private readonly TelegramNotifier $notifier = new TelegramNotifier(),
-        private readonly FixturesTodayContentModule $fixturesModule = new FixturesTodayContentModule(),
         private readonly TvGuideContentModule $tvGuideModule = new TvGuideContentModule(),
         private readonly LiveNowContentModule $liveNowModule = new LiveNowContentModule(),
         private readonly SportsBotRichContentService $richContent = new SportsBotRichContentService(),
@@ -26,7 +24,7 @@ class TelegramCallbackService
 
     public function isValidCallbackData(string $data): bool
     {
-        return preg_match('/^(match|stats|lineups|highlights|tv|table|scorers|team|follow_team|unfollow_team|follow_league|unfollow_league|team_next|team_prev|fixtures|live|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$|^(fixtures_today|tv_guide|live_now)$/', $data) === 1;
+        return preg_match('/^(match|stats|lineups|highlights|tv|table|scorers|team|follow_team|unfollow_team|follow_league|unfollow_league|team_next|team_prev|fixtures|live|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$|^(tv_guide|live_now)$/', $data) === 1;
     }
 
     /**
@@ -133,7 +131,6 @@ class TelegramCallbackService
     {
         // Topic-first: top-level menus route to content module responses
         $topicHandler = match ($callbackData) {
-            'fixtures_today' => fn () => $this->sendFixturesTodayResponse($chatId, $messageId, $messageThreadId),
             'tv_guide' => fn () => $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId),
             'live_now' => fn () => $this->sendLiveNowResponse($chatId, $messageId, $messageThreadId),
             default => null,
@@ -241,16 +238,6 @@ class TelegramCallbackService
         }
 
         return null;
-    }
-
-    private function sendFixturesTodayResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
-    {
-        $summary = $this->fixturesModule->buildSummary();
-        $message = $this->fixturesModule->format($summary);
-        $options = $this->fixturesModule->telegramOptions($summary);
-        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::fixturesTodayReplyMarkup());
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
     }
 
     private function sendTvGuideResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void

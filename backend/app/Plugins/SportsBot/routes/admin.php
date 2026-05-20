@@ -30,8 +30,6 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/fixture-queue/{id}/reject-scraped-data', [SportsBotController::class, 'fixtureQueueRejectScrapedData'])->name('fixture-queue.reject-scraped-data');
     Route::post('/fixture-queue/{id}/skip', [SportsBotController::class, 'fixtureQueueSkip'])->name('fixture-queue.skip');
     Route::delete('/fixture-queue/{id}', [SportsBotController::class, 'fixtureQueueDelete'])->name('fixture-queue.delete');
-    Route::post('/fixtures-today/preview', [SportsBotController::class, 'fixturesTodayPreview'])->name('fixtures-today.preview');
-    Route::post('/fixtures-today/send', [SportsBotController::class, 'fixturesTodaySend'])->name('fixtures-today.send');
     Route::post('/football-fixtures/preview', [SportsBotController::class, 'footballFixturesPreview'])->name('football-fixtures.preview');
     Route::post('/football-fixtures/send', [SportsBotController::class, 'footballFixturesSend'])->name('football-fixtures.send');
     Route::post('/rugby-fixtures/preview', [SportsBotController::class, 'rugbyFixturesPreview'])->name('rugby-fixtures.preview');

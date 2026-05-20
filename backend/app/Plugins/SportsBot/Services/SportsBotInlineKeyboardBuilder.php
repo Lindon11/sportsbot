@@ -145,7 +145,7 @@ class SportsBotInlineKeyboardBuilder
         return [
             [
                 ['text' => '🔴 Live Now', 'callback_data' => 'live_now'],
-                ['text' => '⚽ Fixtures', 'callback_data' => 'fixtures_today'],
+                ['text' => '🏆 Tables', 'callback_data' => 'league_tables'],
             ],
         ];
     }
@@ -169,7 +169,6 @@ class SportsBotInlineKeyboardBuilder
     public static function callbackDataAudit(): array
     {
         return [
-            'fixtures_today',
             'tv_guide',
             'live_now',
             'match:{event_id}',

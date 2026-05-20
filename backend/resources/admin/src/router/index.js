@@ -179,13 +179,8 @@ const router = createRouter({
           name: 'sportsbot-post-timings',
           component: () => import('../views/SportsBotPostTimingsView.vue')
         },
-        {
-          path: '/sportsbot/fixtures-today',
-          name: 'sportsbot-fixtures-today',
-          component: () => import('../views/SportsBotFixturesTodayView.vue')
-        },
-        {
-          path: '/sportsbot/football-fixtures',
+            {
+                path: '/sportsbot/football-fixtures',
           name: 'sportsbot-football-fixtures',
           component: () => import('../views/SportsBotFootballFixturesView.vue')
         },

@@ -63,14 +63,6 @@ if ((bool) config('plugins.SportsBot.enabled') && (bool) sportsbotSetting('sched
 }
 
 if ((bool) config('plugins.SportsBot.enabled')) {
-    if ((bool) sportsbotSetting('fixtures_today_schedule_enabled', config('plugins.SportsBot.publishing.fixtures_today.enabled'))) {
-        Schedule::command('sportsbot:fixtures-today --send')
-            ->dailyAt((string) sportsbotSetting('fixtures_today_schedule_time', config('plugins.SportsBot.publishing.fixtures_today.time', '08:00')))
-            ->withoutOverlapping()
-            ->onOneServer()
-            ->appendOutputTo(storage_path('logs/sportsbot-fixtures-today.log'));
-    }
-
     if ((bool) sportsbotSetting('tv_guide_schedule_enabled', config('plugins.SportsBot.publishing.tv_guide.enabled'))) {
         Schedule::command('sportsbot:tv-guide --send')
             ->dailyAt((string) sportsbotSetting('tv_guide_schedule_time', config('plugins.SportsBot.publishing.tv_guide.time', '08:00')))

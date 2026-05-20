@@ -854,10 +854,6 @@ return [
     ],
 
     'publishing' => [
-        'fixtures_today' => [
-            'enabled' => env('SPORTSBOT_FIXTURES_TODAY_SCHEDULE_ENABLED', false),
-            'time' => env('SPORTSBOT_FIXTURES_TODAY_SCHEDULE_TIME', '08:00'),
-        ],
         'tv_guide' => [
             'enabled' => env('SPORTSBOT_TV_GUIDE_SCHEDULE_ENABLED', false),
             'time' => env('SPORTSBOT_TV_GUIDE_SCHEDULE_TIME', '08:00'),

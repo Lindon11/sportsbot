@@ -12,7 +12,6 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
 use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
 use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
-use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\HighlightsContentModule;
@@ -114,8 +113,6 @@ class SportsBotController extends Controller
         $validated = $request->validate([
             'schedule_enabled' => ['sometimes', 'boolean'],
             'schedule_frequency' => ['sometimes', 'string', 'max:80'],
-            'fixtures_today_schedule_enabled' => ['sometimes', 'boolean'],
-            'fixtures_today_schedule_time' => ['sometimes', 'date_format:H:i'],
             'tv_guide_schedule_enabled' => ['sometimes', 'boolean'],
             'tv_guide_schedule_time' => ['sometimes', 'date_format:H:i'],
             'live_now_schedule_enabled' => ['sometimes', 'boolean'],
@@ -230,29 +227,6 @@ class SportsBotController extends Controller
         }
 
         return response()->json($response);
-    }
-
-    public function fixturesTodayPreview(FixturesTodayContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        return response()->json($publisher->preview($module));
-    }
-
-    public function fixturesTodaySend(FixturesTodayContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        try {
-            return response()->json($publisher->send($module, 'admin_api'));
-        } catch (Throwable $error) {
-            Log::error('sportsbot.admin.fixtures_today_send_failed', [
-                'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
-                'error' => $error->getMessage(),
-            ]);
-
-            return response()->json([
-                'route_key' => TelegramRouteKeys::FIXTURES_TODAY,
-                'sent' => false,
-                'error' => $error->getMessage(),
-            ], 422);
-        }
     }
 
     public function footballFixturesPreview(
@@ -2880,10 +2854,6 @@ class SportsBotController extends Controller
             'live_alerts' => [
                 'enabled' => (bool) $settings->get('schedule_enabled', config('plugins.SportsBot.schedule.enabled', false)),
                 'frequency' => (string) $settings->get('schedule_frequency', config('plugins.SportsBot.schedule.frequency', 'everyTwoMinutes')),
-            ],
-            'fixtures_today' => [
-                'enabled' => (bool) $settings->get('fixtures_today_schedule_enabled', config('plugins.SportsBot.publishing.fixtures_today.enabled', false)),
-                'time' => (string) $settings->get('fixtures_today_schedule_time', config('plugins.SportsBot.publishing.fixtures_today.time', '08:00')),
             ],
             'tv_guide' => [
                 'enabled' => (bool) $settings->get('tv_guide_schedule_enabled', config('plugins.SportsBot.publishing.tv_guide.enabled', false)),
