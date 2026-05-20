@@ -100,5 +100,27 @@ if ((bool) config('plugins.SportsBot.enabled')) {
 
             sportsbotScheduleFrequency($publish, (string) sportsbotSetting('fixture_queue_publish_frequency', config('plugins.SportsBot.publishing.fixture_queue.publish_frequency', 'everyFiveMinutes')));
         }
+
+        if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {
+            Schedule::call(function (): void {
+                $module = app(\App\Plugins\SportsBot\Services\Content\HighlightsContentModule::class);
+                $publisher = app(\App\Plugins\SportsBot\Services\SportsBotPublisher::class);
+
+                try {
+                    $result = $publisher->send($module, 'schedule');
+                    \Illuminate\Support\Facades\Log::info('sportsbot.highlights.scheduled_sent', [
+                        'total' => (int) ($result['results'] ?? 0),
+                        'sent' => (int) ($result['sent'] ?? false),
+                    ]);
+                } catch (\Throwable $error) {
+                    \Illuminate\Support\Facades\Log::warning('sportsbot.highlights.scheduled_failed', [
+                        'error' => $error->getMessage(),
+                    ]);
+                }
+            })->everyThirtyMinutes()
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->appendOutputTo(storage_path('logs/sportsbot-highlights.log'));
+        }
     }
 }
