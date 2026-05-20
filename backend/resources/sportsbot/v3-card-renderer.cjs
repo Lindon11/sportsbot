@@ -848,6 +848,7 @@ function buildLeagueHeaderHtml(input) {
   const parsed = rawDate ? new Date(rawDate) : today;
   const displayDate = !isNaN(parsed.getTime()) ? parsed.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : fallbackDate;
   const logoUrl = clean(info.badge || info.logo);
+  const brand = input.branding?.watermark || 'THE SPORTS HUB';
 
   return `<!doctype html>
 <html>
@@ -910,6 +911,7 @@ function buildLeagueHeaderHtml(input) {
     font-size: 340px; opacity: 0.035; font-weight: 900;
     pointer-events: none;
   }
+  footer { position: absolute; z-index: 7; bottom: 24px; left: 0; width: 100%; text-align: center; color: #d7dce8; font-size: 18px; font-weight: 900; letter-spacing: 16px; text-transform: uppercase; }
 </style>
 </head>
 <body>
@@ -920,6 +922,7 @@ function buildLeagueHeaderHtml(input) {
   <div class="logo-wrap">${logoHtml(logoUrl, leagueName, '')}</div>
   <div class="title" style="top: ${titleTop}">${esc(leagueName)}</div>
   <div class="subtitle" style="top: ${subtitleTop}">DAILY FIXTURES</div>
+  <footer>${esc(brand)}</footer>
 </div>
 </body>
 </html>`;
