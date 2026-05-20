@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Controllers\Admin;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
+use App\Plugins\SportsBot\Models\SportsBotPipelineRun;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
 use App\Plugins\SportsBot\Models\SportsBotTelegramMessage;
@@ -14,6 +15,7 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FixturesTodayContentModule;
 use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
+use App\Plugins\SportsBot\Services\Content\HighlightsContentModule;
 use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
 use App\Plugins\SportsBot\Services\Content\MotorsportFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
@@ -22,16 +24,19 @@ use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
+use App\Plugins\SportsBot\Services\SportsBotNotifier;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
 use App\Plugins\SportsBot\Services\SportsFixturePublisher;
 use App\Plugins\SportsBot\Services\DiscordNotifier;
 use App\Plugins\SportsBot\Services\SportsBotAssetCache;
 use App\Plugins\SportsBot\Services\TelegramNotifier;
+use App\Plugins\SportsBot\Services\TheSportsDbClient;
 use App\Plugins\SportsBot\Services\TelegramRoutingService;
 use App\Plugins\SportsBot\Services\TelegramTopicDiscoveryService;
 use App\Plugins\SportsBot\Support\CardTemplateRegistry;
 use App\Plugins\SportsBot\Support\SportsBotPaths;
 use App\Plugins\SportsBot\Support\SportsBotSports;
+use App\Plugins\SportsBot\Support\SportsBotFixtureReadiness;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Carbon\Carbon;
@@ -81,6 +86,7 @@ class SportsBotController extends Controller
             'health' => $runner->health(),
             'scheduler' => $this->sportsBotSchedulerStatus(),
             'queue' => $this->fixtureQueueAutopilotStatus(),
+            'pipeline' => $this->pipelineRunStatus(),
             'deliveries' => [
                 'recent' => $this->recentDeliveries(50),
                 'last_24h' => $this->deliveryCountsSince(now()->subDay()),
@@ -89,6 +95,8 @@ class SportsBotController extends Controller
                 'discord_enabled' => (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false)),
                 'scrapers_enabled' => (bool) $settings->get('scraper_enabled', config('plugins.SportsBot.scrapers.enabled', true)),
                 'auto_use_confidence' => (float) $settings->get('scraper_auto_use_confidence', config('plugins.SportsBot.scrapers.auto_use_confidence', 0.9)),
+                'allow_gd_fallback_publish' => (bool) $settings->get('fixture_queue_allow_gd_fallback_publish', config('plugins.SportsBot.publishing.fixture_queue.allow_gd_fallback_publish', false)),
+                'fallback_retry_enabled' => (bool) $settings->get('fixture_queue_fallback_retry_enabled', config('plugins.SportsBot.publishing.fixture_queue.fallback_retry_enabled', true)),
             ],
         ]);
     }
@@ -253,17 +261,25 @@ class SportsBotController extends Controller
         SportsBotPublisher $publisher,
         SportsBotCardRenderer $cards,
         SportsBotSettingsService $settings,
+        TheSportsDbClient $provider,
     ): JsonResponse
     {
         $validated = $request->validate([
             'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'preview_league' => ['sometimes', 'string', 'max:200'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('football_fixture_card_version', 'v3'));
+        $previewLeague = trim((string) ($validated['preview_league'] ?? ''));
+
+        $leaguePreview = $this->leagueCardPreview($summary, $cards, $cardVersion, $previewLeague);
+        $allLeagues = $this->allFootballLeagues($cards, $provider, $settings, $cardVersion, $previewLeague);
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'league_card_preview' => $leaguePreview,
+            'all_leagues' => $allLeagues,
             'captions_enabled' => (bool) $settings->get('football_fixture_captions_enabled', false),
             'card_version' => $cardVersion,
         ]));
@@ -310,17 +326,24 @@ class SportsBotController extends Controller
         SportsBotPublisher $publisher,
         SportsBotCardRenderer $cards,
         SportsBotSettingsService $settings,
+        TheSportsDbClient $provider,
     ): JsonResponse
     {
         $validated = $request->validate([
             'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'preview_league' => ['sometimes', 'string', 'max:200'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('rugby_fixture_card_version', 'v3'));
+        $previewLeague = trim((string) ($validated['preview_league'] ?? ''));
+
+        $allLeagues = $this->allRugbyLeagues($cards, $provider, $cardVersion, $previewLeague);
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'league_card_preview' => $this->leagueCardPreview($summary, $cards, $cardVersion),
+            'all_rugby_leagues' => $allLeagues,
             'captions_enabled' => (bool) $settings->get('rugby_fixture_captions_enabled', false),
             'card_version' => $cardVersion,
         ]));
@@ -367,17 +390,24 @@ class SportsBotController extends Controller
         SportsBotPublisher $publisher,
         SportsBotCardRenderer $cards,
         SportsBotSettingsService $settings,
+        TheSportsDbClient $provider,
     ): JsonResponse
     {
         $validated = $request->validate([
             'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'preview_league' => ['sometimes', 'string', 'max:200'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('fight_fixture_card_version', 'v3'));
+        $previewLeague = trim((string) ($validated['preview_league'] ?? ''));
+
+        $allLeagues = $this->allSportLeagues('fight_league_ids', $cards, $provider, 'COMBAT_OTHER', $cardVersion, $previewLeague);
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'league_card_preview' => $this->leagueCardPreview($summary, $cards, $cardVersion),
+            'all_fight_leagues' => $allLeagues,
             'captions_enabled' => (bool) $settings->get('fight_fixture_captions_enabled', false),
             'card_version' => $cardVersion,
         ]));
@@ -424,17 +454,24 @@ class SportsBotController extends Controller
         SportsBotPublisher $publisher,
         SportsBotCardRenderer $cards,
         SportsBotSettingsService $settings,
+        TheSportsDbClient $provider,
     ): JsonResponse
     {
         $validated = $request->validate([
             'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'preview_league' => ['sometimes', 'string', 'max:200'],
         ]);
         $preview = $publisher->preview($module);
         $summary = (array) ($preview['summary'] ?? []);
         $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? $settings->get('formula_1_fixture_card_version', 'v3'));
+        $previewLeague = trim((string) ($validated['preview_league'] ?? ''));
+
+        $allLeagues = $this->allSportLeagues('formula_1_league_ids', $cards, $provider, 'FORMULA_1', $cardVersion, $previewLeague);
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'league_card_preview' => $this->leagueCardPreview($summary, $cards, $cardVersion),
+            'all_motorsport_leagues' => $allLeagues,
             'captions_enabled' => (bool) $settings->get('formula_1_fixture_captions_enabled', false),
             'card_version' => $cardVersion,
         ]));
@@ -500,6 +537,7 @@ class SportsBotController extends Controller
 
         return response()->json(array_merge($preview, [
             'card_previews' => $this->fixtureCardPreviews($summary, $cards, $cardVersion),
+            'league_card_preview' => $this->leagueCardPreview($summary, $cards, $cardVersion),
             'captions_enabled' => (bool) $settings->get($this->settingKey($sport, 'captions_enabled'), $config['captions_enabled_default'] ?? false),
             'card_version' => $cardVersion,
             'sport_config' => $config,
@@ -573,6 +611,245 @@ class SportsBotController extends Controller
         }
     }
 
+    public function highlightsPreview(
+        Request $request,
+        HighlightsContentModule $module,
+        SportsBotCardRenderer $cards,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'render_cards' => ['sometimes'],
+        ]);
+        $cardVersion = $this->footballFixtureCardVersion($validated['card_version'] ?? 'v3');
+        $summary = $module->buildSummary();
+        $cards = !empty($validated['render_cards']) && filter_var($validated['render_cards'], FILTER_VALIDATE_BOOLEAN) ? $module->renderCards($summary, $cardVersion) : [];
+
+        return response()->json([
+            'summary' => $summary,
+            'card_previews' => $cards,
+            'card_version' => $cardVersion,
+        ]);
+    }
+
+    public function highlightsSend(
+        Request $request,
+        HighlightsContentModule $module,
+        SportsBotCardRenderer $cards,
+        SportsBotNotifier $notifier,
+    ): JsonResponse
+    {
+        $validated = $request->validate([
+            'card_version' => ['sometimes', 'string', 'in:v1,v2,v3'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        try {
+            $summary = $module->buildSummary();
+            $results = [];
+            $limit = min((int) ($validated['limit'] ?? 10), 10);
+            $selected = array_slice($summary['highlights'] ?? [], 0, $limit);
+
+            $leagueGroups = [];
+            foreach ($selected as $h) {
+                $league = $h['league'] ?? 'Other';
+                $leagueGroups[$league][] = $h;
+            }
+
+            $currentLeague = null;
+            foreach ($selected as $h) {
+                $league = $h['league'] ?? 'Other';
+
+                if ($league !== $currentLeague) {
+                    $currentLeague = $league;
+                    try {
+                        $leagueInfo = [
+                            'name' => $league,
+                            'sport' => SportsBotSports::providerSport($h['sport_key'] ?? 'football'),
+                            'badge' => $h['league_badge'] ?? '',
+                            'logo' => $h['league_logo'] ?? '',
+                            'date' => now()->format('j M Y'),
+                        ];
+                        $headerCard = $cards->leagueCard($leagueInfo, $validated['card_version'] ?? 'v3', [
+                            'route_key' => TelegramRouteKeys::HIGHLIGHTS,
+                        ]);
+                        $headerPath = (string) ($headerCard['path'] ?? '');
+                        if ($headerPath !== '' && is_file($headerPath)) {
+                            foreach ($notifier->sendPhoto($headerPath, '', ['route_key' => TelegramRouteKeys::HIGHLIGHTS]) as $r) {
+                                $results[] = $r;
+                            }
+                        }
+                    } catch (Throwable) {
+                    }
+                }
+
+                $fixture = [
+                    'event_name' => $h['event_name'],
+                    'home_team' => $h['home_team'],
+                    'away_team' => $h['away_team'],
+                    'home_score' => $h['home_score'],
+                    'away_score' => $h['away_score'],
+                    'score' => $h['score'],
+                    'league' => $league,
+                    'sport' => SportsBotSports::providerSport($h['sport_key']),
+                    'event_thumb' => $h['thumb'],
+                    'home_badge' => $h['home_badge'],
+                    'away_badge' => $h['away_badge'],
+                    'league_badge' => $h['league_badge'],
+                    'sport_key' => $h['sport_key'],
+                    'dateEvent' => $h['date'],
+                    'date_label' => $h['date'],
+                    'result_status' => 'Full Time',
+                    'video_url' => $h['video_url'],
+                    'background_image' => $h['thumb'],
+                ];
+
+                $eventId = $h['event_id'] ?? '';
+                if ($eventId !== '') {
+                    try {
+                        $provider = app(\App\Plugins\SportsBot\Services\TheSportsDbClient::class);
+                        $statRows = $provider->lookupEventStats($eventId);
+                        $hasValues = false;
+                        foreach ($statRows as $s) {
+                            if (trim((string) ($s['strHome'] ?? '')) !== '' && trim((string) ($s['strHome'] ?? '')) !== '?') {
+                                $hasValues = true;
+                                break;
+                            }
+                        }
+                        if ($hasValues) {
+                            $stats = [];
+                            foreach ($statRows as $s) {
+                                $name = trim((string) ($s['strStat'] ?? ''));
+                                $home = trim((string) ($s['strHome'] ?? ''));
+                                $away = trim((string) ($s['strAway'] ?? ''));
+                                if ($name !== '') {
+                                    $key = strtolower(str_replace([' ', '%', '.', '-'], '_', $name));
+                                    $stats[$key] = ['home' => $home, 'away' => $away];
+                                }
+                            }
+                            $fixture['event_stats'] = $stats;
+                        } else {
+                            $fixture['event_stats'] = $this->scrapeStats($eventId, $h['event_name'] ?? '');
+                        }
+                    } catch (Throwable) {
+                        $fixture['event_stats'] = $this->scrapeStats($eventId, $h['event_name'] ?? '');
+                    }
+                }
+
+                try {
+                    $card = $cards->fixtureCard($fixture, $validated['card_version'] ?? 'v3', [
+                        'route_key' => TelegramRouteKeys::HIGHLIGHTS,
+                        'kind' => 'result',
+                    ]);
+                    $path = (string) ($card['path'] ?? '');
+                    if ($path !== '' && is_file($path)) {
+                        $sportKey = $h['sport_key'] ?? 'football';
+                        $watchLabel = $this->watchLabel($sportKey, $fixture);
+                        $videoUrl = $h['video_url'];
+
+                        $sendResults = $notifier->sendPhoto($path, '', [
+                            'route_key' => TelegramRouteKeys::HIGHLIGHTS,
+                            'parse_mode' => 'HTML',
+                            'reply_markup' => [
+                                'inline_keyboard' => [[
+                                    ['text' => $watchLabel, 'url' => $videoUrl],
+                                ]],
+                            ],
+                            'embed_url' => $videoUrl,
+                            'embed_title' => $watchLabel,
+                            'embed_color' => $this->embedColor($sportKey),
+                            'embed_footer' => $league,
+                        ]);
+                        foreach ($sendResults as $r) {
+                            $results[] = $r;
+                        }
+                    }
+                } catch (Throwable) {
+                    continue;
+                }
+            }
+            return response()->json([
+                'sent' => true,
+                'total' => count($results),
+                'results' => $results,
+            ]);
+        } catch (Throwable $error) {
+            return response()->json([
+                'sent' => false,
+                'error' => $error->getMessage(),
+            ], 422);
+        }
+    }
+
+    private function watchLabel(string $sportKey, array $fixture): string
+    {
+        if (($fixture['league'] ?? '') === 'WWE') {
+            return '▶ Watch Highlights';
+        }
+        return match ($sportKey) {
+            'formula_1', 'motorsport' => '▶ Watch Race Highlights',
+            'fights', 'boxing', 'mma' => '▶ Watch Fight Highlights',
+            'rugby' => '▶ Watch Match Highlights',
+            'basketball' => '▶ Watch Game Highlights',
+            'baseball' => '▶ Watch Game Highlights',
+            'american_football' => '▶ Watch Game Highlights',
+            'tennis' => '▶ Watch Match Highlights',
+            default => '▶ Watch Highlights',
+        };
+    }
+
+    private function scrapeStats(string $eventId, string $eventName): array
+    {
+        $cacheKey = 'sportsbot:scraped_stats:' . $eventId;
+        $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        try {
+            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $eventName), '-'));
+            $url = "https://www.thesportsdb.com/event/{$eventId}-{$slug}";
+            $html = Http::timeout(8)
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'])
+                ->get($url)
+                ->body();
+
+            preg_match_all('/<h5>([^<]+)<\/h5><div[^>]+container2[^>]*><div[^>]+score-left[^>]+>([^<]+)<\/div>.*?<div[^>]+score-right[^>]+>([^<]+)<\/div>/s', $html, $matches);
+            $stats = [];
+            for ($i = 0; $i < count($matches[1]); $i++) {
+                $name = trim($matches[1][$i]);
+                $home = trim($matches[2][$i]);
+                $away = trim($matches[3][$i]);
+                if ($name !== '') {
+                    $key = strtolower(str_replace([' ', '%', '.', '-'], '_', $name));
+                    $stats[$key] = ['home' => $home, 'away' => $away];
+                }
+            }
+
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $stats, now()->addDays(7));
+            return $stats;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    private function embedColor(string $sportKey): int
+    {
+        return match ($sportKey) {
+            'football' => 10181043,
+            'rugby' => 5763712,
+            'fights', 'boxing', 'mma' => 16766720,
+            'formula_1', 'motorsport' => 16733525,
+            'basketball' => 16750592,
+            'baseball' => 3722752,
+            'american_football' => 16753920,
+            'ice_hockey' => 6323584,
+            'tennis' => 10070780,
+            'cricket' => 5763712,
+            default => 10181043,
+        };
+    }
+
     public function fixtureQueue(FixtureQueueService $queue): JsonResponse
     {
         $today = Carbon::today()->toDateString();
@@ -595,6 +872,7 @@ class SportsBotController extends Controller
             'renderer' => [
                 'primary' => (bool) config('plugins.SportsBot.cards.v3_browser_enabled', true) ? 'browser_v3' : 'gd_v3',
                 'gd_fallback_enabled' => (bool) config('plugins.SportsBot.cards.gd_fallback_enabled', true),
+                'allow_gd_fallback_publish' => (bool) app(SportsBotSettingsService::class)->get('fixture_queue_allow_gd_fallback_publish', config('plugins.SportsBot.publishing.fixture_queue.allow_gd_fallback_publish', false)),
                 'browser_timeout' => (int) config('plugins.SportsBot.cards.browser_timeout', 15),
                 'browser_concurrency' => (int) config('plugins.SportsBot.cards.browser_concurrency', 2),
             ],
@@ -619,6 +897,27 @@ class SportsBotController extends Controller
         }
     }
 
+    public function fixtureQueueEnrich(Request $request, FixtureQueueService $queue): JsonResponse
+    {
+        $validated = $request->validate([
+            'sport' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'days' => ['sometimes', 'integer', 'min:0', 'max:14'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'force' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            return response()->json($queue->enrichQueuedFixtures(
+                isset($validated['sport']) && trim((string) $validated['sport']) !== '' ? (string) $validated['sport'] : null,
+                (int) ($validated['days'] ?? 2),
+                (int) ($validated['limit'] ?? 30),
+                (bool) ($validated['force'] ?? false)
+            ));
+        } catch (Throwable $error) {
+            return response()->json(['error' => $error->getMessage()], 422);
+        }
+    }
+
     public function fixtureQueueRender(FixtureQueueService $queue): JsonResponse
     {
         try {
@@ -628,10 +927,12 @@ class SportsBotController extends Controller
         }
     }
 
-    public function fixtureQueuePublish(FixtureQueueService $queue): JsonResponse
+    public function fixtureQueuePublish(Request $request, FixtureQueueService $queue): JsonResponse
     {
         try {
-            return response()->json($queue->publishAll());
+            return response()->json($queue->publishAll([
+                'dry_run' => $request->boolean('dry_run'),
+            ]));
         } catch (Throwable $error) {
             return response()->json(['error' => $error->getMessage()], 422);
         }
@@ -875,11 +1176,401 @@ class SportsBotController extends Controller
         return $previews;
     }
 
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<string, mixed>|null
+     */
+    private function leagueCardPreview(array $summary, SportsBotCardRenderer $cards, string $cardVersion = 'v3', string $previewLeague = ''): ?array
+    {
+        $cardVersion = $this->footballFixtureCardVersion($cardVersion);
+        $leagues = [];
+        $seen = [];
+        $previewCard = null;
+
+        foreach ((array) ($summary['grouped'] ?? []) as $fixtures) {
+            foreach ((array) $fixtures as $fixture) {
+                if (!is_array($fixture)) {
+                    continue;
+                }
+
+                $leagueName = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
+                if ($leagueName === '' || isset($seen[$leagueName])) {
+                    continue;
+                }
+
+                $seen[$leagueName] = true;
+                $leagues[] = $leagueName;
+
+                $isTargetLeague = $previewLeague !== '' && strcasecmp($leagueName, $previewLeague) === 0;
+                $isFirstUnrequested = $previewLeague === '' && $previewCard === null;
+
+                if ($isTargetLeague || $isFirstUnrequested) {
+                    try {
+                        $date = trim((string) ($fixture['date'] ?? $fixture['date_label'] ?? $fixture['dateEvent'] ?? ''));
+                        $formattedDate = $date !== '' ? $date : now()->format('j M Y');
+
+                        $leagueInfo = [
+                            'name' => $leagueName,
+                            'sport' => (string) ($fixture['sport'] ?? $fixture['strSport'] ?? $fixture['sport_key'] ?? ''),
+                            'badge' => (string) ($fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? ''),
+                            'logo' => (string) ($fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? ''),
+                            'date' => $formattedDate,
+                        ];
+
+                        $card = $cards->leagueCard($leagueInfo, $cardVersion);
+                        $path = (string) ($card['path'] ?? '');
+                        if ($path !== '' && is_file($path)) {
+                            $previewCard = [
+                                'name' => $leagueName,
+                                'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
+                            ];
+                        }
+
+                        if ($isTargetLeague) {
+                            break 2;
+                        }
+                    } catch (Throwable $error) {
+                        Log::warning('sportsbot.admin.league_card_preview_failed', [
+                            'error' => $error->getMessage(),
+                        ]);
+                    }
+                }
+            }
+        }
+
+        if ($leagues === []) {
+            return null;
+        }
+
+        if ($previewLeague !== '' && $previewCard === null) {
+            $previewCard = [
+                'name' => $previewLeague,
+                'data_url' => null,
+                'no_fixtures' => true,
+            ];
+        }
+
+        return [
+            'card' => $previewCard,
+            'leagues' => $leagues,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function allFootballLeagues(SportsBotCardRenderer $cards, TheSportsDbClient $provider, SportsBotSettingsService $settings, string $cardVersion = 'v3', string $previewLeague = ''): array
+    {
+        $cardVersion = $this->footballFixtureCardVersion($cardVersion);
+
+        $defaultIds = array_map('strval', (array) config('plugins.SportsBot.fixtures_today.default_league_ids', []));
+        $featuredIds = $settings->get('featured_league_ids', []);
+        $allowedIds = (array) config('plugins.SportsBot.coverage.allowed_league_ids', []);
+        $leagueIds = $featuredIds
+            ? array_values(array_unique(array_merge($defaultIds, $featuredIds)))
+            : ($allowedIds ?: $defaultIds);
+        $leagueIds = array_values(array_unique(array_filter(array_map('strval', $leagueIds), fn ($id) => trim($id) !== '')));
+
+        $cacheDir = storage_path('app/sportsbot/league-headers');
+        if (!@is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !@is_dir($cacheDir)) {
+            $cacheDir = null;
+        }
+
+        $metaCachePath = $cacheDir ? $cacheDir . '/league-meta.json' : null;
+        $metaCache = [];
+        if ($metaCachePath !== null && @is_file($metaCachePath)) {
+            $metaCache = json_decode((string) file_get_contents($metaCachePath), true) ?? [];
+        }
+
+        $leagues = [];
+        $needMetaSave = false;
+
+        foreach ($leagueIds as $id) {
+            $name = $metaCache[$id]['name'] ?? '';
+
+            if ($name === '') {
+                try {
+                    $league = $provider->lookupLeague($id);
+                    if ($league !== null && is_array($league)) {
+                        $name = trim((string) ($league['strLeague'] ?? ''));
+                        if ($name !== '') {
+                            $metaCache[$id] = [
+                                'name' => $name,
+                                'badge' => trim((string) ($league['strBadge'] ?? $league['strLogo'] ?? '')),
+                                'logo' => trim((string) ($league['strLogo'] ?? '')),
+                            ];
+                            $needMetaSave = true;
+                        }
+                    }
+                } catch (Throwable $error) {
+                    Log::debug('sportsbot.admin.league_meta_lookup_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                    continue;
+                }
+            }
+
+            if ($name === '') {
+                continue;
+            }
+
+            $cacheImgPath = $cacheDir ? $cacheDir . '/league-header-football-' . $id . '-' . $cardVersion . '.png' : null;
+            $hasCache = $cacheImgPath !== null && @is_file($cacheImgPath) && filesize($cacheImgPath) > 0;
+            $dataUrl = null;
+            $generating = false;
+
+            if ($hasCache) {
+                $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($cacheImgPath));
+            } elseif ($previewLeague !== '' && strcasecmp($name, $previewLeague) === 0) {
+                $generating = true;
+                try {
+                    $today = now()->format('j M Y');
+                    $badge = $metaCache[$id]['badge'] ?? '';
+                    $logo = $metaCache[$id]['logo'] ?? '';
+
+                    $leagueInfo = [
+                        'name' => $name,
+                        'sport' => 'football',
+                        'badge' => $badge,
+                        'logo' => $logo,
+                        'date' => $today,
+                    ];
+
+                    $card = $cards->leagueCard($leagueInfo, $cardVersion, ['route_key' => 'FOOTBALL']);
+                    $path = (string) ($card['path'] ?? '');
+                    if ($path !== '' && is_file($path)) {
+                        if ($cacheImgPath !== null) {
+                            @copy($path, $cacheImgPath);
+                        }
+                        $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($path));
+                        $hasCache = true;
+                    }
+                } catch (Throwable $error) {
+                    Log::warning('sportsbot.admin.league_header_generate_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                }
+            }
+
+            $leagues[] = [
+                'name' => $name,
+                'league_id' => $id,
+                'has_cache' => $hasCache,
+                'generating' => $generating,
+                'data_url' => $dataUrl,
+            ];
+        }
+
+        if ($needMetaSave && $metaCachePath !== null) {
+            @file_put_contents($metaCachePath, json_encode($metaCache, JSON_UNESCAPED_UNICODE));
+        }
+
+        return $leagues;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function allRugbyLeagues(SportsBotCardRenderer $cards, TheSportsDbClient $provider, string $cardVersion = 'v3', string $previewLeague = ''): array
+    {
+        $leagueIds = array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) config('plugins.SportsBot.fixtures_today.rugby_league_ids', [])
+        ), fn ($id) => trim($id) !== '')));
+
+        $cacheDir = storage_path('app/sportsbot/league-headers');
+        if (!@is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !@is_dir($cacheDir)) {
+            $cacheDir = null;
+        }
+
+        $metaCachePath = $cacheDir ? $cacheDir . '/league-meta.json' : null;
+        $metaCache = [];
+        if ($metaCachePath !== null && @is_file($metaCachePath)) {
+            $metaCache = json_decode((string) file_get_contents($metaCachePath), true) ?? [];
+        }
+
+        $leagues = [];
+        $needMetaSave = false;
+
+        foreach ($leagueIds as $id) {
+            $name = $metaCache[$id]['name'] ?? '';
+
+            if ($name === '') {
+                try {
+                    $league = $provider->lookupLeague($id);
+                    if ($league !== null && is_array($league)) {
+                        $name = trim((string) ($league['strLeague'] ?? ''));
+                        if ($name !== '') {
+                            $metaCache[$id] = [
+                                'name' => $name,
+                                'badge' => trim((string) ($league['strBadge'] ?? $league['strLogo'] ?? '')),
+                                'logo' => trim((string) ($league['strLogo'] ?? '')),
+                            ];
+                            $needMetaSave = true;
+                        }
+                    }
+                } catch (Throwable $error) {
+                    Log::debug('sportsbot.admin.league_meta_lookup_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                    continue;
+                }
+            }
+
+            if ($name === '') {
+                continue;
+            }
+
+            $cacheImgPath = $cacheDir ? $cacheDir . '/league-header-rugby-' . $id . '-' . $cardVersion . '.png' : null;
+            $hasCache = $cacheImgPath !== null && @is_file($cacheImgPath) && filesize($cacheImgPath) > 0;
+            $dataUrl = null;
+            $generating = false;
+
+            if ($hasCache) {
+                $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($cacheImgPath));
+            } elseif ($previewLeague !== '' && strcasecmp($name, $previewLeague) === 0) {
+                $generating = true;
+                try {
+                    $today = now()->format('j M Y');
+                    $badge = $metaCache[$id]['badge'] ?? '';
+                    $logo = $metaCache[$id]['logo'] ?? '';
+
+                    $leagueInfo = [
+                        'name' => $name,
+                        'sport' => 'rugby',
+                        'badge' => $badge,
+                        'logo' => $logo,
+                        'date' => $today,
+                    ];
+
+                    $card = $cards->leagueCard($leagueInfo, $cardVersion, ['route_key' => 'RUGBY']);
+                    $path = (string) ($card['path'] ?? '');
+                    if ($path !== '' && is_file($path)) {
+                        if ($cacheImgPath !== null) {
+                            @copy($path, $cacheImgPath);
+                        }
+                        $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($path));
+                        $hasCache = true;
+                    }
+                } catch (Throwable $error) {
+                    Log::warning('sportsbot.admin.league_header_generate_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                }
+            }
+
+            $leagues[] = [
+                'name' => $name,
+                'league_id' => $id,
+                'has_cache' => $hasCache,
+                'generating' => $generating,
+                'data_url' => $dataUrl,
+            ];
+        }
+
+        if ($needMetaSave && $metaCachePath !== null) {
+            @file_put_contents($metaCachePath, json_encode($metaCache, JSON_UNESCAPED_UNICODE));
+        }
+
+        return $leagues;
+    }
+
     private function footballFixtureCardVersion(mixed $version): string
     {
         $version = strtolower(trim((string) $version));
 
         return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function allSportLeagues(string $configKey, SportsBotCardRenderer $cards, TheSportsDbClient $provider, string $routeKey, string $cardVersion = 'v3', string $previewLeague = ''): array
+    {
+        $leagueIds = array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) config('plugins.SportsBot.fixtures_today.' . $configKey, [])
+        ), fn ($id) => trim($id) !== '')));
+
+        $cacheDir = storage_path('app/sportsbot/league-headers');
+        if (!@is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !@is_dir($cacheDir)) {
+            $cacheDir = null;
+        }
+
+        $metaCachePath = $cacheDir ? $cacheDir . '/league-meta.json' : null;
+        $metaCache = [];
+        if ($metaCachePath !== null && @is_file($metaCachePath)) {
+            $metaCache = json_decode((string) file_get_contents($metaCachePath), true) ?? [];
+        }
+
+        $leagues = [];
+        $needMetaSave = false;
+
+        foreach ($leagueIds as $id) {
+            $name = $metaCache[$id]['name'] ?? '';
+            if ($name === '') {
+                try {
+                    $league = $provider->lookupLeague($id);
+                    if ($league !== null && is_array($league)) {
+                        $name = trim((string) ($league['strLeague'] ?? ''));
+                        if ($name !== '') {
+                            $metaCache[$id] = [
+                                'name' => $name,
+                                'badge' => trim((string) ($league['strBadge'] ?? $league['strLogo'] ?? '')),
+                                'logo' => trim((string) ($league['strLogo'] ?? '')),
+                            ];
+                            $needMetaSave = true;
+                        }
+                    }
+                } catch (Throwable $error) {
+                    Log::debug('sportsbot.admin.league_meta_lookup_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                    continue;
+                }
+            }
+            if ($name === '') {
+                continue;
+            }
+
+            $cacheImgPath = $cacheDir ? $cacheDir . '/league-header-' . $configKey . '-' . $id . '-' . $cardVersion . '.png' : null;
+            $hasCache = $cacheImgPath !== null && @is_file($cacheImgPath) && filesize($cacheImgPath) > 0;
+            $dataUrl = null;
+            $generating = false;
+
+            if ($hasCache) {
+                $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($cacheImgPath));
+            } elseif ($previewLeague !== '' && strcasecmp($name, $previewLeague) === 0) {
+                $generating = true;
+                try {
+                    $today = now()->format('j M Y');
+                    $badge = $metaCache[$id]['badge'] ?? '';
+                    $logo = $metaCache[$id]['logo'] ?? '';
+                    $leagueInfo = [
+                        'name' => $name,
+                        'sport' => $routeKey,
+                        'badge' => $badge,
+                        'logo' => $logo,
+                        'date' => $today,
+                    ];
+                    $card = $cards->leagueCard($leagueInfo, $cardVersion, ['route_key' => $routeKey]);
+                    $path = (string) ($card['path'] ?? '');
+                    if ($path !== '' && is_file($path)) {
+                        if ($cacheImgPath !== null) {
+                            @copy($path, $cacheImgPath);
+                        }
+                        $dataUrl = 'data:image/png;base64,' . base64_encode((string) file_get_contents($path));
+                        $hasCache = true;
+                    }
+                } catch (Throwable $error) {
+                    Log::warning('sportsbot.admin.league_header_generate_failed', ['league_id' => $id, 'error' => $error->getMessage()]);
+                }
+            }
+
+            $leagues[] = [
+                'name' => $name,
+                'league_id' => $id,
+                'has_cache' => $hasCache,
+                'generating' => $generating,
+                'data_url' => $dataUrl,
+            ];
+        }
+
+        if ($needMetaSave && $metaCachePath !== null) {
+            @file_put_contents($metaCachePath, json_encode($metaCache, JSON_UNESCAPED_UNICODE));
+        }
+
+        return $leagues;
     }
 
     /**
@@ -1021,6 +1712,132 @@ class SportsBotController extends Controller
         return response()->json([
             'saved' => true,
             'settings' => $settings->all(),
+        ]);
+    }
+
+    public function allLeagues(SportsBotSettingsService $settings, TheSportsDbClient $provider): JsonResponse
+    {
+        $sportToConfigKeys = [
+            'football' => ['default_league_ids', 'international_league_ids'],
+            'rugby' => ['rugby_league_ids'],
+            'fights' => ['fight_league_ids'],
+            'mma' => ['fight_league_ids'],
+            'boxing' => ['fight_league_ids'],
+            'formula_1' => ['formula_1_league_ids'],
+            'motorsport' => ['formula_1_league_ids'],
+            'american_football' => ['american_football_league_ids'],
+            'ice_hockey' => ['ice_hockey_league_ids'],
+            'cricket' => ['cricket_league_ids'],
+            'basketball' => ['basketball_league_ids'],
+            'baseball' => ['baseball_league_ids'],
+            'tennis' => ['tennis_league_ids'],
+            'golf' => [],
+        ];
+
+        $dbFeaturedIds = array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) $settings->get('featured_league_ids', [])
+        ))));
+
+        $cacheDir = storage_path('app/sportsbot/league-headers');
+        if (!@is_dir($cacheDir) && !@mkdir($cacheDir, 0775, true) && !@is_dir($cacheDir)) {
+            $cacheDir = null;
+        }
+        $metaCachePath = $cacheDir ? $cacheDir . '/league-meta.json' : null;
+        $metaCache = [];
+        if ($metaCachePath !== null && @is_file($metaCachePath)) {
+            $metaCache = json_decode((string) file_get_contents($metaCachePath), true) ?? [];
+        }
+
+        $needMetaSave = false;
+        $allSports = SportsBotSports::all();
+        $result = [];
+
+        foreach ($sportToConfigKeys as $sportKey => $configKeys) {
+            $definition = $allSports[$sportKey] ?? null;
+            if ($definition === null) {
+                continue;
+            }
+
+            $ids = [];
+            foreach ($configKeys as $configKey) {
+                $configIds = (array) config('plugins.SportsBot.fixtures_today.' . $configKey, []);
+                $ids = array_merge($ids, array_map('strval', $configIds));
+            }
+            $ids = array_values(array_unique(array_filter($ids, static fn (string $id): bool => trim($id) !== '')));
+
+            $leagues = [];
+            foreach ($ids as $id) {
+                $name = $metaCache[$id]['name'] ?? '';
+                if ($name === '') {
+                    try {
+                        $league = $provider->lookupLeague($id);
+                        if ($league !== null && is_array($league)) {
+                            $name = trim((string) ($league['strLeague'] ?? ''));
+                            if ($name !== '') {
+                                $metaCache[$id] = [
+                                    'name' => $name,
+                                    'badge' => trim((string) ($league['strBadge'] ?? $league['strLogo'] ?? '')),
+                                    'logo' => trim((string) ($league['strLogo'] ?? '')),
+                                ];
+                                $needMetaSave = true;
+                            }
+                        }
+                    } catch (Throwable) {
+                        continue;
+                    }
+                }
+                if ($name === '') {
+                    continue;
+                }
+
+                $leagues[] = [
+                    'id' => $id,
+                    'name' => $name,
+                    'badge' => $metaCache[$id]['badge'] ?? '',
+                    'logo' => $metaCache[$id]['logo'] ?? '',
+                    'featured' => in_array($id, $dbFeaturedIds, true),
+                ];
+            }
+
+            $result[$sportKey] = [
+                'label' => $definition['label'],
+                'sport' => $definition['sport'],
+                'icon' => $definition['icon'],
+                'route_key' => $definition['route_key'],
+                'leagues' => $leagues,
+            ];
+        }
+
+        if ($needMetaSave && $metaCachePath !== null) {
+            @file_put_contents($metaCachePath, json_encode($metaCache, JSON_UNESCAPED_UNICODE));
+        }
+
+        return response()->json([
+            'sports' => $result,
+            'featured_ids' => $dbFeaturedIds,
+        ]);
+    }
+
+    public function lookupLeague(Request $request, TheSportsDbClient $provider): JsonResponse
+    {
+        $validated = $request->validate([
+            'id' => ['required', 'string', 'max:40'],
+        ]);
+
+        $league = $provider->lookupLeague($validated['id']);
+
+        if ($league === null || !is_array($league)) {
+            return response()->json(['found' => false], 404);
+        }
+
+        return response()->json([
+            'found' => true,
+            'id' => $validated['id'],
+            'name' => trim((string) ($league['strLeague'] ?? '')),
+            'badge' => trim((string) ($league['strBadge'] ?? '')),
+            'logo' => trim((string) ($league['strLogo'] ?? '')),
+            'sport' => trim((string) ($league['strSport'] ?? '')),
         ]);
     }
 
@@ -1280,6 +2097,11 @@ class SportsBotController extends Controller
             'message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'enabled' => ['sometimes', 'boolean'],
             'fallback' => ['sometimes', 'boolean'],
+            'branding' => ['sometimes', 'nullable', 'array'],
+            'branding.watermark' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'branding.telegram' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'branding.discord' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'branding.sponsor_slot' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         $routeKeys = $this->routeKeysFromPayload($validated);
@@ -1321,10 +2143,13 @@ class SportsBotController extends Controller
                 'message_thread_id' => $target['message_thread_id'],
             ]);
 
+            $branding = $this->normalizeBranding($validated['branding'] ?? null);
+
             $route->fill([
                 'label' => trim((string) ($validated['label'] ?? '')) ?: $routeKey,
                 'enabled' => (bool) ($validated['enabled'] ?? true),
                 'fallback' => (bool) ($validated['fallback'] ?? ($routeKey === TelegramRouteKeys::DEFAULT)),
+                'branding' => $branding,
             ]);
             $route->save();
             $routes[] = $route;
@@ -1877,11 +2702,17 @@ class SportsBotController extends Controller
      */
     private function discordSettings(SportsBotSettingsService $settings): array
     {
+        $diagnostics = app(DiscordNotifier::class)->diagnostics();
+
         return [
             'discord_enabled' => (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false)),
             'discord_default_webhook_url' => (string) $settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')),
             'discord_username' => (string) $settings->get('discord_username', config('plugins.SportsBot.discord.username', 'SportsBot')),
             'discord_avatar_url' => (string) $settings->get('discord_avatar_url', config('plugins.SportsBot.discord.avatar_url', '')),
+            'discord_mode' => (string) ($diagnostics['mode'] ?? 'webhook'),
+            'discord_bot_token_configured' => (bool) ($diagnostics['bot_token_configured'] ?? false),
+            'discord_bot_channel_count' => (int) ($diagnostics['bot_channel_count'] ?? 0),
+            'discord_default_bot_channel_configured' => (bool) ($diagnostics['default_bot_channel_configured'] ?? false),
         ];
     }
 
@@ -1919,6 +2750,30 @@ class SportsBotController extends Controller
      */
     private function discordRouteStatuses(SportsBotSettingsService $settings): array
     {
+        $diagnostics = app(DiscordNotifier::class)->diagnostics();
+        if (($diagnostics['mode'] ?? 'webhook') === 'bot') {
+            $statuses = [];
+            $routeStatuses = (array) ($diagnostics['route_statuses'] ?? []);
+
+            foreach (TelegramRouteKeys::all() as $routeKey) {
+                $status = (array) ($routeStatuses[$routeKey] ?? []);
+                $source = (string) ($status['source'] ?? 'none');
+
+                $statuses[$routeKey] = [
+                    'configured' => (bool) ($status['configured'] ?? false),
+                    'enabled' => (bool) ($diagnostics['enabled'] ?? false),
+                    'source' => $source,
+                    'fallback' => $source === 'bot_default' && $routeKey !== TelegramRouteKeys::DEFAULT,
+                    'has_route_webhook' => false,
+                    'has_default_webhook' => false,
+                    'has_bot_channel' => (bool) ($status['bot_channel_configured'] ?? false),
+                    'has_default_bot_channel' => (bool) ($diagnostics['default_bot_channel_configured'] ?? false),
+                ];
+            }
+
+            return $statuses;
+        }
+
         $enabled = (bool) $settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false));
         $defaultWebhook = trim((string) $settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')));
         $routes = $this->discordWebhookMap($settings);
@@ -2100,11 +2955,32 @@ class SportsBotController extends Controller
         $missingTv = 0;
         $missingCard = 0;
         $scraperFound = 0;
+        $scraperError = 0;
+        $gdFallback = 0;
+        $enrichmentDue = 0;
+        $routeFallback = 0;
+        $blockedPublish = 0;
+        $failedDelivery = 0;
+        $routeStatusCache = [];
+        $allowGdFallbackPublish = (bool) app(SportsBotSettingsService::class)->get(
+            'fixture_queue_allow_gd_fallback_publish',
+            config('plugins.SportsBot.publishing.fixture_queue.allow_gd_fallback_publish', false)
+        );
 
         foreach ($windowRows as $row) {
             $fixture = (array) ($row->fixture_data ?? []);
             $payload = (array) ($row->payload ?? []);
-            if (trim((string) ($fixture['tv_channel'] ?? '')) === '' && empty($fixture['tv_channels'] ?? [])) {
+            $config = SportsFixtureConfig::for((string) $row->sport_key) ?: [];
+            $routeKey = $row->route_key ?: SportsFixtureConfig::routeKeyForFixture((string) $row->sport_key, $fixture);
+            if (!isset($routeStatusCache[$routeKey])) {
+                try {
+                    $routeStatusCache[$routeKey] = app(TelegramRoutingService::class)->resolveTargets($routeKey);
+                } catch (Throwable) {
+                    $routeStatusCache[$routeKey] = ['fallback' => true, 'target_count' => 0];
+                }
+            }
+
+            if (!SportsBotFixtureReadiness::hasTv($fixture)) {
                 $missingTv++;
             }
             if (trim((string) ($row->card_path ?? '')) === '' && $row->status !== SportsBotFixtureQueue::STATUS_SENT) {
@@ -2113,7 +2989,28 @@ class SportsBotController extends Controller
             if (($payload['scraper']['status'] ?? null) === 'found') {
                 $scraperFound++;
             }
+            if (($payload['scraper']['status'] ?? null) === 'error') {
+                $scraperError++;
+            }
+            if (SportsBotFixtureReadiness::fallbackActive($row)) {
+                $gdFallback++;
+            }
+            if ((SportsBotFixtureReadiness::enrichmentNeeds($row)['enrichment_due'] ?? false) === true) {
+                $enrichmentDue++;
+            }
+            if ((bool) ($routeStatusCache[$routeKey]['fallback'] ?? false)) {
+                $routeFallback++;
+            }
+            if ($row->status === SportsBotFixtureQueue::STATUS_FAILED
+                || (trim((string) ($row->card_path ?? '')) === '' && $row->status !== SportsBotFixtureQueue::STATUS_SENT)
+                || (!$allowGdFallbackPublish && SportsBotFixtureReadiness::fallbackActive($row) && $this->desiredQueueCardVersion((string) $row->sport_key, $config) === 'v3')
+                || (int) ($routeStatusCache[$routeKey]['target_count'] ?? 0) <= 0
+            ) {
+                $blockedPublish++;
+            }
         }
+
+        $failedDelivery = $this->deliveryFailureCountSince(now()->subDay());
 
         return [
             'counts' => $counts,
@@ -2128,8 +3025,24 @@ class SportsBotController extends Controller
                 'missing_tv' => $missingTv,
                 'missing_card' => $missingCard,
                 'scraper_found' => $scraperFound,
+                'scraper_error' => $scraperError,
+                'gd_fallback' => $gdFallback,
+                'enrichment_due' => $enrichmentDue,
+                'route_fallback' => $routeFallback,
+                'blocked_publish' => $blockedPublish,
+                'failed_delivery' => $failedDelivery,
             ],
         ];
+    }
+
+    private function desiredQueueCardVersion(string $sportKey, array $config): string
+    {
+        $version = strtolower(trim((string) app(SportsBotSettingsService::class)->get(
+            $sportKey . '_fixture_card_version',
+            $config['default_card_version'] ?? 'v3'
+        )));
+
+        return in_array($version, ['v1', 'v2', 'v3'], true) ? $version : 'v3';
     }
 
     /**
@@ -2168,6 +3081,65 @@ class SportsBotController extends Controller
                 'total' => (int) ($row->total ?? 0),
             ])
             ->all();
+    }
+
+    private function deliveryFailureCountSince(Carbon $since): int
+    {
+        if (!Schema::hasTable('sportsbot_deliveries')) {
+            return 0;
+        }
+
+        return SportsBotDelivery::query()
+            ->where('created_at', '>=', $since)
+            ->where('status', 'failed')
+            ->count();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pipelineRunStatus(): array
+    {
+        if (!Schema::hasTable('sportsbot_pipeline_runs')) {
+            return [
+                'recent' => [],
+                'latest_by_stage' => [],
+            ];
+        }
+
+        $recent = SportsBotPipelineRun::query()
+            ->latest('id')
+            ->limit(40)
+            ->get()
+            ->all();
+
+        $latestByStage = [];
+        $lastStatusByStage = [];
+        foreach ($recent as $run) {
+            if (!$run instanceof SportsBotPipelineRun) {
+                continue;
+            }
+
+            if (!isset($latestByStage[$run->stage])) {
+                $latestByStage[$run->stage] = $run;
+            }
+
+            $status = (string) $run->status;
+            if (!in_array($status, ['success', 'warning', 'failed'], true)) {
+                continue;
+            }
+
+            $lastStatusByStage[$run->stage] ??= [];
+            if (!isset($lastStatusByStage[$run->stage][$status])) {
+                $lastStatusByStage[$run->stage][$status] = $run;
+            }
+        }
+
+        return [
+            'recent' => $recent,
+            'latest_by_stage' => $latestByStage,
+            'last_status_by_stage' => $lastStatusByStage,
+        ];
     }
 
     /**
@@ -2311,5 +3283,28 @@ class SportsBotController extends Controller
         $threadId = is_numeric((string) $value) ? (int) $value : 0;
 
         return $threadId > 0 ? $threadId : null;
+    }
+
+    /**
+     * @param array<string, mixed>|null $branding
+     * @return array<string, mixed>|null
+     */
+    private function normalizeBranding(?array $branding): ?array
+    {
+        if ($branding === null || $branding === []) {
+            return null;
+        }
+
+        $cleaned = [];
+
+        foreach (['watermark', 'telegram', 'discord', 'sponsor_slot'] as $key) {
+            $value = $branding[$key] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                $cleaned[$key] = trim($value);
+            }
+        }
+
+        return $cleaned !== [] ? $cleaned : null;
     }
 }

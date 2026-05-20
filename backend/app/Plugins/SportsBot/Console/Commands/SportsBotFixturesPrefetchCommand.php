@@ -17,6 +17,8 @@ class SportsBotFixturesPrefetchCommand extends Command
     public function handle(FixtureQueueService $queue): int
     {
         $sport = $this->option('sport');
+        $days = $this->option('days');
+        $days = $days !== null && $days !== '' ? max(0, (int) $days) : null;
 
         if ($sport !== null) {
             $config = SportsFixtureConfig::for((string) $sport);
@@ -26,9 +28,9 @@ class SportsBotFixturesPrefetchCommand extends Command
                 return Command::FAILURE;
             }
 
-            $result = $queue->prefetch((string) $sport);
+            $result = $queue->prefetch((string) $sport, $days);
         } else {
-            $result = $queue->prefetchAll();
+            $result = $queue->prefetchAll($days);
         }
 
         if (isset($result['error'])) {

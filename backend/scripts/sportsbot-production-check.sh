@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 INSTALL=0
 REPAIR_PERMISSIONS=0
 STRICT_WARNINGS=0
+DISCORD_BOT=0
 HELPER="/usr/local/bin/sportsbot-fix-permissions"
 
 for arg in "$@"; do
@@ -20,6 +21,9 @@ for arg in "$@"; do
     --strict)
       STRICT_WARNINGS=1
       ;;
+    --discord-bot)
+      DISCORD_BOT=1
+      ;;
     -h|--help)
       cat <<'USAGE'
 SportsBot live install/verification script.
@@ -31,6 +35,7 @@ Options:
   --install              Run composer/npm install, build admin assets, migrate, cache config, and repair permissions.
   --repair-permissions   Run the hardcoded sudo permission helper.
   --strict               Treat warnings as a failed verification.
+  --discord-bot          Require Discord bot-token/channel-map readiness in SportsBot health.
 
 This script never runs raw chown/chmod. Permission repair uses:
   sudo /usr/local/bin/sportsbot-fix-permissions
@@ -157,8 +162,8 @@ else
   fail "php binary missing"
 fi
 
-for ext in curl fileinfo gd json mbstring openssl pdo_mysql xml zip; do
-  if php -m 2>/dev/null | grep -qi "^${ext}$"; then
+for ext in bcmath curl exif fileinfo gd json mbstring openssl pdo pdo_mysql xml zip; do
+  if php -r "exit(extension_loaded('${ext}') ? 0 : 1);" 2>/dev/null; then
     pass "PHP extension: $ext"
   else
     fail "PHP extension missing: $ext"
@@ -259,7 +264,12 @@ else
   fail "could not read migration status"
 fi
 
-run_required "SportsBot health and Browser v3 render smoke test" php artisan sportsbot:health --json --fix --render
+HEALTH_FLAGS=(--json --fix --render)
+if [ "$DISCORD_BOT" -eq 1 ]; then
+  HEALTH_FLAGS+=(--discord-bot)
+fi
+
+run_required "SportsBot health and Browser v3 render smoke test" php artisan sportsbot:health "${HEALTH_FLAGS[@]}"
 
 if [ "$INSTALL" -eq 1 ]; then
   run_required "Clear optimized Laravel caches" php artisan optimize:clear
@@ -291,7 +301,11 @@ if [ -x "scripts/sportsbot-environment-audit.sh" ]; then
   AUDIT_DIR="storage/app/sportsbot/env"
   AUDIT_PATH="${AUDIT_DIR}/live-$(date +%Y%m%d-%H%M%S).json"
   mkdir -p "$AUDIT_DIR"
-  if scripts/sportsbot-environment-audit.sh --with-health --write "$AUDIT_PATH" >/dev/null; then
+  AUDIT_FLAGS=(--with-health --write "$AUDIT_PATH")
+  if [ "$DISCORD_BOT" -eq 1 ]; then
+    AUDIT_FLAGS+=(--discord-bot)
+  fi
+  if scripts/sportsbot-environment-audit.sh "${AUDIT_FLAGS[@]}" >/dev/null; then
     pass "wrote environment audit report: $AUDIT_PATH"
   else
     warn "environment audit report failed"

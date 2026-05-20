@@ -4,6 +4,7 @@ namespace App\Plugins\SportsBot\Console\Commands;
 
 use App\Core\Services\LicenseService;
 use App\Plugins\SportsBot\Models\SportsBotTelegramRoute;
+use App\Plugins\SportsBot\Services\DiscordNotifier;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
@@ -20,7 +21,8 @@ class SportsBotHealthCommand extends Command
     protected $signature = 'sportsbot:health
         {--json : Output machine-readable JSON}
         {--fix : Create missing writable SportsBot storage directories}
-        {--render : Render a no-fixtures V3 card as a smoke test}';
+        {--render : Render a no-fixtures V3 card as a smoke test}
+        {--discord-bot : Require Discord bot-token and channel-map delivery readiness}';
 
     protected $description = 'Check SportsBot production readiness and runtime configuration';
 
@@ -35,7 +37,7 @@ class SportsBotHealthCommand extends Command
         $checks[] = $this->check('Licence valid', LicenseService::isLicensed(), 'Add LARAVEL_CP_LICENSE or storage/license_key plus matching license_public.pem.');
         $checks[] = $this->check('LICENSE_CALLBACK_SECRET set', trim((string) config('app.license_callback_secret')) !== '', 'Run php artisan license:generate-secret.');
 
-        foreach (['curl', 'fileinfo', 'gd', 'json', 'mbstring', 'openssl', 'pdo_mysql', 'xml', 'zip'] as $extension) {
+        foreach (['bcmath', 'curl', 'exif', 'fileinfo', 'gd', 'json', 'mbstring', 'openssl', 'pdo', 'pdo_mysql', 'xml', 'zip'] as $extension) {
             $checks[] = $this->check('PHP extension: ' . $extension, extension_loaded($extension));
         }
 
@@ -43,6 +45,7 @@ class SportsBotHealthCommand extends Command
         $checks = array_merge($checks, $this->storageChecks((bool) $this->option('fix')));
         $checks = array_merge($checks, $this->rendererChecks());
         $checks = array_merge($checks, $this->routeChecks());
+        $checks = array_merge($checks, $this->discordBotChecks((bool) $this->option('discord-bot')));
         $checks = array_merge($checks, $this->automationChecks());
 
         if ((bool) $this->option('render')) {
@@ -221,11 +224,7 @@ class SportsBotHealthCommand extends Command
         }
 
         $checks = [];
-        $requiredRoutes = collect(SportsFixtureConfig::all())
-            ->map(fn (array $config): string => (string) ($config['topic_key'] ?? ''))
-            ->filter()
-            ->unique()
-            ->values();
+        $requiredRoutes = $this->requiredRouteKeys();
 
         foreach ($requiredRoutes as $routeKey) {
             $route = SportsBotTelegramRoute::query()->where('route_key', $routeKey)->first();
@@ -238,6 +237,69 @@ class SportsBotHealthCommand extends Command
         }
 
         return $checks;
+    }
+
+    /**
+     * @return array<int, array{name:string,status:string,message:string}>
+     */
+    private function discordBotChecks(bool $required): array
+    {
+        $diagnostics = app(DiscordNotifier::class)->diagnostics();
+
+        if (!$required && !($diagnostics['enabled'] ?? false) && !($diagnostics['bot_token_configured'] ?? false)) {
+            return [];
+        }
+
+        $failureStatus = $required ? 'fail' : 'warn';
+        $checks = [
+            $this->check(
+                'Discord delivery enabled for bot-token audit',
+                (bool) ($diagnostics['enabled'] ?? false),
+                'Set SPORTSBOT_DISCORD_ENABLED=true.',
+                $failureStatus
+            ),
+            $this->check(
+                'Discord bot token configured',
+                (bool) ($diagnostics['bot_token_configured'] ?? false),
+                'Set SPORTSBOT_DISCORD_BOT_TOKEN or save discord_bot_token in SportsBot settings.',
+                $failureStatus
+            ),
+            $this->check(
+                'Discord bot channel map configured',
+                (int) ($diagnostics['bot_channel_count'] ?? 0) > 0,
+                'Set SPORTSBOT_DISCORD_DEFAULT_CHANNEL_ID or SPORTSBOT_DISCORD_BOT_CHANNELS_JSON.',
+                $failureStatus
+            ),
+        ];
+
+        if (!($diagnostics['bot_token_configured'] ?? false)) {
+            return $checks;
+        }
+
+        $routeStatuses = (array) ($diagnostics['route_statuses'] ?? []);
+        foreach ($this->requiredRouteKeys() as $routeKey) {
+            $checks[] = $this->check(
+                'Discord bot channel assigned: ' . $routeKey,
+                (bool) ($routeStatuses[$routeKey]['configured'] ?? false),
+                'Set a default Discord channel or add this route key to SPORTSBOT_DISCORD_BOT_CHANNELS_JSON.',
+                $failureStatus
+            );
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function requiredRouteKeys(): array
+    {
+        return collect(SportsFixtureConfig::all())
+            ->map(fn (array $config): string => (string) ($config['topic_key'] ?? ''))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

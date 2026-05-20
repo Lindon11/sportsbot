@@ -18,12 +18,14 @@ class SportsBotTelegramRoute extends Model
         'message_thread_id',
         'enabled',
         'fallback',
+        'branding',
     ];
 
     protected $casts = [
         'message_thread_id' => 'integer',
         'enabled' => 'boolean',
         'fallback' => 'boolean',
+        'branding' => 'array',
     ];
 
     protected static function booted(): void

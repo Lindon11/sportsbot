@@ -8,6 +8,7 @@ COMPARE=""
 JSON_ONLY=0
 STRICT=0
 WITH_HEALTH=0
+DISCORD_BOT=0
 HELPER="/usr/local/bin/sportsbot-fix-permissions"
 
 usage() {
@@ -26,6 +27,7 @@ Options:
   --json             Print full JSON instead of a short text summary.
   --strict           Treat comparison warnings as failures.
   --with-health      Include php artisan sportsbot:health --json --render in the report.
+  --discord-bot      Add --discord-bot to the included SportsBot health report.
   -h, --help         Show this help.
 USAGE
 }
@@ -52,6 +54,10 @@ while [ "$#" -gt 0 ]; do
       WITH_HEALTH=1
       shift
       ;;
+    --discord-bot)
+      DISCORD_BOT=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -69,7 +75,7 @@ if [ -n "$OUTPUT" ]; then
 fi
 
 TMP_REPORT="$(mktemp)"
-SPORTSBOT_AUDIT_WITH_HEALTH="$WITH_HEALTH" SPORTSBOT_AUDIT_HELPER="$HELPER" php > "$TMP_REPORT" <<'PHP'
+SPORTSBOT_AUDIT_WITH_HEALTH="$WITH_HEALTH" SPORTSBOT_AUDIT_WITH_DISCORD_BOT="$DISCORD_BOT" SPORTSBOT_AUDIT_HELPER="$HELPER" php > "$TMP_REPORT" <<'PHP'
 <?php
 
 $root = getcwd();
@@ -242,6 +248,9 @@ function audit_relevant_env(): array
         'SPORTSBOT_CARD_CHROME_PATH',
         'SPORTSBOT_CARD_BROWSER_TIMEOUT',
         'SPORTSBOT_CARD_BROWSER_RETRIES',
+        'SPORTSBOT_DISCORD_ENABLED',
+        'SPORTSBOT_DISCORD_DEFAULT_CHANNEL_ID',
+        'SPORTSBOT_DISCORD_BOT_CHANNELS_JSON',
         'PUPPETEER_EXECUTABLE_PATH',
     ];
     $secretKeys = [
@@ -326,7 +335,7 @@ function audit_bool_path(string $path): array
 
 $backendLock = audit_npm_lock_packages($root . '/package-lock.json');
 $adminLock = audit_npm_lock_packages($root . '/resources/admin/package-lock.json');
-$requiredExtensions = ['curl', 'fileinfo', 'gd', 'json', 'mbstring', 'openssl', 'pdo_mysql', 'xml', 'zip'];
+$requiredExtensions = ['bcmath', 'curl', 'exif', 'fileinfo', 'gd', 'json', 'mbstring', 'openssl', 'pdo', 'pdo_mysql', 'xml', 'zip'];
 $chromePackages = ['fonts-dejavu-core', 'chromium', 'chromium-browser', 'libnss3', 'libnspr4', 'libatk-bridge2.0-0', 'libatk1.0-0', 'libcups2', 'libdrm2', 'libxkbcommon0', 'libxcomposite1', 'libxdamage1', 'libxrandr2', 'libgbm1'];
 
 $nodePuppeteerScript = <<<'NODE'
@@ -356,7 +365,11 @@ $migrateStatus = is_file($root . '/artisan')
 $sportsbotHealth = null;
 
 if ((string) getenv('SPORTSBOT_AUDIT_WITH_HEALTH') === '1' && is_file($root . '/artisan')) {
-    $sportsbotHealth = audit_run('php artisan sportsbot:health --json --fix --render', $root);
+    $healthCommand = 'php artisan sportsbot:health --json --fix --render';
+    if ((string) getenv('SPORTSBOT_AUDIT_WITH_DISCORD_BOT') === '1') {
+        $healthCommand .= ' --discord-bot';
+    }
+    $sportsbotHealth = audit_run($healthCommand, $root);
 }
 
 $report = [

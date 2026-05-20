@@ -12,6 +12,7 @@ class SportsBotDelivery extends Model
         'platform',
         'route_key',
         'type',
+        'idempotency_key',
         'status',
         'target',
         'message_id',

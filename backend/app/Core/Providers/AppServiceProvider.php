@@ -40,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         // Register Artisan commands from Core namespace
         $this->commands([
             \App\Core\Console\Commands\InstallCommand::class,
+            \App\Plugins\SportsBot\Commands\ScrapeFixturesCommand::class,
         ]);
     }
 

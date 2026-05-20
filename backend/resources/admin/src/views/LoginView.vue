@@ -29,7 +29,7 @@
                           maxlength="6"
                           placeholder="Enter your 2FA code"
                           required
-                          class="w-full pl-4 pr-4 py-3 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
+                          class="w-full pl-4 pr-4 py-4 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all text-base"
                         />
                       </div>
                     </div>
@@ -51,7 +51,7 @@
                 type="text"
                 placeholder="Enter your credentials"
                 required
-                class="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
+                class="w-full pl-12 pr-4 py-4 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all text-base"
               />
             </div>
           </div>
@@ -66,7 +66,7 @@
                 :type="showPassword ? 'text' : 'password'"
                 placeholder="Enter your password"
                 required
-                class="w-full pl-12 pr-12 py-3 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all"
+                class="w-full pl-12 pr-12 py-4 rounded-xl bg-slate-900/50 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all text-base"
               />
               <button
                 type="button"
@@ -83,7 +83,7 @@
           <button
             type="submit"
             :disabled="loading"
-            class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all"
+            class="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all text-base"
           >
             <span v-if="loading" class="flex items-center justify-center gap-2">
               <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">

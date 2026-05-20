@@ -77,10 +77,11 @@ class LiveNowService
         $now = CarbonImmutable::now($timezoneName);
         $rows = $this->provider->fetchLiveScores();
         $allowedSports = $this->allowedSports();
-        $allowedLeagueIds = array_values(array_filter(array_map(
-            'strval',
-            (array) $this->settings->get('featured_league_ids', config('plugins.SportsBot.coverage.allowed_league_ids', []))
-        )));
+        $configIds = array_map('strval', (array) config('plugins.SportsBot.coverage.allowed_league_ids', []));
+        $dbIds = array_filter(array_map('strval', (array) $this->settings->get('featured_league_ids', [])));
+        $allowedLeagueIds = $dbIds !== []
+            ? array_values(array_unique(array_merge($configIds, $dbIds)))
+            : $configIds;
 
         $matches = [];
         $skipped = 0;

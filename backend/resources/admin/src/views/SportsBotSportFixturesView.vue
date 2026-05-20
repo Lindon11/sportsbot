@@ -63,6 +63,23 @@
       <pre class="whitespace-pre-wrap text-sm text-slate-100 bg-slate-900/80 border border-slate-700 rounded-xl p-4 min-h-[260px]">{{ previewMessage || 'No preview loaded yet.' }}</pre>
     </div>
 
+    <div v-if="leagueCardPreview" class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold text-white">League Header Card</h2>
+        <p class="text-xs text-slate-400">Sent before each league's fixture cards.</p>
+        <p class="text-xs text-slate-500 mt-2">{{ leagueCardPreview.leagues.length }} leagues will get headers:</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <span v-for="league in leagueCardPreview.leagues" :key="league" class="px-2 py-0.5 rounded text-xs bg-slate-700/60 text-slate-300">{{ league }}</span>
+        </div>
+      </div>
+      <div v-if="leagueCardPreview.card" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden max-w-lg mx-auto">
+        <img :src="leagueCardPreview.card.data_url" :alt="leagueCardPreview.card.name" class="w-full block" />
+        <div class="p-3">
+          <p class="text-white font-semibold text-sm">{{ leagueCardPreview.card.name }}</p>
+        </div>
+      </div>
+    </div>
+
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
       <h2 class="text-lg font-semibold text-white">Card Preview</h2>
       <div v-if="cardPreviews.length === 0" class="text-sm text-slate-400">No card previews generated yet.</div>
@@ -131,6 +148,7 @@ const routeStatus = ref({})
 const summary = ref({})
 const previewMessage = ref('')
 const cardPreviews = ref([])
+const leagueCardPreview = ref(null)
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
@@ -204,6 +222,7 @@ async function loadPreview() {
     cardPreviews.value = previews.flatMap(({ entry, data }) => (
       (data.card_previews || []).map((card) => ({ ...card, sport: entry.sport }))
     ))
+    leagueCardPreview.value = previews.reduce((found, { data }) => found || data.league_card_preview || null, null)
     captionsEnabled.value = previews.some(({ data }) => Boolean(data.captions_enabled))
     cardVersion.value = previews[0]?.data?.card_version || cardVersion.value
     await loadRecentMessages()

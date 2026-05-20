@@ -44,6 +44,7 @@ class TelegramRouteKeys
     public const BOXING = 'BOXING';
     public const COMBAT_OTHER = 'COMBAT_OTHER';
     public const MY_TEAMS = 'MY_TEAMS';
+    public const HIGHLIGHTS = 'HIGHLIGHTS';
     public const NEWS = 'NEWS';
 
     /**
@@ -88,6 +89,7 @@ class TelegramRouteKeys
             self::BOXING,
             self::COMBAT_OTHER,
             self::MY_TEAMS,
+            self::HIGHLIGHTS,
             self::NEWS,
         ];
     }

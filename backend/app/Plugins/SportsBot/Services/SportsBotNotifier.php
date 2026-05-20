@@ -41,6 +41,52 @@ class SportsBotNotifier implements NotifierInterface
         );
     }
 
+    /**
+     * @param array<int, array{chat_id:string,message_thread_id:int|null}> $telegramTargets
+     * @return array<int, array<string, mixed>>
+     */
+    public function sendPhotoToTargets(string $photoPath, string $caption, array $options, array $telegramTargets): array
+    {
+        $routeKey = (string) ($options['route_key'] ?? 'default');
+        $type = (string) ($options['type'] ?? 'PHOTO');
+        $results = [];
+        $telegramAttempted = false;
+        $discordAttempted = false;
+
+        if ($this->telegram->configured()) {
+            $telegramAttempted = true;
+            try {
+                foreach ($this->telegram->sendPhotoToTargets($photoPath, $caption, $options, $telegramTargets) as $result) {
+                    $row = array_merge(['platform' => 'telegram'], $result);
+                    $results[] = $row;
+                    $this->logDelivery('telegram', !empty($row['skipped']) ? 'skipped' : 'sent', $routeKey, $type, 'photo', $row, null, $options);
+                }
+            } catch (Throwable $error) {
+                $this->logDelivery('telegram', 'failed', $routeKey, $type, 'photo', [], $error->getMessage(), $options);
+                throw $error;
+            }
+        }
+
+        if ($this->discord->configured($routeKey)) {
+            $discordAttempted = true;
+            try {
+                foreach ($this->discord->sendPhoto($photoPath, $caption, $options) as $result) {
+                    $results[] = $result;
+                    $this->logDelivery('discord', !empty($result['skipped']) ? 'skipped' : 'sent', $routeKey, $type, 'photo', $result, null, $options);
+                }
+            } catch (Throwable $error) {
+                $this->logDelivery('discord', 'failed', $routeKey, $type, 'photo', [], $error->getMessage(), $options);
+            }
+        }
+
+        if (!$telegramAttempted && !$discordAttempted) {
+            $this->logDelivery('none', 'failed', $routeKey, $type, 'photo', [], 'No SportsBot delivery channels are configured.', $options);
+            throw new RuntimeException('No SportsBot delivery channels are configured.');
+        }
+
+        return $results;
+    }
+
     public function editMessageMedia(string $chatId, mixed $messageId, string $photoPath, string $caption, array $replyMarkup = []): bool
     {
         return $this->telegram->editMessageMedia($chatId, $messageId, $photoPath, $caption, $replyMarkup);
@@ -71,7 +117,7 @@ class SportsBotNotifier implements NotifierInterface
                 foreach ($send($this->telegram) as $result) {
                     $row = array_merge(['platform' => 'telegram'], $result);
                     $results[] = $row;
-                    $this->logDelivery('telegram', 'sent', $routeKey, $type, $media, $row, null, $options);
+                    $this->logDelivery('telegram', !empty($row['skipped']) ? 'skipped' : 'sent', $routeKey, $type, $media, $row, null, $options);
                 }
             } catch (Throwable $error) {
                 $failures[] = $error->getMessage();
@@ -84,7 +130,7 @@ class SportsBotNotifier implements NotifierInterface
             try {
                 foreach ($send($this->discord) as $result) {
                     $results[] = $result;
-                    $this->logDelivery('discord', 'sent', $routeKey, $type, $media, $result, null, $options);
+                    $this->logDelivery('discord', !empty($result['skipped']) ? 'skipped' : 'sent', $routeKey, $type, $media, $result, null, $options);
                 }
             } catch (Throwable $error) {
                 $failures[] = $error->getMessage();
@@ -119,7 +165,7 @@ class SportsBotNotifier implements NotifierInterface
                 return;
             }
 
-            SportsBotDelivery::create([
+            $attributes = [
                 'platform' => $platform,
                 'route_key' => $result['route_key'] ?? $routeKey,
                 'type' => $type,
@@ -136,7 +182,14 @@ class SportsBotNotifier implements NotifierInterface
                     'event_id' => $options['payload']['event_id'] ?? null,
                 ],
                 'sent_at' => $status === 'sent' ? now() : null,
-            ]);
+            ];
+
+            $idempotencyKey = trim((string) ($result['idempotency_key'] ?? $options['idempotency_key'] ?? $options['payload']['idempotency_key'] ?? ''));
+            if ($idempotencyKey !== '' && Schema::hasColumn('sportsbot_deliveries', 'idempotency_key')) {
+                $attributes['idempotency_key'] = mb_substr($idempotencyKey, 0, 160);
+            }
+
+            SportsBotDelivery::create($attributes);
         } catch (Throwable) {
             // Delivery logging must never block a real Telegram/Discord send.
         }

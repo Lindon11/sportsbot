@@ -70,6 +70,8 @@
             </div>
           </div>
 
+          <QueueReadinessChecklist :item="item" />
+
           <details class="rounded-xl bg-slate-800/30 border border-slate-700/30">
             <summary class="px-4 py-3 text-xs font-medium text-slate-400 cursor-pointer hover:text-slate-300 select-none flex items-center gap-2">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -267,7 +269,6 @@
             </div>
           </details>
 
-          <QueueAssetHealth :fixture-data="fixture" :asset-status="item.asset_status" :card-path="item.card_path" :sport-key="item.sport_key" />
         </div>
 
         <div class="sticky bottom-0 bg-slate-900/95 backdrop-blur-sm flex items-center gap-2 p-4 border-t border-slate-700">
@@ -288,7 +289,7 @@
 
 <script setup>
 import { computed, reactive, watch } from 'vue'
-import QueueAssetHealth from './QueueAssetHealth.vue'
+import QueueReadinessChecklist from './QueueReadinessChecklist.vue'
 
 const props = defineProps({
   item: { type: Object, default: null },

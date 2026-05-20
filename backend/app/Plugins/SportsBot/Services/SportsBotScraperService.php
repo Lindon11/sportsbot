@@ -166,9 +166,23 @@ class SportsBotScraperService
 
         $normalized = $this->normalizer->normalize($providerResults);
         $payload = (array) ($entry->payload ?? []);
+        $status = ($normalized['fields'] ?? []) !== [] ? 'found' : ($errors !== [] ? 'error' : 'none');
+        $previousRetry = (array) ($payload['scraper']['retry'] ?? []);
+        $retry = null;
+        if ($status === 'found') {
+            unset($payload['scraper']['retry']);
+        } else {
+            $attempts = (int) ($previousRetry['attempts'] ?? 0) + 1;
+            $retry = [
+                'attempts' => $attempts,
+                'last_checked_at' => now()->toISOString(),
+                'next_check_at' => now()->addMinutes($this->retryBackoffMinutes($attempts))->toISOString(),
+            ];
+        }
+
         $payload['scraper'] = [
             'action' => $action,
-            'status' => ($normalized['fields'] ?? []) !== [] ? 'found' : ($errors !== [] ? 'error' : 'none'),
+            'status' => $status,
             'last_checked_at' => now()->toISOString(),
             'normalized' => $normalized,
             'results' => $providerResults,
@@ -176,6 +190,9 @@ class SportsBotScraperService
             'errors' => $errors,
             'auto_use_confidence' => $this->autoUseConfidenceThreshold(),
         ];
+        if ($retry !== null) {
+            $payload['scraper']['retry'] = $retry;
+        }
 
         $entry->payload = $payload;
 
@@ -233,5 +250,12 @@ class SportsBotScraperService
             'scraper_' . $key,
             config('plugins.SportsBot.scrapers.' . $key, $default)
         );
+    }
+
+    private function retryBackoffMinutes(int $attempts): int
+    {
+        $base = max(5, (int) $this->scraperConfig('retry_backoff_minutes', 30));
+
+        return min(360, $base * max(1, min(6, $attempts)));
     }
 }

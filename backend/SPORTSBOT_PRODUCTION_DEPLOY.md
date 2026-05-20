@@ -70,7 +70,7 @@ composer install --no-dev --optimize-autoloader
 Required PHP extensions (declared in `composer.json`):
 - `php ^8.2`
 - `ext-gd` (for GD fallback card rendering)
-- `ext-curl`, `ext-mbstring`, `ext-pdo_mysql`, `ext-xml`, `ext-zip`, `ext-bcmath`, `ext-fileinfo`, `ext-exif`
+- `ext-bcmath`, `ext-curl`, `ext-exif`, `ext-fileinfo`, `ext-gd`, `ext-json`, `ext-mbstring`, `ext-openssl`, `ext-pdo`, `ext-pdo_mysql`, `ext-xml`, `ext-zip`
 
 ---
 
@@ -132,6 +132,19 @@ SPORTSBOT_TELEGRAM_DISABLE_NOTIFICATION=false
 SPORTSBOT_TELEGRAM_WEBHOOK_ENABLED=false
 SPORTSBOT_TELEGRAM_WEBHOOK_SECRET=
 
+# ── Discord Bot-token delivery ──
+SPORTSBOT_DISCORD_ENABLED=true
+SPORTSBOT_DISCORD_BOT_TOKEN=
+SPORTSBOT_DISCORD_DEFAULT_CHANNEL_ID=
+# Optional route map. A default channel is enough for all routes.
+# Example: {"FORMULA_1":"123456789012345678","FOOTBALL":"234567890123456789"}
+SPORTSBOT_DISCORD_BOT_CHANNELS_JSON=
+
+# ── Discord Webhooks (fallback mode when bot token is empty) ──
+SPORTSBOT_DISCORD_WEBHOOK_URL=
+SPORTSBOT_DISCORD_USERNAME=SportsBot
+SPORTSBOT_DISCORD_AVATAR_URL=
+
 # ── Card Rendering ──
 SPORTSBOT_CARDS_ENABLED=true
 SPORTSBOT_CARD_V3_BROWSER_ENABLED=true
@@ -145,7 +158,7 @@ SPORTSBOT_CARD_GD_FALLBACK_ENABLED=true
 SPORTSBOT_CARD_LOW_BANDWIDTH_MODE=false
 SPORTSBOT_CARD_DEFAULT_TEMPLATE=stadium-v3
 SPORTSBOT_CARD_DEFAULT_THEME=limitless-dark
-SPORTSBOT_CARD_WATERMARK="Limitless TV"
+# SPORTSBOT_CARD_WATERMARK="The Sports Hub"
 SPORTSBOT_RICH_CARDS_ENABLED=true
 
 # ── Font paths (GD fallback) ──
@@ -190,7 +203,7 @@ php artisan migrate --force
 sudo /usr/local/bin/sportsbot-fix-permissions
 
 # Verify
-bash scripts/sportsbot-production-check.sh
+bash scripts/sportsbot-production-check.sh --discord-bot
 
 # Cache
 php artisan config:cache
@@ -207,7 +220,7 @@ php artisan up
 Run the health check:
 
 ```bash
-php artisan sportsbot:health
+php artisan sportsbot:health --discord-bot
 ```
 
 Expected output includes:
@@ -221,16 +234,41 @@ Expected output includes:
 | Chrome executable | OK (shows path) |
 | Storage writable paths | OK |
 | Telegram routes assigned | OK |
+| Discord bot token configured | OK |
+| Discord bot channel map configured | OK |
 
 To verify a real card render:
 
 ```bash
-bash scripts/sportsbot-production-check.sh
+bash scripts/sportsbot-production-check.sh --discord-bot
 ```
 
 ---
 
-## 10. Automation
+## 10. Scheduler on Plesk / IONOS
+
+Use one Laravel Scheduler cron. On Plesk with root SSH, create a server-level scheduled task or root cron entry:
+
+```cron
+* * * * * cd /path/to/backend && /path/to/php artisan schedule:run >> /dev/null 2>&1
+```
+
+Prefer this command cron over IONOS account URL cron. IONOS URL cron runs as a web request and is capped at 60 seconds, which is too tight for render/enrich/publish bursts. If command cron is blocked, set `APP_SCHEDULER_HTTP_TOKEN` and call:
+
+```text
+https://your-domain.example/scheduler/run/YOUR_LONG_RANDOM_TOKEN
+```
+
+Plesk can run commands, URLs, or PHP scripts. On Linux, subscription scheduled tasks may run in a chrooted shell, so verify `php`, `node`, `npm`, `composer`, `chromium`, and the project path are available to the scheduled-task user. Root/server-level scheduled tasks avoid most chroot surprises.
+
+References:
+- https://docs.plesk.com/en-US/obsidian/administrator-guide/server-administration/scheduling-tasks.64993/
+- https://docs.plesk.com/en-US/obsidian/administrator-guide/server-administration/scheduling-tasks/plesk-for-linux-scheduled-tasks-shell-setting.78064/
+- https://www.ionos.com/help/hosting/cron-jobs/cron-job-manager/
+
+---
+
+## 11. Automation
 
 Enable the fixture queue pipeline in the admin **Autopilot** screen, or via `.env`:
 

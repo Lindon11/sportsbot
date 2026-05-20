@@ -3,6 +3,7 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
+use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -99,24 +100,46 @@ class SportsFixturePublisher
             throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for sport fixture sends.');
         }
 
+        $routeKey = TelegramRouteKeys::normalize((string) ($config['topic_key'] ?? ''));
+        $brandGroups = $this->resolveBrandGroups($routeKey);
+
         $captionsEnabled = $this->captionsEnabled($config);
         $results = [];
 
-        foreach ($fixtures as $fixture) {
-            try {
-                $card = $this->cards->fixtureCard($fixture, $cardVersion);
-                $caption = $captionsEnabled ? $this->buildCaption($fixture, $config) : '';
-                $fixtureOptions = $this->buildFixtureOptions($fixture, $config, $source, $cardVersion, $summary);
+        $sendFixtures = function (array $groupTargets, array $branding) use ($fixtures, $cardVersion, $captionsEnabled, $config, $source, $summary, $sportKey, &$results): void {
+            $hasCustomBranding = $branding !== [];
 
-                foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
-                    $results[] = $result;
+            foreach ($fixtures as $fixture) {
+                try {
+                    $renderOptions = $hasCustomBranding ? ['branding' => $branding] : [];
+                    $card = $this->cards->fixtureCard($fixture, $cardVersion, $renderOptions);
+                    $caption = $captionsEnabled ? $this->buildCaption($fixture, $config) : '';
+                    $fixtureOptions = $this->buildFixtureOptions($fixture, $config, $source, $cardVersion, $summary);
+
+                    if ($hasCustomBranding && $groupTargets !== []) {
+                        foreach ($this->notifier->sendPhotoToTargets((string) $card['path'], $caption, $fixtureOptions, $groupTargets) as $result) {
+                            $results[] = $result;
+                        }
+                    } else {
+                        foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
+                            $results[] = $result;
+                        }
+                    }
+                } catch (Throwable $error) {
+                    Log::warning('sportsbot.fixture_publisher.card_send_failed', [
+                        'sport' => $sportKey,
+                        'event_id' => (string) ($fixture['event_id'] ?? ''),
+                        'error' => $error->getMessage(),
+                    ]);
                 }
-            } catch (Throwable $error) {
-                Log::warning('sportsbot.fixture_publisher.card_send_failed', [
-                    'sport' => $sportKey,
-                    'event_id' => (string) ($fixture['event_id'] ?? ''),
-                    'error' => $error->getMessage(),
-                ]);
+            }
+        };
+
+        if ($brandGroups === []) {
+            $sendFixtures([], []);
+        } else {
+            foreach ($brandGroups as $group) {
+                $sendFixtures($group['targets'], $group['branding']);
             }
         }
 
@@ -125,6 +148,46 @@ class SportsFixturePublisher
         }
 
         return $results;
+    }
+
+    /**
+     * @return array<int, array{branding:array<string,mixed>,targets:array<int,array{chat_id:string,message_thread_id:int|null}>}>
+     */
+    private function resolveBrandGroups(string $routeKey): array
+    {
+        $resolved = $this->routingService->resolveTargets($routeKey);
+        $targets = (array) ($resolved['targets'] ?? []);
+
+        if ($targets === []) {
+            return [];
+        }
+
+        $groups = [];
+
+        foreach ($targets as $target) {
+            $branding = (array) ($target['branding'] ?? []);
+            $hash = md5(serialize($branding));
+
+            if (!isset($groups[$hash])) {
+                $groups[$hash] = [
+                    'branding' => $branding,
+                    'targets' => [],
+                ];
+            }
+
+            $groups[$hash]['targets'][] = [
+                'chat_id' => $target['chat_id'],
+                'message_thread_id' => $target['message_thread_id'] ?? null,
+            ];
+        }
+
+        $groups = array_values($groups);
+
+        if (count($groups) === 1 && $groups[0]['branding'] === []) {
+            return [];
+        }
+
+        return $groups;
     }
 
     private function noFixturesSummary(array $summary, array $config): array

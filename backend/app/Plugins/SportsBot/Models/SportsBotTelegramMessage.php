@@ -17,6 +17,7 @@ class SportsBotTelegramMessage extends Model
         'message_thread_id',
         'telegram_message_id',
         'type',
+        'idempotency_key',
         'status',
         'payload',
         'error',

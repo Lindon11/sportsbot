@@ -73,6 +73,12 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
                 'plugin' => 'sportsbot',
             ],
             [
+                'route' => '/sportsbot/highlights',
+                'label' => 'Highlights',
+                'icon' => 'PlayIcon',
+                'plugin' => 'sportsbot',
+            ],
+            [
                 'route' => '/sportsbot/fight-fixtures',
                 'label' => 'Fights TV',
                 'icon' => 'TvIcon',

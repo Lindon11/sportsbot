@@ -27,6 +27,7 @@ class FixturesTodayFormatter
      */
     private const SHORT_LEAGUES = [
         'English Premier League' => 'Premier League',
+        'English Rugby League Super League' => 'Super League',
         'Scottish Premiership' => 'Premiership',
     ];
 

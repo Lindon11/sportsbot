@@ -202,31 +202,98 @@ class SportsBotPublisher
             throw new RuntimeException('Fixture cards are disabled; text fallback is not allowed for fixture sends.');
         }
 
-        $results = [];
+        $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? ''));
+        $brandGroups = $this->resolveBrandGroups($routeKey);
         $cardVersion = $this->fixtureCardVersionFromOptions($options);
         $captionsEnabled = $this->fixtureCaptionsFromOptions($options);
+        $results = [];
 
-        foreach ($fixtures as $fixture) {
-            $card = $this->cards->fixtureCard($fixture, $cardVersion);
-            $fixtureOptions = $options;
-            unset($fixtureOptions['reply_markup']);
-            $fixtureOptions['route_key'] = $this->routeKeyForFixture($fixture, $options);
-            $fixtureOptions['payload'] = array_merge((array) ($options['payload'] ?? []), [
-                'event_id' => (string) ($fixture['event_id'] ?? ''),
-                'card_version' => $cardVersion,
-                'fixture' => [
-                    'time' => (string) ($fixture['time'] ?? ''),
-                    'league' => (string) ($fixture['league'] ?? ''),
-                    'home_team' => (string) ($fixture['home_team'] ?? ''),
-                    'away_team' => (string) ($fixture['away_team'] ?? ''),
-                    'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
-                ],
-            ]);
+        $sendFixtures = function (array $groupTargets, array $branding) use ($fixtures, $summary, $options, $cardVersion, $captionsEnabled, &$results): void {
+            $hasCustomBranding = $branding !== [];
+            $currentLeague = null;
 
-            $contentKey = (string) (($fixtureOptions['payload']['content_key'] ?? $options['payload']['content_key'] ?? '') ?: '');
-            $caption = $captionsEnabled ? $this->fixtureCaption($fixture, $contentKey) : '';
-            foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
-                $results[] = $result;
+            foreach ($fixtures as $fixture) {
+                $leagueName = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
+
+                if ($leagueName !== '' && $leagueName !== $currentLeague) {
+                    $currentLeague = $leagueName;
+
+                    $leagueInfo = $this->leagueInfoFromFixture($fixture);
+                    $leagueRouteKey = $this->routeKeyForFixture($fixture, $options);
+                    $leagueCard = $this->cards->leagueCard($leagueInfo, $cardVersion, array_merge(
+                        ['route_key' => $leagueRouteKey],
+                        $hasCustomBranding ? ['branding' => $branding] : [],
+                    ));
+                    $leagueIdempotencyKey = $this->leagueHeaderIdempotencyKey($leagueRouteKey, $leagueName, $summary, $options);
+                    $leagueOptions = $options;
+                    unset($leagueOptions['reply_markup']);
+                    $leagueOptions['route_key'] = $leagueRouteKey;
+                    $leagueOptions['idempotency_key'] = $leagueIdempotencyKey;
+                    $leagueOptions['payload'] = array_merge((array) ($options['payload'] ?? []), [
+                        'idempotency_key' => $leagueIdempotencyKey,
+                        'event_id' => '',
+                        'card_version' => $cardVersion,
+                        'type' => 'LEAGUE_HEADER',
+                        'league' => $leagueName,
+                        'fixture' => [
+                            'time' => '',
+                            'league' => $leagueName,
+                            'home_team' => '',
+                            'away_team' => '',
+                            'tv_channel' => '',
+                        ],
+                    ]);
+
+                    if ($hasCustomBranding && $groupTargets !== []) {
+                        foreach ($this->notifier->sendPhotoToTargets((string) $leagueCard['path'], '', $leagueOptions, $groupTargets) as $result) {
+                            $results[] = $result;
+                        }
+                    } else {
+                        foreach ($this->notifier->sendPhoto((string) $leagueCard['path'], '', $leagueOptions) as $result) {
+                            $results[] = $result;
+                        }
+                    }
+                }
+
+                $renderOptions = $hasCustomBranding ? ['branding' => $branding] : [];
+                $card = $this->cards->fixtureCard($fixture, $cardVersion, $renderOptions);
+                $fixtureOptions = $options;
+                unset($fixtureOptions['reply_markup']);
+                $fixtureOptions['route_key'] = $this->routeKeyForFixture($fixture, $options);
+                $fixtureIdempotencyKey = $this->fixtureIdempotencyKey($fixture, $fixtureOptions['route_key'], $options);
+                $fixtureOptions['idempotency_key'] = $fixtureIdempotencyKey;
+                $fixtureOptions['payload'] = array_merge((array) ($options['payload'] ?? []), [
+                    'idempotency_key' => $fixtureIdempotencyKey,
+                    'event_id' => (string) ($fixture['event_id'] ?? ''),
+                    'card_version' => $cardVersion,
+                    'fixture' => [
+                        'time' => (string) ($fixture['time'] ?? ''),
+                        'league' => (string) ($fixture['league'] ?? ''),
+                        'home_team' => (string) ($fixture['home_team'] ?? ''),
+                        'away_team' => (string) ($fixture['away_team'] ?? ''),
+                        'tv_channel' => (string) ($fixture['tv_channel'] ?? ''),
+                    ],
+                ]);
+
+                $contentKey = (string) (($fixtureOptions['payload']['content_key'] ?? $options['payload']['content_key'] ?? '') ?: '');
+                $caption = $captionsEnabled ? $this->fixtureCaption($fixture, $contentKey) : '';
+                if ($hasCustomBranding && $groupTargets !== []) {
+                    foreach ($this->notifier->sendPhotoToTargets((string) $card['path'], $caption, $fixtureOptions, $groupTargets) as $result) {
+                        $results[] = $result;
+                    }
+                } else {
+                    foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $fixtureOptions) as $result) {
+                        $results[] = $result;
+                    }
+                }
+            }
+        };
+
+        if ($brandGroups === []) {
+            $sendFixtures([], []);
+        } else {
+            foreach ($brandGroups as $group) {
+                $sendFixtures($group['targets'], $group['branding']);
             }
         }
 
@@ -235,6 +302,50 @@ class SportsBotPublisher
         }
 
         return $results;
+    }
+
+    /**
+     * @return array<int, array{branding:array<string,mixed>,targets:array<int,array{chat_id:string,message_thread_id:int|null}>}>
+     */
+    private function resolveBrandGroups(string $routeKey): array
+    {
+        if ($routeKey === '') {
+            return [];
+        }
+
+        $resolved = $this->routingService->resolveTargets($routeKey);
+        $targets = (array) ($resolved['targets'] ?? []);
+
+        if ($targets === []) {
+            return [];
+        }
+
+        $groups = [];
+
+        foreach ($targets as $target) {
+            $branding = (array) ($target['branding'] ?? []);
+            $hash = md5(serialize($branding));
+
+            if (!isset($groups[$hash])) {
+                $groups[$hash] = [
+                    'branding' => $branding,
+                    'targets' => [],
+                ];
+            }
+
+            $groups[$hash]['targets'][] = [
+                'chat_id' => $target['chat_id'],
+                'message_thread_id' => $target['message_thread_id'] ?? null,
+            ];
+        }
+
+        $groups = array_values($groups);
+
+        if (count($groups) === 1 && $groups[0]['branding'] === []) {
+            return [];
+        }
+
+        return $groups;
     }
 
     /**
@@ -259,6 +370,37 @@ class SportsBotPublisher
         $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? ''));
 
         return in_array($routeKey, TelegramRouteKeys::all(), true) ? $routeKey : '';
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @param array<string, mixed> $options
+     */
+    private function fixtureIdempotencyKey(array $fixture, string $routeKey, array $options): string
+    {
+        $eventId = (string) ($fixture['event_id'] ?? $fixture['idEvent'] ?? '');
+        $date = (string) ($fixture['publish_date'] ?? $fixture['date'] ?? $fixture['date_label'] ?? $fixture['dateEvent'] ?? '');
+        $sportKey = (string) ($options['payload']['sport_key'] ?? $fixture['sport_key'] ?? $fixture['sport'] ?? '');
+        $fallbackName = implode('|', [
+            (string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? ''),
+            (string) ($fixture['home_team'] ?? ''),
+            (string) ($fixture['away_team'] ?? ''),
+            (string) ($fixture['time'] ?? ''),
+        ]);
+
+        return 'fixture:' . sha1(implode('|', [$sportKey, $date, $routeKey, $eventId !== '' ? $eventId : $fallbackName]));
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $options
+     */
+    private function leagueHeaderIdempotencyKey(string $routeKey, string $leagueName, array $summary, array $options): string
+    {
+        $date = (string) ($summary['date'] ?? $summary['date_label'] ?? now()->toDateString());
+        $sportKey = (string) ($options['payload']['sport_key'] ?? $summary['sport_filter'] ?? $summary['sport_key'] ?? '');
+
+        return 'league_header:' . sha1(implode('|', [$sportKey, $date, $routeKey, $leagueName]));
     }
 
     /**
@@ -336,6 +478,24 @@ class SportsBotPublisher
         }
 
         return $fixtures;
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @return array<string, mixed>
+     */
+    private function leagueInfoFromFixture(array $fixture): array
+    {
+        $date = trim((string) ($fixture['date_label'] ?? $fixture['date'] ?? $fixture['dateEvent'] ?? ''));
+        $formattedDate = $date !== '' ? $date : now()->format('j M Y');
+
+        return [
+            'name' => $fixture['league'] ?? $fixture['strLeague'] ?? 'League',
+            'sport' => $fixture['sport'] ?? $fixture['strSport'] ?? $fixture['sport_key'] ?? '',
+            'badge' => $fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? '',
+            'logo' => $fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? '',
+            'date' => $formattedDate,
+        ];
     }
 
     /**

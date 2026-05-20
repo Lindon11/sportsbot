@@ -80,6 +80,26 @@
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold text-white">League Header Cards</h2>
+        <p class="text-xs text-slate-400">Sent before each league's fixture cards. Click a league to generate its header card.</p>
+        <p class="text-xs text-slate-500 mt-2">{{ allRugbyLeagues.length }} rugby leagues:</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <button v-for="league in allRugbyLeagues" :key="league.league_id" @click="previewRugbyLeagueHeader(league.name)" class="px-2 py-0.5 rounded text-xs transition-colors cursor-pointer" :class="league.has_cache ? 'bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700' : (selectedLeague === league.name ? 'bg-purple-700 text-white ring-2 ring-purple-500' : 'bg-slate-700/60 text-slate-300 hover:bg-purple-700 hover:text-white')">{{ league.name }}{{ league.has_cache ? ' ✓' : '' }}</button>
+        </div>
+      </div>
+      <div v-if="selectedRugbyHeader" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden max-w-lg mx-auto">
+        <img :src="selectedRugbyHeader.data_url" :alt="selectedRugbyHeader.name" class="w-full block" />
+        <div class="p-3">
+          <p class="text-white font-semibold text-sm">{{ selectedRugbyHeader.name }}</p>
+        </div>
+      </div>
+      <div v-else-if="generatingRugbyLeague" class="rounded-2xl bg-slate-900 border border-slate-700 p-8 max-w-lg mx-auto text-center">
+        <p class="text-slate-400 text-sm">Generating {{ generatingRugbyLeague }} header card...</p>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
       <h2 class="text-lg font-semibold text-white">Card Preview</h2>
       <div v-if="cardPreviews.length === 0" class="text-sm text-slate-400">No card previews generated yet.</div>
       <div v-else class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -144,9 +164,14 @@ const routeStatus = ref({})
 const summary = ref({})
 const previewMessage = ref('')
 const cardPreviews = ref([])
+const leagueCardPreview = ref(null)
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
+const allRugbyLeagues = ref([])
+const selectedRugbyHeader = ref(null)
+const generatingRugbyLeague = ref('')
+const selectedLeague = ref('')
 
 function statusClass(status) {
   if (status === 'sent') return 'bg-emerald-500/20 text-emerald-400'
@@ -166,6 +191,33 @@ async function loadRecentMessages() {
   }
 }
 
+async function previewRugbyLeagueHeader(leagueName) {
+  const existing = allRugbyLeagues.value.find(l => l.name === leagueName)
+  if (existing?.has_cache && existing?.data_url) {
+    selectedLeague.value = leagueName
+    selectedRugbyHeader.value = existing
+    return
+  }
+  selectedLeague.value = leagueName
+  generatingRugbyLeague.value = leagueName
+  selectedRugbyHeader.value = null
+  try {
+    const { data } = await api.post('/admin/sportsbot/rugby-fixtures/preview', {
+      card_version: cardVersion.value,
+      preview_league: leagueName,
+    })
+    allRugbyLeagues.value = data.all_rugby_leagues || []
+    const updated = (data.all_rugby_leagues || []).find(l => l.name === leagueName)
+    if (updated?.data_url) {
+      selectedRugbyHeader.value = updated
+    }
+  } catch (error) {
+    toast.error(error?.response?.data?.message || 'Failed to generate header card')
+  } finally {
+    generatingRugbyLeague.value = null
+  }
+}
+
 async function loadPreview() {
   loadingPreview.value = true
   try {
@@ -176,6 +228,8 @@ async function loadPreview() {
     routeStatus.value = data.route_status || {}
     summary.value = data.summary || {}
     cardPreviews.value = data.card_previews || []
+    leagueCardPreview.value = data.league_card_preview || null
+    allRugbyLeagues.value = data.all_rugby_leagues || []
     captionsEnabled.value = Boolean(data.captions_enabled)
     cardVersion.value = data.card_version || cardVersion.value
     await loadRecentMessages()

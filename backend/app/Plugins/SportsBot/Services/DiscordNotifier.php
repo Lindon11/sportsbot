@@ -10,16 +10,46 @@ use Throwable;
 
 class DiscordNotifier implements NotifierInterface
 {
+    private const BOT_API = 'https://discord.com/api/v10';
+
     public function __construct(
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
     ) {
     }
 
+    private function botToken(): string
+    {
+        return trim((string) $this->settings->get('discord_bot_token', config('plugins.SportsBot.discord.bot_token', '')));
+    }
+
+    private function botChannels(): array
+    {
+        $channels = $this->normalizeChannelMap(
+            $this->settings->get('discord_bot_channels', config('plugins.SportsBot.discord.bot_channels', []))
+        );
+
+        $defaultChannelId = trim((string) $this->settings->get(
+            'discord_default_channel_id',
+            config('plugins.SportsBot.discord.default_channel_id', '')
+        ));
+
+        if ($defaultChannelId !== '') {
+            $channels[TelegramRouteKeys::DEFAULT] ??= $defaultChannelId;
+        }
+
+        return $channels;
+    }
+
     public function send(string $message, array $options = []): array
     {
         $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
-        $webhooks = $this->resolveWebhooks($routeKey);
 
+        $token = $this->botToken();
+        if ($token !== '') {
+            return $this->sendViaBot($message, $options, $routeKey);
+        }
+
+        $webhooks = $this->resolveWebhooks($routeKey);
         if ($webhooks === []) {
             throw new RuntimeException('No Discord webhook configured for route: ' . $routeKey);
         }
@@ -40,6 +70,12 @@ class DiscordNotifier implements NotifierInterface
         }
 
         $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
+
+        $token = $this->botToken();
+        if ($token !== '') {
+            return $this->sendPhotoViaBot($photoPath, $caption, $options, $routeKey);
+        }
+
         $webhooks = $this->resolveWebhooks($routeKey);
 
         if ($webhooks === []) {
@@ -48,6 +84,19 @@ class DiscordNotifier implements NotifierInterface
 
         $payload = $this->basePayload($options);
         $payload['content'] = mb_substr($this->discordText($caption), 0, 2000);
+
+        if (!empty($options['embed_url'])) {
+            $filename = basename($photoPath);
+            $payload['embeds'] = [[
+                'title' => (string) ($options['embed_title'] ?? '▶ Watch Highlights'),
+                'url' => (string) $options['embed_url'],
+                'color' => (int) ($options['embed_color'] ?? 10181043),
+                'description' => mb_substr($this->discordText($caption), 0, 500),
+                'image' => ['url' => 'attachment://' . $filename],
+                'footer' => ['text' => mb_substr($this->discordText((string) ($options['embed_footer'] ?? 'SportsBot')), 0, 100)],
+            ]];
+            $payload['content'] = '';
+        }
 
         $results = [];
         $failures = [];
@@ -94,12 +143,62 @@ class DiscordNotifier implements NotifierInterface
             return false;
         }
 
+        $token = $this->botToken();
+        if ($token !== '') {
+            if ($routeKey === null) {
+                return $this->botChannels() !== [];
+            }
+            return $this->resolveBotChannel($routeKey) !== '';
+        }
+
         return $this->resolveWebhooks($routeKey ?? TelegramRouteKeys::DEFAULT) !== [];
     }
 
     public function enabled(): bool
     {
         return (bool) $this->settings->get('discord_enabled', config('plugins.SportsBot.discord.enabled', false));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function diagnostics(): array
+    {
+        $enabled = $this->enabled();
+        $tokenConfigured = $this->botToken() !== '';
+        $channels = $this->botChannels();
+        $webhooks = $this->routeWebhooks();
+        $defaultWebhook = trim((string) $this->settings->get('discord_default_webhook_url', config('plugins.SportsBot.discord.default_webhook_url', '')));
+        $routeStatuses = [];
+
+        foreach (TelegramRouteKeys::all() as $routeKey) {
+            $botChannel = $tokenConfigured ? $this->resolveBotChannel($routeKey) : '';
+            $routeWebhook = trim((string) ($webhooks[$routeKey] ?? ''));
+            $hasDefaultWebhook = $defaultWebhook !== '';
+
+            $routeStatuses[$routeKey] = [
+                'configured' => $enabled && (
+                    ($tokenConfigured && $botChannel !== '')
+                    || (!$tokenConfigured && ($routeWebhook !== '' || $hasDefaultWebhook))
+                ),
+                'source' => $tokenConfigured
+                    ? ($botChannel !== '' ? (isset($channels[$routeKey]) ? 'bot_channel' : 'bot_default') : 'none')
+                    : ($routeWebhook !== '' ? 'webhook_route' : ($hasDefaultWebhook ? 'webhook_default' : 'none')),
+                'bot_channel_configured' => $botChannel !== '',
+                'webhook_configured' => $routeWebhook !== '' || $hasDefaultWebhook,
+            ];
+        }
+
+        return [
+            'enabled' => $enabled,
+            'mode' => $tokenConfigured ? 'bot' : 'webhook',
+            'bot_token_configured' => $tokenConfigured,
+            'bot_channel_count' => count($channels),
+            'default_bot_channel_configured' => isset($channels[TelegramRouteKeys::DEFAULT]) && trim((string) $channels[TelegramRouteKeys::DEFAULT]) !== '',
+            'webhook_route_count' => count($webhooks),
+            'default_webhook_configured' => $defaultWebhook !== '',
+            'route_statuses' => $routeStatuses,
+        ];
     }
 
     /**
@@ -218,6 +317,185 @@ class DiscordNotifier implements NotifierInterface
      * @param array<string, mixed> $payload
      * @return array<int, array<string, mixed>>
      */
+    private function sendViaBot(string $message, array $options, string $routeKey): array
+    {
+        $channelId = $this->resolveBotChannel($routeKey);
+        if ($channelId === '') {
+            throw new RuntimeException('No Discord bot channel configured for route: ' . $routeKey);
+        }
+
+        $payload = [
+            'content' => mb_substr($message, 0, 2000),
+            'allowed_mentions' => ['parse' => []],
+        ];
+
+        if (!empty($options['components'])) {
+            $payload['components'] = $options['components'];
+        }
+
+        return $this->postToBotApi("/channels/{$channelId}/messages", $payload, $routeKey);
+    }
+
+    private function sendPhotoViaBot(string $photoPath, string $caption, array $options, string $routeKey): array
+    {
+        $channelId = $this->resolveBotChannel($routeKey);
+        if ($channelId === '') {
+            throw new RuntimeException('No Discord bot channel configured for route: ' . $routeKey);
+        }
+
+        $watchUrl = (string) ($options['embed_url'] ?? '');
+        $watchLabel = (string) ($options['embed_title'] ?? '▶ Watch Highlights');
+
+        $embeds = [];
+        if ($watchUrl !== '') {
+            $embeds[] = [
+                'title' => $watchLabel,
+                'url' => $watchUrl,
+                'color' => (int) ($options['embed_color'] ?? 10181043),
+                'description' => mb_substr(strip_tags($caption), 0, 500),
+                'footer' => ['text' => mb_substr((string) ($options['embed_footer'] ?? 'SportsBot'), 0, 100)],
+            ];
+        }
+
+        $components = [];
+        if ($watchUrl !== '') {
+            $components[] = [
+                'type' => 1,
+                'components' => [
+                    [
+                        'type' => 2,
+                        'style' => 5,
+                        'label' => $watchLabel,
+                        'url' => $watchUrl,
+                    ],
+                ],
+            ];
+        }
+
+        return $this->postToBotApiWithFile(
+            "/channels/{$channelId}/messages",
+            $photoPath,
+            [
+                'content' => mb_substr(strip_tags($caption), 0, 2000),
+                'embeds' => $embeds,
+                'components' => $components,
+                'allowed_mentions' => ['parse' => []],
+            ],
+            $routeKey
+        );
+    }
+
+    private function resolveBotChannel(string $routeKey): string
+    {
+        $channels = $this->botChannels();
+        $normalized = TelegramRouteKeys::normalize($routeKey);
+
+        $id = trim((string) ($channels[$normalized] ?? $channels[$routeKey] ?? ''));
+        if ($id === '') {
+            foreach ([$normalized, $routeKey, TelegramRouteKeys::DEFAULT] as $key) {
+                $id = trim((string) ($channels[$key] ?? ''));
+                if ($id !== '') break;
+            }
+        }
+
+        return $id;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function normalizeChannelMap(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $channels = [];
+        $supported = array_fill_keys(TelegramRouteKeys::all(), true);
+        $legacy = TelegramRouteKeys::legacyGroupRouteMap();
+
+        foreach ($value as $key => $channelId) {
+            $key = TelegramRouteKeys::normalize((string) $key);
+            $channelId = trim((string) $channelId);
+
+            if ($channelId === '') {
+                continue;
+            }
+
+            if (isset($legacy[$key])) {
+                foreach ($legacy[$key] as $expandedRouteKey) {
+                    $channels[$expandedRouteKey] ??= $channelId;
+                }
+
+                continue;
+            }
+
+            if (isset($supported[$key])) {
+                $channels[$key] = $channelId;
+            }
+        }
+
+        return $channels;
+    }
+
+    private function postToBotApi(string $path, array $payload, string $routeKey): array
+    {
+        $token = $this->botToken();
+        if ($token === '') {
+            throw new RuntimeException('Discord bot token is not configured.');
+        }
+
+        $response = Http::timeout(15)
+            ->withHeaders([
+                'Authorization' => 'Bot ' . $token,
+                'Content-Type' => 'application/json',
+            ])
+            ->post(self::BOT_API . $path, $payload);
+
+        if (!$response->successful()) {
+            $error = 'Discord bot API error: HTTP ' . $response->status() . ' ' . $response->body();
+            throw new RuntimeException($error);
+        }
+
+        return [[
+            'platform' => 'discord_bot',
+            'route_key' => $routeKey,
+            'message_id' => $response->json('id'),
+        ]];
+    }
+
+    private function postToBotApiWithFile(string $path, string $filePath, array $payload, string $routeKey): array
+    {
+        $token = $this->botToken();
+        if ($token === '') {
+            throw new RuntimeException('Discord bot token is not configured.');
+        }
+
+        $response = Http::asMultipart()
+            ->withHeaders(['Authorization' => 'Bot ' . $token])
+            ->attach('files[0]', file_get_contents($filePath), basename($filePath))
+            ->timeout(20)
+            ->post(self::BOT_API . $path, [
+                ['name' => 'payload_json', 'contents' => json_encode($payload)],
+            ]);
+
+        if (!$response->successful()) {
+            $error = 'Discord bot API error: HTTP ' . $response->status() . ' ' . $response->body();
+            throw new RuntimeException($error);
+        }
+
+        return [[
+            'platform' => 'discord_bot',
+            'route_key' => $routeKey,
+            'message_id' => $response->json('id'),
+        ]];
+    }
+
     private function postToWebhooks(array $webhooks, array $payload, string $routeKey): array
     {
         $results = [];

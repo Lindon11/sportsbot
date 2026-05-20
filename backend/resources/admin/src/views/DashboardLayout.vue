@@ -422,6 +422,7 @@ const pageTitle = computed(() => {
     '/sportsbot/fixtures-today': 'SportsBot Fixtures Today',
     '/sportsbot/football-fixtures': 'SportsBot Football Fixtures TV',
     '/sportsbot/rugby-fixtures': 'SportsBot Rugby Fixtures TV',
+    '/sportsbot/highlights': 'SportsBot Highlights',
     '/sportsbot/fight-fixtures': 'SportsBot Fights TV',
     '/sportsbot/motorsport-fixtures': 'SportsBot Motorsport',
     '/sportsbot/usa-sports-fixtures': 'SportsBot USA Sports Fixtures TV',

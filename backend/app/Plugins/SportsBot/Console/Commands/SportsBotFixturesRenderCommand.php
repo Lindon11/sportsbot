@@ -54,6 +54,10 @@ class SportsBotFixturesRenderCommand extends Command
             }
         }
 
-        return Command::SUCCESS;
+        $failed = $sport !== null
+            ? (int) ($result['failed'] ?? 0)
+            : array_reduce($result, static fn (int $total, array $row): int => $total + (int) ($row['failed'] ?? 0), 0);
+
+        return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 }

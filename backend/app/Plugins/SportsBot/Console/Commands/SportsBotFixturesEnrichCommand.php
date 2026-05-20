@@ -2,11 +2,8 @@
 
 namespace App\Plugins\SportsBot\Console\Commands;
 
-use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
-use Carbon\Carbon;
 use Illuminate\Console\Command;
-use Throwable;
 
 class SportsBotFixturesEnrichCommand extends Command
 {
@@ -25,88 +22,31 @@ class SportsBotFixturesEnrichCommand extends Command
         $limit = max(1, min(200, (int) $this->option('limit')));
         $force = (bool) $this->option('force');
 
-        $query = SportsBotFixtureQueue::query()
-            ->whereIn('status', [
-                SportsBotFixtureQueue::STATUS_DRAFT,
-                SportsBotFixtureQueue::STATUS_READY,
-                SportsBotFixtureQueue::STATUS_FAILED,
-            ])
-            ->whereBetween('publish_date', [
-                Carbon::today()->toDateString(),
-                Carbon::today()->addDays($days)->toDateString(),
-            ])
-            ->orderBy('publish_date')
-            ->orderBy('id');
+        $result = $queue->enrichQueuedFixtures($sport !== null ? (string) $sport : null, $days, $limit, $force);
 
-        if ($sport !== null) {
-            $query->where('sport_key', (string) $sport);
-        }
-
-        $items = $query->get();
-        $checked = 0;
-        $found = 0;
-        $skipped = 0;
-        $failed = 0;
-
-        foreach ($items as $item) {
-            if ($checked >= $limit) {
-                break;
-            }
-
-            if (!$force && !$this->needsEnrichment($item)) {
-                $skipped++;
+        foreach ((array) ($result['rows'] ?? []) as $row) {
+            if (isset($row['error'])) {
+                $this->warn("#{$row['id']} failed: {$row['error']}");
                 continue;
             }
 
-            try {
-                $result = $queue->refreshScrapedData((int) $item->id);
-                $checked++;
-
-                $fields = (array) ($result['normalized']['fields'] ?? []);
-                if ($fields !== []) {
-                    $found++;
-                }
-
-                $this->line(sprintf(
-                    '#%d %s confidence=%s fields=%s',
-                    $item->id,
-                    $item->sport_key,
-                    (string) ($result['normalized']['confidence'] ?? 0),
-                    implode(',', array_keys($fields))
-                ));
-            } catch (Throwable $error) {
-                $checked++;
-                $failed++;
-                $this->warn("#{$item->id} failed: " . $error->getMessage());
-            }
+            $this->line(sprintf(
+                '#%d %s confidence=%s fields=%s',
+                $row['id'] ?? 0,
+                $row['sport'] ?? '-',
+                (string) ($row['confidence'] ?? 0),
+                implode(',', (array) ($row['fields'] ?? []))
+            ));
         }
 
         $this->info(sprintf(
             'Enriched queue: %d checked, %d found, %d skipped, %d failed',
-            $checked,
-            $found,
-            $skipped,
-            $failed
+            $result['checked'] ?? 0,
+            $result['found'] ?? 0,
+            $result['skipped'] ?? 0,
+            $result['failed'] ?? 0
         ));
 
-        return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
-    }
-
-    private function needsEnrichment(SportsBotFixtureQueue $item): bool
-    {
-        $fixture = (array) ($item->fixture_data ?? []);
-        $payload = (array) ($item->payload ?? []);
-        $scraper = (array) ($payload['scraper'] ?? []);
-
-        if (($scraper['status'] ?? null) === 'found') {
-            return false;
-        }
-
-        $hasTv = trim((string) ($fixture['tv_channel'] ?? '')) !== ''
-            || !empty($fixture['tv_channels'] ?? []);
-        $hasPoster = trim((string) ($fixture['event_poster'] ?? '')) !== ''
-            || trim((string) ($fixture['poster'] ?? '')) !== '';
-
-        return !$hasTv || !$hasPoster;
+        return ($result['failed'] ?? 0) > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 }

@@ -173,6 +173,15 @@
           </label>
         </div>
 
+        <div class="border-t border-slate-700 pt-4">
+          <p class="text-sm font-medium text-slate-300 mb-2">Branding Override</p>
+          <p class="text-xs text-slate-500 mb-3">Leave empty to use the global watermark. Set a custom watermark per route/customer.</p>
+          <label class="block">
+            <span class="text-sm text-slate-300">Watermark Text</span>
+            <input v-model="form.branding_watermark" class="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 text-white px-3 py-2" placeholder="e.g. My Brand" />
+          </label>
+        </div>
+
         <button
           @click="saveRoute"
           :disabled="saving"
@@ -189,12 +198,13 @@
           <div
             v-for="route in routes"
             :key="route.id || `${route.route_key}:${route.chat_id}:${route.message_thread_id ?? '-'}`"
-            class="rounded-xl bg-slate-900 border border-slate-700 p-3 flex items-center justify-between gap-3"
-          >
-            <button class="text-left flex-1" @click="editRoute(route)">
-              <p class="text-white font-medium">{{ route.route_key }}</p>
-              <p class="text-xs text-slate-400">{{ route.chat_id }}:{{ route.message_thread_id ?? '-' }} · {{ route.label }}</p>
-            </button>
+              class="rounded-xl bg-slate-900 border border-slate-700 p-3 flex items-center justify-between gap-3"
+            >
+              <button class="text-left flex-1" @click="editRoute(route)">
+                <p class="text-white font-medium">{{ route.route_key }}</p>
+                <p class="text-xs text-slate-400">{{ route.chat_id }}:{{ route.message_thread_id ?? '-' }} · {{ route.label }}</p>
+                <p v-if="route.branding?.watermark" class="text-xs text-amber-400 mt-1">Watermark: {{ route.branding.watermark }}</p>
+              </button>
             <button
               class="text-xs text-cyan-300 hover:text-cyan-200 disabled:opacity-50"
               :disabled="testingRouteKey === route.route_key"
@@ -275,6 +285,7 @@ const form = reactive({
   message_thread_id: '',
   enabled: true,
   fallback: false,
+  branding_watermark: '',
 })
 
 const manualTopic = reactive({
@@ -320,6 +331,7 @@ function editRoute(route) {
   form.message_thread_id = route.message_thread_id || ''
   form.enabled = Boolean(route.enabled)
   form.fallback = Boolean(route.fallback)
+  form.branding_watermark = route.branding?.watermark || ''
   selectedTopicKey.value = ''
 }
 
@@ -402,8 +414,12 @@ async function saveManualTopic() {
 async function saveRoute() {
   saving.value = true
   try {
+    const branding = form.branding_watermark
+      ? { watermark: form.branding_watermark }
+      : null
     const payload = {
       ...form,
+      branding,
       route_key: form.route_keys[0] || '',
       message_thread_id: optionalThreadId(form.message_thread_id),
     }

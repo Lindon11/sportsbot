@@ -193,11 +193,6 @@ class FixturesTodayService
                 $eventName = trim((string) ($row['strEvent'] ?? ''));
                 $leagueName = trim((string) ($row['strLeague'] ?? ''));
 
-                if ($requestedSport === 'Football' && !$this->isUkFootballFixture($row, $leagueMeta)) {
-                    $skippedFixtures++;
-                    continue;
-                }
-
                 if ($eventName === '' && $homeTeam === '' && $awayTeam === '') {
                     $skippedFixtures++;
                     continue;
@@ -245,6 +240,8 @@ class FixturesTodayService
                     'league_id' => trim((string) ($row['idLeague'] ?? '')),
                     'home_team_id' => trim((string) ($row['idHomeTeam'] ?? '')),
                     'away_team_id' => trim((string) ($row['idAwayTeam'] ?? '')),
+                    'intRound' => trim((string) ($row['intRound'] ?? '')),
+                    'strSeason' => trim((string) ($row['strSeason'] ?? '')),
                 ];
 
                 if ($sportKey !== null) {
@@ -329,10 +326,14 @@ class FixturesTodayService
      */
     private function resolveLeagueIds(string $settingKey, array $default): array
     {
-        return array_values(array_unique(array_filter(
-            array_map('strval', (array) $this->settings->get($settingKey, $default)),
+        $dbValue = array_values(array_unique(array_filter(
+            array_map('strval', (array) $this->settings->get($settingKey, [])),
             static fn (string $id): bool => trim($id) !== ''
         )));
+        if ($dbValue !== []) {
+            return array_values(array_unique(array_merge($default, $dbValue)));
+        }
+        return $default;
     }
 
     /**

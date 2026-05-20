@@ -13,6 +13,7 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/test-route', [SportsBotController::class, 'testRoute'])->name('test-route');
     Route::get('/fixture-queue', [SportsBotController::class, 'fixtureQueue'])->name('fixture-queue');
     Route::post('/fixture-queue/prefetch', [SportsBotController::class, 'fixtureQueuePrefetch'])->name('fixture-queue.prefetch');
+    Route::post('/fixture-queue/enrich', [SportsBotController::class, 'fixtureQueueEnrich'])->name('fixture-queue.enrich');
     Route::post('/fixture-queue/render', [SportsBotController::class, 'fixtureQueueRender'])->name('fixture-queue.render');
     Route::post('/fixture-queue/publish', [SportsBotController::class, 'fixtureQueuePublish'])->name('fixture-queue.publish');
     Route::post('/fixture-queue/bulk/re-render', [SportsBotController::class, 'fixtureQueueBulkReRender'])->name('fixture-queue.bulk.re-render');
@@ -46,6 +47,10 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/tv-guide/send', [SportsBotController::class, 'tvGuideSend'])->name('tv-guide.send');
     Route::post('/live-now/preview', [SportsBotController::class, 'liveNowPreview'])->name('live-now.preview');
     Route::post('/live-now/send', [SportsBotController::class, 'liveNowSend'])->name('live-now.send');
+    Route::get('/highlights', [SportsBotController::class, 'highlightsPreview'])->name('highlights.preview');
+    Route::post('/highlights/send', [SportsBotController::class, 'highlightsSend'])->name('highlights.send');
+    Route::get('/leagues', [SportsBotController::class, 'allLeagues'])->name('leagues');
+    Route::post('/leagues/lookup', [SportsBotController::class, 'lookupLeague'])->name('leagues.lookup');
     Route::get('/coverage', [SportsBotController::class, 'coverageSettings'])->name('coverage');
     Route::post('/coverage', [SportsBotController::class, 'saveCoverageSettings'])->name('coverage.save');
     Route::get('/scraper-settings', [SportsBotController::class, 'scraperSettings'])->name('scraper-settings');

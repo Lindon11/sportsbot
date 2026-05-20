@@ -92,12 +92,54 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
-        <h2 class="text-lg font-semibold text-white mb-4">Featured Leagues</h2>
-        <textarea v-model="leagueText" rows="8" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="One league ID per line" />
+    <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h2 class="text-lg font-semibold text-white">Featured Leagues</h2>
+          <p class="text-xs text-slate-400 mt-1">{{ featuredCount }} featured / {{ totalLeagueCount }} total across {{ sportWithLeagues }} sports</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1.5 text-xs text-slate-400">
+            <input v-model="showFeaturedOnly" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
+            Featured only
+          </label>
+          <input v-model="searchQuery" type="text" class="w-48 rounded-xl bg-slate-900 border border-slate-700 text-white p-2 text-xs" placeholder="Search leagues..." />
+        </div>
       </div>
 
+      <div class="flex flex-wrap gap-2 mb-4 p-3 rounded-xl bg-slate-900/60 border border-slate-700/50">
+        <input v-model="newLeagueId" type="text" class="w-28 rounded-lg bg-slate-800 border border-slate-600 text-white p-2 text-xs" placeholder="League ID" />
+        <button @click="lookupNewLeague" :disabled="!newLeagueId.trim() || lookingUp" class="px-3 py-1.5 rounded-lg bg-sky-700 text-white text-xs hover:bg-sky-600 disabled:opacity-50">{{ lookingUp ? '...' : 'Find' }}</button>
+        <span v-if="newLeagueResult" class="text-xs flex items-center gap-2">
+          <img v-if="newLeagueResult.badge" :src="newLeagueResult.badge" class="w-5 h-5 rounded object-contain" />
+          <span :class="newLeagueResult.found ? 'text-emerald-300' : 'text-red-300'">{{ newLeagueResult.name }}</span>
+          <button v-if="newLeagueResult.found && !newLeagueResult.alreadyFeatured" @click="addLeagueToFeatured(newLeagueResult.id)" class="px-2 py-0.5 rounded bg-emerald-700 text-emerald-200 text-xs hover:bg-emerald-600">+ Add</button>
+          <span v-if="newLeagueResult.alreadyFeatured" class="text-slate-400">already featured ✓</span>
+        </span>
+      </div>
+
+      <div v-for="(sport, key) in leaguesBySport" :key="key" class="mb-3 last:mb-0">
+        <button @click="toggleSport(key)" class="w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-900/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
+          <span class="flex items-center gap-2">
+            <span class="text-lg">{{ sport.icon }}</span>
+            <span class="text-white font-medium text-sm">{{ sport.label }}</span>
+            <span class="text-xs text-slate-500">{{ featuredSportCount(key) }} / {{ sport.leagues.length }}</span>
+          </span>
+          <span class="text-slate-500 text-xs">{{ expandedSports[key] ? '▲' : '▼' }}</span>
+        </button>
+        <div v-if="expandedSports[key]" class="mt-2 flex flex-wrap gap-1.5 px-2">
+          <button v-for="league in filteredLeagues(key)" :key="league.id" @click="toggleLeague(league.id)" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors border" :class="league.featured ? 'bg-emerald-700/40 border-emerald-600/50 text-emerald-200 hover:bg-emerald-700/60' : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'">
+            <span v-if="league.featured" class="text-emerald-300 font-bold">✓</span>
+            <img v-if="league.badge && !league.featured" :src="league.badge" class="w-4 h-4 rounded object-contain" />
+            <span>{{ league.name }}</span>
+          </button>
+          <span v-if="filteredLeagues(key).length === 0" class="text-xs text-slate-500 italic px-2 py-1">no matches</span>
+        </div>
+      </div>
+      <div v-if="totalLeagueCount === 0" class="text-sm text-slate-500 text-center py-4">Loading leagues...</div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5">
         <h2 class="text-lg font-semibold text-white mb-4">TV Channels</h2>
         <textarea v-model="channelText" rows="8" class="w-full rounded-xl bg-slate-900 border border-slate-700 text-white p-3 text-sm" placeholder="One channel per line" />
@@ -136,6 +178,14 @@ const sports = ref({})
 const card = ref({})
 const routeStatuses = ref({})
 const discordDiagnostics = ref({})
+const leaguesBySport = ref({})
+const expandedSports = ref({})
+const searchQuery = ref('')
+const showFeaturedOnly = ref(false)
+const newLeagueId = ref('')
+const newLeagueResult = ref(null)
+const lookingUp = ref(false)
+
 const form = reactive({
   enabled_sports: [],
   featured_league_ids: [],
@@ -149,9 +199,18 @@ const form = reactive({
   discord_route_webhooks: {}
 })
 
-const leagueText = computed({
-  get: () => form.featured_league_ids.join('\n'),
-  set: value => { form.featured_league_ids = splitLines(value) }
+const featuredCount = computed(() => form.featured_league_ids.length)
+
+const totalLeagueCount = computed(() => {
+  let count = 0
+  for (const key in leaguesBySport.value) {
+    count += leaguesBySport.value[key].leagues.length
+  }
+  return count
+})
+
+const sportWithLeagues = computed(() => {
+  return Object.keys(leaguesBySport.value).filter(k => leaguesBySport.value[k].leagues.length > 0).length
 })
 
 const channelText = computed({
@@ -182,6 +241,79 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleString() : '-'
 }
 
+function toggleSport(key) {
+  expandedSports.value[key] = !expandedSports.value[key]
+}
+
+function toggleLeague(id) {
+  const idx = form.featured_league_ids.indexOf(id)
+  if (idx === -1) {
+    form.featured_league_ids.push(id)
+  } else {
+    form.featured_league_ids.splice(idx, 1)
+  }
+}
+
+function featuredSportCount(key) {
+  const sport = leaguesBySport.value[key]
+  if (!sport) return 0
+  return sport.leagues.filter(l => l.featured).length
+}
+
+function filteredLeagues(key) {
+  const sport = leaguesBySport.value[key]
+  if (!sport) return []
+  let list = sport.leagues
+  if (showFeaturedOnly.value) {
+    list = list.filter(l => l.featured)
+  }
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(l => l.name.toLowerCase().includes(q) || l.id.includes(q))
+  }
+  return list
+}
+
+async function fetchLeagues() {
+  try {
+    const { data } = await api.get('/admin/sportsbot/leagues')
+    leaguesBySport.value = data.sports || {}
+    const featured = data.featured_ids || []
+    form.featured_league_ids = featured
+    for (const key in data.sports) {
+      expandedSports.value[key] = false
+    }
+  } catch (error) {
+    console.error('Failed to load leagues', error)
+  }
+}
+
+async function lookupNewLeague() {
+  const id = newLeagueId.value.trim()
+  if (!id) return
+  lookingUp.value = true
+  newLeagueResult.value = null
+  try {
+    const { data } = await api.post('/admin/sportsbot/leagues/lookup', { id })
+    newLeagueResult.value = {
+      ...data,
+      alreadyFeatured: form.featured_league_ids.includes(id)
+    }
+  } catch (error) {
+    newLeagueResult.value = { found: false, id, name: 'League not found' }
+  } finally {
+    lookingUp.value = false
+  }
+}
+
+function addLeagueToFeatured(id) {
+  if (!form.featured_league_ids.includes(id)) {
+    form.featured_league_ids.push(id)
+  }
+  newLeagueResult.value = null
+  newLeagueId.value = ''
+}
+
 async function load() {
   loading.value = true
   try {
@@ -190,9 +322,9 @@ async function load() {
     card.value = data.card_generation || {}
     routeStatuses.value = data.route_statuses || {}
     discordDiagnostics.value = data.discord_send_diagnostics || {}
+    await fetchLeagues()
     Object.assign(form, {
       enabled_sports: data.settings?.enabled_sports || [],
-      featured_league_ids: data.settings?.featured_league_ids || [],
       tv_channels: data.settings?.tv_channels || [],
       cards_enabled: data.settings?.cards_enabled ?? true,
       rich_cards_enabled: data.settings?.rich_cards_enabled ?? true,

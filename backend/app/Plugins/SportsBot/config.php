@@ -11,52 +11,71 @@ $csv = static function (mixed $value): array {
     ));
 };
 
+$jsonObject = static function (mixed $value): array {
+    if (is_array($value)) {
+        return $value;
+    }
+
+    $raw = trim((string) $value);
+    if ($raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+
+    return is_array($decoded) ? $decoded : [];
+};
+
 $legacyDefaultLeagueIds = [
     // England
     '4328', // English Premier League
     '4329', // EFL Championship
     '4396', // League One
     '4397', // League Two
-    '4590', // National League
-    '4681', // National League North
-    '4682', // National League South
-    '4646', // Northern Premier League Premier Division
-    '4647', // Isthmian League Premier Division
-    '4648', // Southern Premier League South Division
-    '5324', // Southern Premier League Central Division
     '4482', // FA Cup
     '4570', // EFL Cup
     '4571', // FA Community Shield
-    '4847', // EFL Trophy
     '4849', // Womens Super League
-    '5212', // Womens Championship
-    '5441', // FA Womens Challenge Cup
-    '4887', // FA Womens League Cup
 
     // Scotland
     '4330', // Scottish Premiership
     '4395', // Scottish Championship
-    '4669', // Scottish League One
-    '4670', // Scottish League Two
-    '5095', // Scottish Highland League
-    '5096', // Scottish Lowland League
-    '4723', // Scottish FA Cup
-    '4888', // Scottish League Cup
-
-    // Wales
-    '4472', // Cymru Premier
-    '5315', // Cymru North/South
-    '5099', // Welsh League Cup
 
     // Northern Ireland
     '4659', // NIFL Premiership
-    '4755', // NIFL Championship
-    '5097', // NIFL Premier Intermediate League
+
+    // Republic of Ireland
+    '4643', // Irish Premier Division (League of Ireland Premier)
+    '5638', // Irish FAI Cup
 
     // European competitions with frequent UK club coverage
     '4480', // UEFA Champions League
     '4481', // UEFA Europa League
     '4889', // UEFA Womens Champions League
+
+    // Spain
+    '4335', // La Liga
+
+    // Germany
+    '4331', // Bundesliga
+
+    // Italy
+    '4332', // Serie A
+
+    // France
+    '4334', // Ligue 1
+
+    // Netherlands
+    '4337', // Eredivisie
+
+    // Portugal
+    '4344', // Primeira Liga
+
+    // USA
+    '4346', // Major League Soccer
+
+    // Saudi Arabia
+    '4668', // Saudi Pro League
 
     // International football
     '4429', // FIFA World Cup
@@ -65,13 +84,9 @@ $legacyDefaultLeagueIds = [
     '5519', // UEFA European Championships Qualifying
     '4490', // UEFA Nations League
     '4562', // International Friendlies
-    '5819', // Finalissima
-    '4566', // UEFA European Under-21 Championship
     '4565', // FIFA Womens World Cup
     '4865', // UEFA Womens Euro
-    '5840', // Womens World Cup Qualifying UEFA
     '5410', // UEFA Womens Nations League
-    '5400', // International Friendlies Women
 ];
 
 $internationalFootballLeagueIds = [
@@ -81,13 +96,9 @@ $internationalFootballLeagueIds = [
     '5519', // UEFA European Championships Qualifying
     '4490', // UEFA Nations League
     '4562', // International Friendlies
-    '5819', // Finalissima
-    '4566', // UEFA European Under-21 Championship
     '4565', // FIFA Womens World Cup
     '4865', // UEFA Womens Euro
-    '5840', // Womens World Cup Qualifying UEFA
     '5410', // UEFA Womens Nations League
-    '5400', // International Friendlies Women
 ];
 
 $rugbyLeagueIds = [
@@ -118,6 +129,7 @@ $rugbyLeagueIds = [
 
 $fightLeagueIds = [
     '4443', // UFC
+    '4444', // WWE
     '4445', // Boxing
     '4567', // BKFC
 ];
@@ -286,6 +298,240 @@ $defaultTvChannels = [
     'SECN',
     'The CW',
     'truTV',
+    // International
+    'DAZN',
+    'DAZN Canada',
+    'DAZN Spain',
+    'DAZN Germany',
+    'DAZN Japan',
+    'DAZN Italy',
+    'DAZN Portugal',
+    'DAZN Belgium',
+    'Viaplay',
+    'Viaplay UK',
+    'Viaplay Sweden',
+    'Viaplay Norway',
+    'Viaplay Denmark',
+    'Viaplay Finland',
+    'Viaplay Netherlands',
+    'Viaplay Poland',
+    'Eurosport 1',
+    'Eurosport 2',
+    'beIN Sports',
+    'beIN Sports 1',
+    'beIN Sports 2',
+    'beIN Sports 3',
+    'beIN Sports 4',
+    'SuperSport',
+    'SuperSport 1',
+    'SuperSport 2',
+    'SuperSport 3',
+    'SuperSport 4',
+    'SuperSport 5',
+    'SuperSport 6',
+    'SuperSport 7',
+    'SuperSport 8',
+    'SuperSport 9',
+    'SuperSport 10',
+    'SuperSport 11',
+    'SuperSport 12',
+    'SuperSport 13',
+    'SuperSport 14',
+    'SuperSport 15',
+    'SuperSport 16',
+    'SuperSport 17',
+    'SuperSport 18',
+    'SuperSport 19',
+    'SuperSport 20',
+    'SuperSport Maximo',
+    'ESPN',
+    'ESPN 2',
+    'ESPN 3',
+    'ESPN Deportes',
+    'ESPN Brazil',
+    'ESPN Argentina',
+    'ESPN Mexico',
+    'ESPN UK',
+    'ESPN Australia',
+    'ESPN Caribbean',
+    'Fox Sports',
+    'Fox Sports 1',
+    'Fox Sports 2',
+    'Fox Soccer Plus',
+    'Fox Deportes',
+    'Fox Sports Australia',
+    'Fox Sports Brazil',
+    'Fox Sports Mexico',
+    'Fox Sports Argentina',
+    'CBS Sports',
+    'CBS Sports Network',
+    'NBC Sports',
+    'NBC Sports Network',
+    'NBC Sports California',
+    'NBC Sports Chicago',
+    'NBC Sports Boston',
+    'NBC Sports Philadelphia',
+    'NBC Sports Washington',
+    'NBC Sports Bay Area',
+    'ABC',
+    'ABC Australia',
+    'ABC America',
+    'BBC One',
+    'BBC Two',
+    'BBC Three',
+    'BBC Four',
+    'BBC Scotland',
+    'BBC Wales',
+    'BBC Northern Ireland',
+    'BBC Red Button',
+    'BBC Sport Website',
+    'ITV 1',
+    'ITV 4',
+    'STV',
+    'Channel 4',
+    'Channel 5',
+    'UKTV',
+    'S4C',
+    'TG4',
+    'RTE',
+    'RTE 2',
+    'Virgin Media One',
+    'Virgin Media Two',
+    'Virgin Media Three',
+    'Sky Sports Main Event',
+    'Sky Sports Premier League',
+    'Sky Sports Football',
+    'Sky Sports Golf',
+    'Sky Sports Cricket',
+    'Sky Sports Tennis',
+    'Sky Sports F1',
+    'Sky Sports NBA',
+    'Sky Sports NFL',
+    'Sky Sports Racing',
+    'Sky Sports News',
+    'Sky Sports Mix',
+    'Sky Sports Arena',
+    'Sky Sports Action',
+    'Sky Sports Ultra HDR',
+    'Sky Sports+',
+    'Sky Sports Box Office',
+    'Sky Sports Australia',
+    'Sky Sports New Zealand',
+    'Sky Sports Italy',
+    'Sky Sports Germany',
+    'Sky Sports Mexico',
+    'Sky Go',
+    'TNT Sports 1',
+    'TNT Sports 2',
+    'TNT Sports 3',
+    'TNT Sports 4',
+    'TNT Sports 5',
+    'TNT Sports Ultimate',
+    'TNT Sports Box Office',
+    'Premier Sports 1',
+    'Premier Sports 2',
+    'Premier Sports ROI',
+    'Amazon Prime Video',
+    'Amazon Prime Video Australia',
+    'Apple TV+',
+    'Netflix',
+    'Disney+',
+    'Paramount+',
+    'Peacock',
+    'Peacock Premium',
+    'HBO Max',
+    'Max',
+    'HBO',
+    'Showtime',
+    'Starz',
+    'Fubo TV',
+    'Fubo Sports',
+    'Sling TV',
+    'Sling Orange',
+    'Sling Blue',
+    'YouTube TV',
+    'Hulu + Live TV',
+    'DirecTV Stream',
+    'DirecTV',
+    'Optus Sport',
+    'Kayo Sports',
+    'Foxtel',
+    'Stan Sport',
+    'Watch AFL',
+    'Watch NRL',
+    'Kayo Freebies',
+    '7plus',
+    '9Now',
+    '10 Play',
+    'SBS On Demand',
+    'ABC iView',
+    'TSN 1',
+    'TSN 2',
+    'TSN 3',
+    'TSN 4',
+    'TSN 5',
+    'RDS',
+    'RDS 2',
+    'RDS Info',
+    'Sportsnet',
+    'Sportsnet 360',
+    'Sportsnet One',
+    'SN Now',
+    'TSN+',
+    'CBC Sports',
+    'CBC Gem',
+    'TVA Sports',
+    'TVA Sports 2',
+    'ATG TV',
+    'MLB Network',
+    'NBA TV',
+    'NHL Network',
+    'NFL Network',
+    'NFL Sunday Ticket',
+    'NFL RedZone',
+    'MLS Season Pass',
+    'Golf Channel',
+    'Tennis Channel',
+    'Big Ten Network',
+    'SEC Network',
+    'ACC Network',
+    'Pac-12 Network',
+    'Longhorn Network',
+    'MSG Network',
+    'NESN',
+    'YES Network',
+    'SNY',
+    'Marquee Sports',
+    'Bally Sports',
+    'Bally Sports Arizona',
+    'Bally Sports Detroit',
+    'Bally Sports Florida',
+    'Bally Sports Great Lakes',
+    'Bally Sports Indiana',
+    'Bally Sports Kansas City',
+    'Bally Sports Midwest',
+    'Bally Sports New Orleans',
+    'Bally Sports North',
+    'Bally Sports Ohio',
+    'Bally Sports Oklahoma',
+    'Bally Sports San Diego',
+    'Bally Sports SoCal',
+    'Bally Sports South',
+    'Bally Sports Southeast',
+    'Bally Sports Southwest',
+    'Bally Sports Sun',
+    'Bally Sports West',
+    'Bally Sports Wisconsin',
+    'NBC Sports Regional',
+    'Altitude Sports',
+    'Root Sports',
+    'MASN',
+    'SportsTime Ohio',
+    'Mid-Atlantic Sports',
+    'WWE Network',
+    'UFC Fight Pass',
+    'Triller TV',
+    'FITE TV',
 ];
 
 $defaultBroadcastScheduleUrls = [
@@ -334,6 +580,46 @@ $defaultBroadcastScheduleUrls = [
     'https://www.espn.com/racing/schedule/_/year/2026',
     'https://www.foxsports.com/event-schedule',
     'https://www.cbssports.com/cbssports/schedules',
+    // === GLOBAL TV GUIDES ===
+    'https://www.livesoccertv.com/',
+    'https://www.livesportstv.com/',
+    'https://www.onsport.com/guide/',
+    'https://www.tvgids24.nl/sport',
+    // UK
+    'https://www.live-footballontv.com/',
+    'https://www.wheresthematch.com/',
+    'https://www.tvguide.co.uk/sport',
+    'https://www.whatsportson.com/',
+    'https://watchthematch.club/',
+    // USA
+    'https://www.livesportsontv.com/',
+    'https://www.sportsmediawatch.com/tv-schedules/',
+    'https://www.sportingnews.com/us/schedule',
+    'https://www.espn.com/nfl/schedule',
+    'https://www.espn.com/nba/schedule',
+    'https://www.espn.com/mlb/schedule',
+    'https://www.espn.com/nhl/schedule',
+    'https://www.espn.com/racing/schedule/_/year/2026',
+    'https://www.espn.com/mma/schedule',
+    'https://www.foxsports.com/event-schedule',
+    'https://www.cbssports.com/nfl/schedule/',
+    'https://www.cbssports.com/nba/schedule/',
+    'https://www.cbssports.com/mlb/schedule/',
+    'https://www.cbssports.com/nhl/schedule/',
+    'https://www.ustvgo.tv/sports/',
+    'https://www.titantv.com/guide/sports.aspx',
+    // Canada
+    'https://www.tsn.ca/tv-schedule',
+    'https://www.sportsnet.ca/schedule/',
+    // Australia
+    'https://www.foxsports.com.au/tv-guide/',
+    'https://www.kayosports.com.au/schedule',
+    'https://www.espn.com.au/sports/schedule',
+    // Europe
+    'https://www.fernsehserien.de/sport',
+    'https://www.programme-tv.net/sport/',
+    // Middle East / Africa
+    'https://www.supersport.com/tv-guide/',
 ];
 
 $defaultCombatPosterUrls = [
@@ -386,8 +672,8 @@ return [
 
     'cards' => [
         'enabled' => env('SPORTSBOT_CARDS_ENABLED', true),
-        'width' => (int) env('SPORTSBOT_CARD_WIDTH', 1200),
-        'height' => (int) env('SPORTSBOT_CARD_HEIGHT', 675),
+        'width' => (int) env('SPORTSBOT_CARD_WIDTH', 1536),
+        'height' => (int) env('SPORTSBOT_CARD_HEIGHT', 864),
         'font_regular' => env('SPORTSBOT_CARD_FONT_REGULAR', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'),
         'font_bold' => env('SPORTSBOT_CARD_FONT_BOLD', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
         'v3_browser_enabled' => env('SPORTSBOT_CARD_V3_BROWSER_ENABLED', true),
@@ -411,7 +697,7 @@ return [
             'theme' => env('SPORTSBOT_CARD_DEFAULT_THEME', 'limitless-dark'),
             'card_version' => 'v3',
             'branding' => [
-                'watermark' => env('SPORTSBOT_CARD_WATERMARK', 'Limitless TV'),
+                'watermark' => env('SPORTSBOT_CARD_WATERMARK', 'The Sports Hub'),
                 'telegram' => env('SPORTSBOT_CARD_TELEGRAM_BRAND', 'Telegram'),
                 'discord' => env('SPORTSBOT_CARD_DISCORD_BRAND', 'Discord'),
                 'sponsor_slot' => env('SPORTSBOT_CARD_SPONSOR_SLOT', ''),
@@ -486,6 +772,9 @@ return [
         'enabled' => env('SPORTSBOT_DISCORD_ENABLED', false),
         'default_webhook_url' => env('SPORTSBOT_DISCORD_WEBHOOK_URL', ''),
         'route_webhooks' => [],
+        'bot_token' => env('SPORTSBOT_DISCORD_BOT_TOKEN', ''),
+        'default_channel_id' => env('SPORTSBOT_DISCORD_DEFAULT_CHANNEL_ID', env('SPORTSBOT_DISCORD_CHANNEL_ID', '')),
+        'bot_channels' => $jsonObject(env('SPORTSBOT_DISCORD_BOT_CHANNELS_JSON', '')),
         'username' => env('SPORTSBOT_DISCORD_USERNAME', 'SportsBot'),
         'avatar_url' => env('SPORTSBOT_DISCORD_AVATAR_URL', ''),
     ],
@@ -541,11 +830,26 @@ return [
         'timeout' => (int) env('SPORTSBOT_SCRAPER_TIMEOUT', 8),
         'user_agent' => env('SPORTSBOT_SCRAPER_USER_AGENT', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'),
         'auto_use_confidence' => (float) env('SPORTSBOT_SCRAPER_AUTO_USE_CONFIDENCE', 0.9),
+        'retry_backoff_minutes' => (int) env('SPORTSBOT_SCRAPER_RETRY_BACKOFF_MINUTES', 30),
         'combat_poster_urls' => $csv(env('SPORTSBOT_COMBAT_POSTER_URLS', implode(',', $defaultCombatPosterUrls))),
         'broadcast_schedule_urls' => $csv(env('SPORTSBOT_BROADCAST_SCHEDULE_URLS', implode(',', $defaultBroadcastScheduleUrls))),
         'f1_schedule_urls' => $csv(env('SPORTSBOT_F1_SCHEDULE_URLS', implode(',', $defaultF1ScheduleUrls))),
-        'combat_poster_search_queries' => $csv(env('SPORTSBOT_COMBAT_POSTER_SEARCH_QUERIES', '')),
-        'broadcast_schedule_search_queries' => $csv(env('SPORTSBOT_BROADCAST_SCHEDULE_SEARCH_QUERIES', '')),
+        'combat_poster_search_queries' => $csv(env('SPORTSBOT_COMBAT_POSTER_SEARCH_QUERIES', implode(',', [
+            '{home_team} vs {away_team} fight poster',
+            '{event_name} poster',
+            '{home_team} {away_team} broadcast channel tv',
+        ]))),
+        'broadcast_schedule_search_queries' => $csv(env('SPORTSBOT_BROADCAST_SCHEDULE_SEARCH_QUERIES', implode(',', [
+            '{home_team} vs {away_team} live on',
+            '{home_team} vs {away_team} tv channel broadcast',
+            '{home_team} {away_team} stream channel',
+            '{event_name} tv schedule channel',
+            '{home_team} vs {away_team} what channel',
+            '{event_name} live stream channel',
+            '{home_team} {away_team} broadcast schedule',
+            'watch {event_name} online',
+            '{home_team} {away_team} streaming',
+        ]))),
         'f1_schedule_search_queries' => $csv(env('SPORTSBOT_F1_SCHEDULE_SEARCH_QUERIES', '')),
     ],
 
@@ -574,6 +878,9 @@ return [
             'render_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_RENDER_FREQUENCY', 'everyTenMinutes'),
             'publish_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_PUBLISH_ENABLED', true),
             'publish_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_PUBLISH_FREQUENCY', 'everyFiveMinutes'),
+            'allow_gd_fallback_publish' => env('SPORTSBOT_FIXTURE_QUEUE_ALLOW_GD_FALLBACK_PUBLISH', false),
+            'fallback_retry_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_FALLBACK_RETRY_ENABLED', true),
+            'fallback_retry_minutes' => (int) env('SPORTSBOT_FIXTURE_QUEUE_FALLBACK_RETRY_MINUTES', 30),
         ],
     ],
 

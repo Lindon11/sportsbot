@@ -24,6 +24,16 @@
         <span v-if="proofLabel" :class="proofBadgeClass" class="text-[10px] uppercase tracking-wide px-2 py-1 rounded-lg backdrop-blur-sm">{{ proofLabel }}</span>
       </div>
 
+      <label class="absolute top-3 right-3 inline-flex items-center gap-2 rounded-lg bg-black/45 px-2 py-1 text-xs text-white/80 backdrop-blur-sm" @click.stop>
+        <input
+          type="checkbox"
+          :checked="selected"
+          class="h-3.5 w-3.5 rounded border-slate-500 bg-slate-900 text-sky-500"
+          @change="$emit('toggle-select', item.id)"
+        >
+        <span>Select</span>
+      </label>
+
       <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
         <span class="text-xs text-white/70 bg-black/40 px-2 py-1 rounded-lg backdrop-blur-sm">
           {{ publishLabel }}
@@ -45,6 +55,11 @@
         </p>
       </div>
 
+      <div v-if="mainBlocker" class="rounded-xl border px-3 py-2 text-xs" :class="isBlocked ? 'border-red-500/30 bg-red-500/10 text-red-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'">
+        <span class="font-semibold">{{ isBlocked ? 'Blocked' : 'Needs attention' }}:</span>
+        {{ mainBlocker }}
+      </div>
+
       <div class="flex items-center gap-3 text-xs text-slate-400">
         <span v-if="fixture.kickoff_label || fixture.time" class="flex items-center gap-1">
           <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -56,7 +71,7 @@
         </span>
       </div>
 
-      <QueueAssetHealth :fixture-data="fixture" :asset-status="item.asset_status" :card-path="item.card_path" :sport-key="item.sport_key" />
+      <QueueReadinessChecklist :item="item" compact />
 
       <div class="flex items-center gap-3 text-xs text-slate-500 pt-1">
         <span class="flex items-center gap-1">
@@ -93,8 +108,11 @@
         <button @click="$emit('render', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40">
           {{ busyId === item.id && busyAction === 'render' ? '...' : 'Render' }}
         </button>
-        <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+        <button v-if="item.status === 'ready'" @click="$emit('send', item.id)" :disabled="busy || isBlocked" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-medium transition-colors disabled:opacity-40" :title="isBlocked ? mainBlocker : ''">
           {{ busyId === item.id && busyAction === 'send' ? '...' : 'Send' }}
+        </button>
+        <button v-if="isGdFallback" @click="$emit('render', item.id)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 text-xs font-medium transition-colors disabled:opacity-40">
+          Retry Browser Render
         </button>
         <button v-if="item.status === 'sent'" @click="$emit('send', item.id, true)" :disabled="busy" class="px-3 py-1.5 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-xs font-medium transition-colors disabled:opacity-40">
           {{ busyId === item.id && busyAction === 'send' ? '...' : 'Resend' }}
@@ -124,7 +142,7 @@
 <script setup>
 import { computed } from 'vue'
 import QueueStatusBadge from './QueueStatusBadge.vue'
-import QueueAssetHealth from './QueueAssetHealth.vue'
+import QueueReadinessChecklist from './QueueReadinessChecklist.vue'
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -132,9 +150,10 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   busyId: { type: [Number, String], default: null },
   busyAction: { type: String, default: '' },
+  selected: { type: Boolean, default: false },
 })
 
-defineEmits(['preview', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data', 'skip', 'delete'])
+defineEmits(['preview', 'render', 'send', 'find-poster', 'find-tv-info', 'refresh-scraped-data', 'accept-scraped-data', 'reject-scraped-data', 'skip', 'delete', 'toggle-select'])
 
 const fixture = computed(() => props.item.fixture_data || {})
 const payload = computed(() => props.item.payload || {})
@@ -149,14 +168,17 @@ const acceptedScrape = computed(() => Boolean(payload.value.accepted_scraped_dat
 const rejectedScrape = computed(() => Boolean(payload.value.rejected_scraped_data))
 const renderProof = computed(() => props.item.render_proof || {})
 const isBrowserV3 = computed(() => Boolean(renderProof.value.verified_browser_v3))
+const isGdFallback = computed(() => Boolean(props.item.needs_attention?.gd_fallback || renderProof.value.fallback_active || props.item.renderer_used === 'gd_v3'))
+const isBlocked = computed(() => Boolean(props.item.publish_preflight?.blocked))
+const mainBlocker = computed(() => props.item.main_blocker || props.item.publish_preflight?.blockers?.[0] || props.item.needs_attention?.main_blocker || '')
 const proofLabel = computed(() => {
   if (isBrowserV3.value) return 'browser v3'
-  if (renderProof.value.fallback_active || props.item.renderer_used === 'gd_v3') return 'gd fallback'
+  if (isGdFallback.value) return 'gd fallback'
   return props.item.renderer_used || ''
 })
 const proofBadgeClass = computed(() => {
   if (isBrowserV3.value) return 'text-emerald-950 bg-emerald-300/90'
-  if (renderProof.value.fallback_active || props.item.renderer_used === 'gd_v3') return 'text-amber-950 bg-amber-300/90'
+  if (isGdFallback.value) return 'text-amber-950 bg-amber-300/90'
   return 'text-white/80 bg-black/40'
 })
 const renderSummary = computed(() => Boolean(props.item.renderer_used || props.item.template_used || props.item.theme_used || props.item.fallback_reason))

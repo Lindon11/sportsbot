@@ -83,6 +83,26 @@
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold text-white">League Header Cards</h2>
+        <p class="text-xs text-slate-400">Sent before each league's fixture cards. Click a league to generate its header card.</p>
+        <p class="text-xs text-slate-500 mt-2">{{ allLeagues.length }} football leagues:</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <button v-for="league in allLeagues" :key="league.league_id" @click="previewLeagueHeader(league.name)" class="px-2 py-0.5 rounded text-xs transition-colors cursor-pointer" :class="league.has_cache ? 'bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700' : (selectedLeague === league.name ? 'bg-purple-700 text-white ring-2 ring-purple-500' : 'bg-slate-700/60 text-slate-300 hover:bg-purple-700 hover:text-white')">{{ league.name }}{{ league.has_cache ? ' ✓' : '' }}</button>
+        </div>
+      </div>
+      <div v-if="selectedLeagueHeader" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden max-w-lg mx-auto">
+        <img :src="selectedLeagueHeader.data_url" :alt="selectedLeagueHeader.name" class="w-full block" />
+        <div class="p-3">
+          <p class="text-white font-semibold text-sm">{{ selectedLeagueHeader.name }}</p>
+        </div>
+      </div>
+      <div v-else-if="generatingLeague" class="rounded-2xl bg-slate-900 border border-slate-700 p-8 max-w-lg mx-auto text-center">
+        <p class="text-slate-400 text-sm">Generating {{ generatingLeague }} header card...</p>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 class="text-lg font-semibold text-white">Card Preview</h2>
@@ -154,6 +174,11 @@ const routeStatus = ref({})
 const summary = ref({})
 const previewMessage = ref('')
 const cardPreviews = ref([])
+const leagueCardPreview = ref(null)
+const allLeagues = ref([])
+const selectedLeague = ref(null)
+const selectedLeagueHeader = ref(null)
+const generatingLeague = ref(null)
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
@@ -189,13 +214,50 @@ async function loadPreview() {
     routeStatus.value = data.route_status || {}
     summary.value = data.summary || {}
     cardPreviews.value = data.card_previews || []
+    leagueCardPreview.value = data.league_card_preview || null
+    allLeagues.value = data.all_leagues || []
     captionsEnabled.value = Boolean(data.captions_enabled)
     cardVersion.value = data.card_version || cardVersion.value
+    const cached = (data.all_leagues || []).find(l => l.has_cache)
+    if (cached) {
+      selectedLeague.value = cached.name
+      selectedLeagueHeader.value = cached
+    } else if (data.league_card_preview?.card) {
+      selectedLeague.value = data.league_card_preview.card.name
+      selectedLeagueHeader.value = data.league_card_preview.card
+    }
     await loadRecentMessages()
   } catch (error) {
     toast.error(error?.response?.data?.message || 'Failed to load football fixture preview')
   } finally {
     loadingPreview.value = false
+  }
+}
+
+async function previewLeagueHeader(leagueName) {
+  const existing = allLeagues.value.find(l => l.name === leagueName)
+  if (existing?.has_cache && existing?.data_url) {
+    selectedLeague.value = leagueName
+    selectedLeagueHeader.value = existing
+    return
+  }
+  selectedLeague.value = leagueName
+  generatingLeague.value = leagueName
+  selectedLeagueHeader.value = null
+  try {
+    const { data } = await api.post('/admin/sportsbot/football-fixtures/preview', {
+      card_version: cardVersion.value,
+      preview_league: leagueName,
+    })
+    allLeagues.value = data.all_leagues || []
+    const updated = (data.all_leagues || []).find(l => l.name === leagueName)
+    if (updated?.data_url) {
+      selectedLeagueHeader.value = updated
+    }
+  } catch (error) {
+    toast.error(error?.response?.data?.message || 'Failed to generate header card')
+  } finally {
+    generatingLeague.value = null
   }
 }
 

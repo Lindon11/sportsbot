@@ -10,7 +10,7 @@ use Throwable;
 class TelegramRoutingService
 {
     /**
-     * @return array{route_key:string,resolved_route_key:string,fallback:bool,target_count:int,targets:array<int,array{chat_id:string,message_thread_id:int|null}>,source:string}
+     * @return array{route_key:string,resolved_route_key:string,fallback:bool,target_count:int,targets:array<int,array{chat_id:string,message_thread_id:int|null,branding?:array<string,mixed>}>,source:string}
      */
     public function resolveTargets(string $routeKey): array
     {
@@ -75,7 +75,7 @@ class TelegramRoutingService
     }
 
     /**
-     * @return array<int, array{chat_id:string,message_thread_id:int|null}>
+     * @return array<int, array{chat_id:string,message_thread_id:int|null,branding?:array<string,mixed>}>
      */
     private function namedRouteTargets(string $routeKey): array
     {
@@ -84,21 +84,32 @@ class TelegramRoutingService
                 ->where('route_key', $routeKey)
                 ->where('enabled', true)
                 ->orderBy('id')
-                ->get(['chat_id', 'message_thread_id']);
+                ->get(['chat_id', 'message_thread_id', 'branding']);
         } catch (Throwable) {
             return [];
         }
 
-        return $this->uniqueTargets($rows->map(static function ($row): array {
+        return $this->uniqueTargets($rows->map(function ($row): array {
             return [
                 'chat_id' => (string) $row->chat_id,
                 'message_thread_id' => $row->message_thread_id !== null ? (int) $row->message_thread_id : null,
+                'branding' => $this->rowBranding($row),
             ];
         })->all());
     }
 
     /**
-     * @return array<int, array{chat_id:string,message_thread_id:int|null}>
+     * @return array<string, mixed>
+     */
+    private function rowBranding(SportsBotTelegramRoute $row): array
+    {
+        $branding = $row->branding;
+
+        return is_array($branding) ? $branding : [];
+    }
+
+    /**
+     * @return array<int, array{chat_id:string,message_thread_id:int|null,branding?:array<string,mixed>}>
      */
     private function defaultTargets(): array
     {
@@ -111,15 +122,16 @@ class TelegramRoutingService
                 })
                 ->orderByDesc('fallback')
                 ->orderBy('id')
-                ->get(['chat_id', 'message_thread_id']);
+                ->get(['chat_id', 'message_thread_id', 'branding']);
         } catch (Throwable) {
             return $this->configDefaultTargets();
         }
 
-        $dbTargets = $this->uniqueTargets($rows->map(static function ($row): array {
+        $dbTargets = $this->uniqueTargets($rows->map(function ($row): array {
             return [
                 'chat_id' => (string) $row->chat_id,
                 'message_thread_id' => $row->message_thread_id !== null ? (int) $row->message_thread_id : null,
+                'branding' => $this->rowBranding($row),
             ];
         })->all());
 
@@ -229,8 +241,8 @@ class TelegramRoutingService
     }
 
     /**
-     * @param array<int, array{chat_id:string,message_thread_id:int|null}> $targets
-     * @return array<int, array{chat_id:string,message_thread_id:int|null}>
+     * @param array<int, array{chat_id:string,message_thread_id:int|null,branding?:array<string,mixed>}> $targets
+     * @return array<int, array{chat_id:string,message_thread_id:int|null,branding?:array<string,mixed>}>
      */
     private function uniqueTargets(array $targets): array
     {
@@ -249,6 +261,10 @@ class TelegramRoutingService
                 'chat_id' => $chatId,
                 'message_thread_id' => $threadId,
             ];
+
+            if (isset($target['branding']) && is_array($target['branding']) && $target['branding'] !== []) {
+                $unique[$key]['branding'] = $target['branding'];
+            }
         }
 
         return array_values($unique);

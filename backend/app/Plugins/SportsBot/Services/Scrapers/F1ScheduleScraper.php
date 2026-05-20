@@ -69,7 +69,7 @@ class F1ScheduleScraper extends AbstractPublicPageScraper implements ScraperProv
                 'venue' => $this->venueFromText($text),
             ];
 
-            $first = $sessions[0];
+            $first = $this->matchingSession($entry, $sessions);
             $fields += [
                 'event_name' => (string) ($first['session'] ?? ''),
                 'date_label' => (string) ($first['date'] ?? ''),
@@ -122,6 +122,47 @@ class F1ScheduleScraper extends AbstractPublicPageScraper implements ScraperProv
         }
 
         return array_slice($sessions, 0, 10);
+    }
+
+    /**
+     * @param array<int, array{session:string,date:string,time:string}> $sessions
+     * @return array{session:string,date:string,time:string}
+     */
+    private function matchingSession(SportsBotFixtureQueue $entry, array $sessions): array
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+        $eventName = $this->normalizedText((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? ''));
+
+        foreach ($sessions as $session) {
+            $sessionName = $this->normalizedText((string) ($session['session'] ?? ''));
+            if ($sessionName !== '' && str_contains($eventName, $sessionName)) {
+                return $session;
+            }
+        }
+
+        foreach ([
+            'practice 1',
+            'practice 2',
+            'practice 3',
+            'sprint qualifying',
+            'sprint',
+            'qualifying',
+            'race',
+            'grand prix',
+        ] as $needle) {
+            if (!str_contains($eventName, $needle)) {
+                continue;
+            }
+
+            foreach ($sessions as $session) {
+                $sessionName = $this->normalizedText((string) ($session['session'] ?? ''));
+                if (str_contains($sessionName, $needle)) {
+                    return $session;
+                }
+            }
+        }
+
+        return $sessions[0];
     }
 
     private function venueFromText(string $text): string

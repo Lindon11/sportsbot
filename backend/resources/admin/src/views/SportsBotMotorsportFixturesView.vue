@@ -68,6 +68,26 @@
     </div>
 
     <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
+      <div>
+        <h2 class="text-lg font-semibold text-white">League Header Cards</h2>
+        <p class="text-xs text-slate-400">Click a league to generate its header card.</p>
+        <p class="text-xs text-slate-500 mt-2">{{ allMotorsportLeagues.length }} motorsport leagues:</p>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <button v-for="league in allMotorsportLeagues" :key="league.league_id" @click="previewMotorsportLeagueHeader(league.name)" class="px-2 py-0.5 rounded text-xs transition-colors cursor-pointer" :class="league.has_cache ? 'bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700' : (selectedLeague === league.name ? 'bg-purple-700 text-white ring-2 ring-purple-500' : 'bg-slate-700/60 text-slate-300 hover:bg-purple-700 hover:text-white')">{{ league.name }}{{ league.has_cache ? ' ✓' : '' }}</button>
+        </div>
+      </div>
+      <div v-if="selectedMotorsportHeader" class="rounded-2xl bg-slate-900 border border-slate-700 overflow-hidden max-w-lg mx-auto">
+        <img :src="selectedMotorsportHeader.data_url" :alt="selectedMotorsportHeader.name" class="w-full block" />
+        <div class="p-3">
+          <p class="text-white font-semibold text-sm">{{ selectedMotorsportHeader.name }}</p>
+        </div>
+      </div>
+      <div v-else-if="generatingMotorsportLeague" class="rounded-2xl bg-slate-900 border border-slate-700 p-8 max-w-lg mx-auto text-center">
+        <p class="text-slate-400 text-sm">Generating {{ generatingMotorsportLeague }} header card...</p>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
       <h2 class="text-lg font-semibold text-white">Card Preview</h2>
       <div v-if="cardPreviews.length === 0" class="text-sm text-slate-400">No card previews generated yet.</div>
       <div v-else class="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -126,10 +146,15 @@ const routeStatus = ref({})
 const summary = ref({})
 const previewMessage = ref('')
 const cardPreviews = ref([])
+const leagueCardPreview = ref(null)
 const recentMessages = ref([])
 const captionsEnabled = ref(false)
 const cardVersion = ref('v3')
 const routeKeysForActions = ref(['FORMULA_1'])
+const allMotorsportLeagues = ref([])
+const selectedMotorsportHeader = ref(null)
+const generatingMotorsportLeague = ref('')
+const selectedLeague = ref('')
 
 const displayRoutes = computed(() => routeKeysForActions.value.join(', '))
 
@@ -166,6 +191,8 @@ async function loadPreview() {
     routeStatus.value = data.route_status || {}
     summary.value = data.summary || {}
     cardPreviews.value = data.card_previews || []
+    leagueCardPreview.value = data.league_card_preview || null
+    allMotorsportLeagues.value = data.all_motorsport_leagues || []
     routeKeysForActions.value = uniqueRouteKeys([
       data.route_key,
       ...(data.card_previews || []).map((card) => card.route_key),
@@ -177,6 +204,33 @@ async function loadPreview() {
     toast.error(error?.response?.data?.message || 'Failed to load motorsport preview')
   } finally {
     loadingPreview.value = false
+  }
+}
+
+async function previewMotorsportLeagueHeader(leagueName) {
+  const existing = allMotorsportLeagues.value.find(l => l.name === leagueName)
+  if (existing?.has_cache && existing?.data_url) {
+    selectedLeague.value = leagueName
+    selectedMotorsportHeader.value = existing
+    return
+  }
+  selectedLeague.value = leagueName
+  generatingMotorsportLeague.value = leagueName
+  selectedMotorsportHeader.value = null
+  try {
+    const { data } = await api.post('/admin/sportsbot/motorsport-fixtures/preview', {
+      card_version: cardVersion.value,
+      preview_league: leagueName,
+    })
+    allMotorsportLeagues.value = data.all_motorsport_leagues || []
+    const updated = (data.all_motorsport_leagues || []).find(l => l.name === leagueName)
+    if (updated?.data_url) {
+      selectedMotorsportHeader.value = updated
+    }
+  } catch (error) {
+    toast.error(error?.response?.data?.message || 'Failed to generate header card')
+  } finally {
+    generatingMotorsportLeague.value = null
   }
 }
 

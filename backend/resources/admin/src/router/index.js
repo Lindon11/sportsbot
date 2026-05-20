@@ -288,6 +288,11 @@ const router = createRouter({
           }
         },
         {
+          path: '/sportsbot/highlights',
+          name: 'sportsbot-highlights',
+          component: () => import('../views/SportsBotHighlightsView.vue')
+        },
+        {
           path: '/sportsbot/tennis-fixtures',
           redirect: '/sportsbot/other-sports-fixtures'
         },

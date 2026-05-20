@@ -6,6 +6,7 @@ use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Support\SportsFixtureConfig;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use App\Plugins\SportsBot\Support\SportsBotPaths;
+use App\Plugins\SportsBot\Support\SportsBotFixtureReadiness;
 use App\Plugins\SportsBot\Support\TelegramRouteKeys;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -22,36 +23,43 @@ class FixtureQueueService
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
         private readonly SportsBotScraperService $scrapers = new SportsBotScraperService(),
         private readonly SportsBotAssetCache $assets = new SportsBotAssetCache(),
+        private readonly SportsBotPipelineRunRecorder $pipeline = new SportsBotPipelineRunRecorder(),
     ) {
     }
 
-    public function prefetchAll(): array
+    public function prefetchAll(?int $days = null, bool $recordRun = true): array
     {
-        $results = [];
+        if ($recordRun) {
+            return $this->pipeline->record('prefetch', ['sport' => 'all', 'days' => $days], fn (): array => $this->prefetchAll($days, false));
+        }
 
+        $results = [];
         foreach (SportsFixtureConfig::enabledSportKeys() as $sportKey) {
-            $results[$sportKey] = $this->prefetch($sportKey);
+            $results[$sportKey] = $this->prefetch($sportKey, $days, false);
         }
 
         return $results;
     }
 
-    public function prefetch(string $sportKey): array
+    public function prefetch(string $sportKey, ?int $days = null, bool $recordRun = true): array
     {
+        if ($recordRun) {
+            return $this->pipeline->record('prefetch', ['sport' => $sportKey, 'days' => $days], fn (): array => $this->prefetch($sportKey, $days, false));
+        }
+
         $config = SportsFixtureConfig::for($sportKey);
         if ($config === null) {
             return ['sport' => $sportKey, 'error' => "Unknown sport: {$sportKey}", 'prefetched' => 0];
         }
 
-        $today = Carbon::today();
-        $endDate = Carbon::today()->addDays((int) ($config['data_fetch_window'] ?? 7));
+        $fetchWindow = $days !== null ? max(0, $days) : (int) ($config['data_fetch_window'] ?? 7);
         $created = 0;
         $updated = 0;
         $skipped = 0;
 
         $summary = $this->fixturesService->buildSummary(
             $sportKey,
-            (int) ($config['data_fetch_window'] ?? 7)
+            $fetchWindow
         );
 
         $fixtures = $this->flattenFixtures($summary);
@@ -128,19 +136,26 @@ class FixtureQueueService
         ];
     }
 
-    public function renderAll(): array
+    public function renderAll(bool $recordRun = true): array
     {
-        $results = [];
+        if ($recordRun) {
+            return $this->pipeline->record('render', ['sport' => 'all'], fn (): array => $this->renderAll(false));
+        }
 
+        $results = [];
         foreach (SportsFixtureConfig::enabledSportKeys() as $sportKey) {
-            $results[$sportKey] = $this->render($sportKey);
+            $results[$sportKey] = $this->render($sportKey, false);
         }
 
         return $results;
     }
 
-    public function render(string $sportKey): array
+    public function render(string $sportKey, bool $recordRun = true): array
     {
+        if ($recordRun) {
+            return $this->pipeline->record('render', ['sport' => $sportKey], fn (): array => $this->render($sportKey, false));
+        }
+
         $config = SportsFixtureConfig::for($sportKey);
         if ($config === null) {
             return ['sport' => $sportKey, 'error' => "Unknown sport: {$sportKey}", 'rendered' => 0];
@@ -151,6 +166,7 @@ class FixtureQueueService
         $rendered = 0;
         $skipped = 0;
         $failed = 0;
+        $fallbackRetried = 0;
 
         $drafts = SportsBotFixtureQueue::query()
             ->bySport($sportKey)
@@ -162,9 +178,13 @@ class FixtureQueueService
             $fixture = $this->effectiveFixtureData($entry);
 
             if ($entry->status === SportsBotFixtureQueue::STATUS_READY && $this->hasCurrentCard($entry, $cardVersion)) {
-                $this->syncRouteKey($entry, $config);
-                $skipped++;
-                continue;
+                if (!SportsBotFixtureReadiness::fallbackActive($entry) || !$this->shouldRetryFallbackRender($entry)) {
+                    $this->syncRouteKey($entry, $config);
+                    $skipped++;
+                    continue;
+                }
+
+                $fallbackRetried++;
             }
 
             try {
@@ -189,6 +209,7 @@ class FixtureQueueService
             'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'fallback_retried' => $fallbackRetried,
         ]);
 
         return [
@@ -196,22 +217,30 @@ class FixtureQueueService
             'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'fallback_retried' => $fallbackRetried,
         ];
     }
 
-    public function publishAll(array $options = []): array
+    public function publishAll(array $options = [], bool $recordRun = true): array
     {
-        $results = [];
+        if ($recordRun) {
+            return $this->pipeline->record('publish', ['sport' => 'all', 'dry_run' => (bool) ($options['dry_run'] ?? false)], fn (): array => $this->publishAll($options, false));
+        }
 
+        $results = [];
         foreach (SportsFixtureConfig::enabledSportKeys() as $sportKey) {
-            $results[$sportKey] = $this->publish($sportKey, $options);
+            $results[$sportKey] = $this->publish($sportKey, $options, false);
         }
 
         return $results;
     }
 
-    public function publish(string $sportKey, array $options = []): array
+    public function publish(string $sportKey, array $options = [], bool $recordRun = true): array
     {
+        if ($recordRun) {
+            return $this->pipeline->record('publish', ['sport' => $sportKey, 'dry_run' => (bool) ($options['dry_run'] ?? false)], fn (): array => $this->publish($sportKey, $options, false));
+        }
+
         $config = SportsFixtureConfig::for($sportKey);
         if ($config === null) {
             return ['sport' => $sportKey, 'error' => "Unknown sport: {$sportKey}", 'sent' => 0];
@@ -221,15 +250,19 @@ class FixtureQueueService
         $dryRun = (bool) ($options['dry_run'] ?? false);
         $sent = 0;
         $wouldSend = 0;
+        $wouldRender = 0;
         $rendered = 0;
         $skipped = 0;
         $failed = 0;
+        $blocked = 0;
 
         $items = SportsBotFixtureQueue::query()
             ->bySport($sportKey)
             ->where('publish_date', $today)
             ->whereIn('status', [SportsBotFixtureQueue::STATUS_READY, SportsBotFixtureQueue::STATUS_DRAFT])
             ->get();
+
+        $leagueHeadersSent = [];
 
         foreach ($items as $entry) {
             if ($entry->sent_at !== null || $entry->telegram_message_id !== null) {
@@ -239,7 +272,13 @@ class FixtureQueueService
 
             if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
                 if ($dryRun) {
-                    $skipped++;
+                    $wouldRender++;
+                    $preflight = $this->publishPreflight($entry, $config, true);
+                    if (($preflight['blocked'] ?? false) === true) {
+                        $blocked++;
+                    } else {
+                        $wouldSend++;
+                    }
                     continue;
                 }
 
@@ -264,7 +303,10 @@ class FixtureQueueService
 
             try {
                 if ($dryRun) {
-                    if ($this->hasCurrentCard($entry, $this->desiredCardVersion($sportKey, $config))) {
+                    $preflight = $this->publishPreflight($entry, $config, false);
+                    if (($preflight['blocked'] ?? false) === true) {
+                        $blocked++;
+                    } elseif ($this->hasCurrentCard($entry, $this->desiredCardVersion($sportKey, $config))) {
                         $wouldSend++;
                     } else {
                         $skipped++;
@@ -278,6 +320,52 @@ class FixtureQueueService
                 if (!$verified) {
                     $skipped++;
                     continue;
+                }
+
+                $entry = $entry->fresh() ?? $entry;
+                $preflight = $this->publishPreflight($entry, $config, false);
+                if (($preflight['blocked'] ?? false) === true) {
+                    $blocked++;
+                    $entry->error = mb_substr('Blocked from auto-publish: ' . implode(', ', (array) ($preflight['blockers'] ?? [])), 0, 1000);
+                    $entry->save();
+                    continue;
+                }
+
+                $fixture = $this->effectiveFixtureData($entry);
+                $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
+                $leagueKey = $league !== '' ? $league : 'Other';
+
+                if (!isset($leagueHeadersSent[$leagueKey])) {
+                    $leagueHeadersSent[$leagueKey] = true;
+
+                    $leagueInfo = [
+                        'name' => $leagueKey,
+                        'sport' => $sportKey,
+                        'badge' => $fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? '',
+                        'logo' => $fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? '',
+                        'date' => $today,
+                    ];
+
+                    $cardVersion = $this->desiredCardVersion($sportKey, $config);
+                    $routeKey = $this->routeKeyForEntry($entry, $config);
+                    $card = $this->cards->leagueCard($leagueInfo, $cardVersion, ['route_key' => $routeKey]);
+                    $cardPath = (string) ($card['path'] ?? '');
+
+                    if ($cardPath !== '' && @is_file($cardPath)) {
+                        $idempotencyKey = $this->leagueHeaderIdempotencyKey($sportKey, $today, $routeKey, $leagueKey);
+                        $this->notifier->sendPhoto($cardPath, '', [
+                            'route_key' => $routeKey,
+                            'type' => strtoupper($sportKey) . '_FIXTURES',
+                            'idempotency_key' => $idempotencyKey,
+                            'payload' => [
+                                'source' => 'fixture_queue',
+                                'content_key' => strtoupper($sportKey) . '_FIXTURES',
+                                'idempotency_key' => $idempotencyKey,
+                                'type' => 'LEAGUE_HEADER',
+                                'league' => $leagueKey,
+                            ],
+                        ]);
+                    }
                 }
 
                 $results = $this->sendToTelegram($entry, $config, $options);
@@ -308,9 +396,11 @@ class FixtureQueueService
             'sport' => $sportKey,
             'sent' => $sent,
             'would_send' => $wouldSend,
+            'would_render' => $wouldRender,
             'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'blocked' => $blocked,
             'dry_run' => $dryRun,
         ]);
 
@@ -318,10 +408,101 @@ class FixtureQueueService
             'sport' => $sportKey,
             'sent' => $sent,
             'would_send' => $wouldSend,
+            'would_render' => $wouldRender,
             'rendered' => $rendered,
             'skipped' => $skipped,
             'failed' => $failed,
+            'blocked' => $blocked,
             'dry_run' => $dryRun,
+        ];
+    }
+
+    public function enrichQueuedFixtures(?string $sport = null, int $days = 2, int $limit = 30, bool $force = false, bool $recordRun = true): array
+    {
+        if ($recordRun) {
+            return $this->pipeline->record('enrich', [
+                'sport' => $sport ?: 'all',
+                'days' => $days,
+                'limit' => $limit,
+                'force' => $force,
+            ], fn (): array => $this->enrichQueuedFixtures($sport, $days, $limit, $force, false));
+        }
+
+        $days = max(0, $days);
+        $limit = max(1, min(200, $limit));
+        $query = SportsBotFixtureQueue::query()
+            ->whereIn('status', [
+                SportsBotFixtureQueue::STATUS_DRAFT,
+                SportsBotFixtureQueue::STATUS_READY,
+                SportsBotFixtureQueue::STATUS_FAILED,
+            ])
+            ->whereBetween('publish_date', [
+                Carbon::today()->toDateString(),
+                Carbon::today()->addDays($days)->toDateString(),
+            ])
+            ->orderBy('publish_date')
+            ->orderBy('id');
+
+        if ($sport !== null && trim($sport) !== '') {
+            $query->where('sport_key', (string) $sport);
+        }
+
+        $checked = 0;
+        $found = 0;
+        $skipped = 0;
+        $failed = 0;
+        $scraperError = 0;
+        $rows = [];
+
+        foreach ($query->get() as $item) {
+            if ($checked >= $limit) {
+                break;
+            }
+
+            $needs = SportsBotFixtureReadiness::enrichmentNeeds($item, $force);
+            if (!$force && !($needs['enrichment_due'] ?? false)) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $result = $this->refreshScrapedData((int) $item->id);
+                $checked++;
+
+                $fields = (array) ($result['normalized']['fields'] ?? []);
+                if ($fields !== []) {
+                    $found++;
+                }
+                if (($result['errors'] ?? []) !== []) {
+                    $scraperError++;
+                }
+
+                $rows[] = [
+                    'id' => $item->id,
+                    'sport' => $item->sport_key,
+                    'confidence' => (float) ($result['normalized']['confidence'] ?? 0.0),
+                    'fields' => array_keys($fields),
+                    'errors' => $result['errors'] ?? [],
+                ];
+            } catch (Throwable $error) {
+                $checked++;
+                $failed++;
+                $rows[] = [
+                    'id' => $item->id,
+                    'sport' => $item->sport_key,
+                    'error' => $error->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'sport' => $sport ?: 'all',
+            'checked' => $checked,
+            'found' => $found,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'scraper_error' => $scraperError,
+            'rows' => $rows,
         ];
     }
 
@@ -599,13 +780,16 @@ class FixtureQueueService
         $fixture = $this->effectiveFixtureData($entry);
         $caption = (string) ($entry->caption ?? '');
         $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
+        $idempotencyKey = $this->fixtureIdempotencyKey($entry, $routeKey);
 
         $notifyOptions = [
             'route_key' => $routeKey,
             'type' => strtoupper($entry->sport_key) . '_FIXTURES',
+            'idempotency_key' => $idempotencyKey,
             'payload' => [
                 'source' => 'fixture_queue',
                 'content_key' => strtoupper($entry->sport_key) . '_FIXTURES',
+                'idempotency_key' => $idempotencyKey,
                 'event_id' => $entry->event_id,
                 'fixture_queue_id' => $entry->id,
                 'fixture' => [
@@ -732,6 +916,11 @@ class FixtureQueueService
         $data['card_path'] = $cardPath;
         $data['card_version'] = $cardVersion;
         $data['render_proof'] = $this->renderProof($entry, $cardPath, $cardVersion);
+        $config = SportsFixtureConfig::for((string) $entry->sport_key) ?: [];
+        $data['publish_preflight'] = $this->publishPreflight($entry, $config, false);
+        $data['needs_attention'] = $this->needsAttention($entry, $config);
+        $data['readiness_checks'] = $this->readinessChecks($entry, $config);
+        $data['main_blocker'] = $data['publish_preflight']['blockers'][0] ?? ($data['needs_attention']['main_blocker'] ?? null);
 
         return $data;
     }
@@ -757,8 +946,8 @@ class FixtureQueueService
             || $entry->telegram_message_id !== null;
 
         try {
-        $assetResult = $this->cacheAssets($entry, $fixture);
-        $fixture = (array) ($assetResult['fixture'] ?? $fixture);
+            $assetResult = $this->cacheAssets($entry, $fixture);
+            $fixture = (array) ($assetResult['fixture'] ?? $fixture);
 
             $card = $this->cards->fixtureCard($fixture, $cardVersion, [
                 'route_key' => $this->routeKeyForEntry($entry, $config),
@@ -833,6 +1022,18 @@ class FixtureQueueService
             $verified = $this->verifyBeforePublish($entry, $config);
             if (!$verified) {
                 return ['published' => false, 'error' => 'Event verification failed'];
+            }
+
+            $entry = $this->find($id) ?? $entry;
+            $preflight = $this->publishPreflight($entry, $config, false);
+            if (($preflight['blocked'] ?? false) === true) {
+                return [
+                    'published' => false,
+                    'id' => $id,
+                    'blocked' => true,
+                    'error' => 'Blocked from publish: ' . implode(', ', (array) ($preflight['blockers'] ?? [])),
+                    'preflight' => $preflight,
+                ];
             }
 
             $results = $this->sendToTelegram($entry, $config, []);
@@ -1086,7 +1287,7 @@ class FixtureQueueService
         ]);
         $payload = (array) $entry->payload;
         $history = (array) ($payload['render_history'] ?? []);
-        $entry->payload = array_merge($payload, [
+        $nextPayload = array_merge($payload, [
             'render_history' => array_values(array_slice(array_merge(
                 $history,
                 [[
@@ -1102,6 +1303,21 @@ class FixtureQueueService
                 ]]
             ), -20)),
         ]);
+
+        if (SportsBotFixtureReadiness::fallbackActive($entry)) {
+            $retry = (array) ($payload['fallback_retry'] ?? []);
+            $attempts = (int) ($retry['attempts'] ?? 0) + 1;
+            $nextPayload['fallback_retry'] = [
+                'attempts' => $attempts,
+                'last_attempt_at' => now()->toIso8601String(),
+                'next_retry_at' => now()->addMinutes($this->fallbackRetryCooldownMinutes($attempts))->toIso8601String(),
+                'reason' => $entry->fallback_reason ?: $entry->browser_failure_reason,
+            ];
+        } else {
+            unset($nextPayload['fallback_retry']);
+        }
+
+        $entry->payload = $nextPayload;
     }
 
     private function syncCardPath(SportsBotFixtureQueue $entry, string $cardPath): void
@@ -1167,7 +1383,7 @@ class FixtureQueueService
     }
 
     /**
-     * Manual override > API provider > accepted scraped data > high-confidence scraped data > generated fallback.
+     * Manual override > accepted scraped data > API provider > high-confidence scraped data > generated fallback.
      *
      * @return array<string, mixed>
      */
@@ -1185,7 +1401,7 @@ class FixtureQueueService
 
         if ($this->hasTrustedProviderData($fixture)) {
             $accepted = (array) ($payload['accepted_scraped_data']['fields'] ?? []);
-            $this->fillMissingFixtureFields($fixture, $accepted, $sources, 'accepted_scraped_data');
+            $this->fillAcceptedFixtureFields($fixture, $accepted, $sources);
 
             $normalized = (array) ($payload['scraper']['normalized'] ?? []);
             $confidence = (float) ($normalized['confidence'] ?? 0.0);
@@ -1233,6 +1449,24 @@ class FixtureQueueService
 
             $fixture[$field] = $value;
             $sources[$field] = $source;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @param array<string, mixed> $fields
+     * @param array<string, string> $sources
+     */
+    private function fillAcceptedFixtureFields(array &$fixture, array $fields, array &$sources): void
+    {
+        foreach ($fields as $field => $value) {
+            $field = (string) $field;
+            if (!$this->scrapedFieldAllowed($field) || $this->emptyFixtureFieldValue($field, $value)) {
+                continue;
+            }
+
+            $fixture[$field] = $value;
+            $sources[$field] = 'accepted_scraped_data';
         }
     }
 
@@ -1308,25 +1542,7 @@ class FixtureQueueService
 
     private function placeholderTvChannel(string $channel): bool
     {
-        $normalized = strtolower(trim(preg_replace('/\s+/', ' ', $channel) ?? $channel));
-        $normalized = trim($normalized, " \t\n\r\0\x0B.:-");
-
-        return in_array($normalized, [
-            '',
-            'not listed',
-            'not shown',
-            'not available',
-            'no tv',
-            'none',
-            'unknown',
-            'tbc',
-            'tv tbc',
-            'channel tbc',
-            'channels tbc',
-            'n/a',
-            'na',
-            '-',
-        ], true);
+        return SportsBotFixtureReadiness::placeholderTvChannel($channel);
     }
 
     /**
@@ -1348,6 +1564,252 @@ class FixtureQueueService
         }
 
         return false;
+    }
+
+    private function shouldRetryFallbackRender(SportsBotFixtureQueue $entry): bool
+    {
+        if (!SportsBotFixtureReadiness::fallbackActive($entry)) {
+            return false;
+        }
+
+        if (!(bool) $this->settings->get('fixture_queue_fallback_retry_enabled', config('plugins.SportsBot.publishing.fixture_queue.fallback_retry_enabled', true))) {
+            return false;
+        }
+
+        $payload = (array) ($entry->payload ?? []);
+        $retry = (array) ($payload['fallback_retry'] ?? []);
+        $nextRetry = trim((string) ($retry['next_retry_at'] ?? ''));
+        if ($nextRetry === '') {
+            return true;
+        }
+
+        try {
+            return Carbon::parse($nextRetry)->lte(now());
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    private function fallbackRetryCooldownMinutes(int $attempts): int
+    {
+        $base = max(5, (int) $this->settings->get('fixture_queue_fallback_retry_minutes', config('plugins.SportsBot.publishing.fixture_queue.fallback_retry_minutes', 30)));
+
+        return min(240, $base * max(1, min(4, $attempts)));
+    }
+
+    private function allowGdFallbackPublish(): bool
+    {
+        return (bool) $this->settings->get(
+            'fixture_queue_allow_gd_fallback_publish',
+            config('plugins.SportsBot.publishing.fixture_queue.allow_gd_fallback_publish', false)
+        );
+    }
+
+    /**
+     * @return array{blocked:bool,status:string,blockers:array<int,string>,warnings:array<int,string>,route_status:array<string,mixed>}
+     */
+    private function publishPreflight(SportsBotFixtureQueue $entry, array $config, bool $assumeRendered = false): array
+    {
+        $blockers = [];
+        $warnings = [];
+        $cardVersion = $this->desiredCardVersion((string) $entry->sport_key, $config);
+        $cardPath = SportsBotPaths::cardPath((string) ($entry->card_path ?? ''));
+        $hasCard = $assumeRendered || ($cardPath !== '' && @is_file($cardPath));
+        $routeStatus = $this->routeStatusForEntry($entry, $config);
+
+        if ($entry->status === SportsBotFixtureQueue::STATUS_FAILED) {
+            $blockers[] = $entry->error ? 'failed: ' . (string) $entry->error : 'item failed';
+        }
+
+        if (!$hasCard) {
+            $blockers[] = 'missing card';
+        }
+
+        if ($cardVersion === 'v3'
+            && (bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)
+            && SportsBotFixtureReadiness::fallbackActive($entry)
+            && !$this->allowGdFallbackPublish()
+        ) {
+            $blockers[] = 'GD fallback render';
+        }
+
+        if ((int) ($routeStatus['target_count'] ?? 0) <= 0) {
+            $blockers[] = 'no delivery target';
+        } elseif ((bool) ($routeStatus['fallback'] ?? false)) {
+            $warnings[] = 'route fallback';
+        }
+
+        if (!SportsBotFixtureReadiness::hasTv($this->effectiveFixtureData($entry))) {
+            $warnings[] = 'missing TV';
+        }
+
+        if ($entry->sent_at !== null || $entry->telegram_message_id !== null || $entry->status === SportsBotFixtureQueue::STATUS_SENT) {
+            $warnings[] = 'already sent';
+        }
+
+        return [
+            'blocked' => $blockers !== [],
+            'status' => $blockers !== [] ? 'blocked' : ($warnings !== [] ? 'warning' : 'ready'),
+            'blockers' => $blockers,
+            'warnings' => $warnings,
+            'route_status' => $routeStatus,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function needsAttention(SportsBotFixtureQueue $entry, array $config): array
+    {
+        $fixture = $this->effectiveFixtureData($entry);
+        $payload = (array) ($entry->payload ?? []);
+        $preflight = $this->publishPreflight($entry, $config, false);
+        $enrichment = SportsBotFixtureReadiness::enrichmentNeeds($entry);
+        $missingTv = !SportsBotFixtureReadiness::hasTv($fixture);
+        $missingCard = !SportsBotFixtureReadiness::hasCurrentCard($entry) && $entry->status !== SportsBotFixtureQueue::STATUS_SENT;
+        $gdFallback = SportsBotFixtureReadiness::fallbackActive($entry);
+        $scraper = (array) ($payload['scraper'] ?? []);
+        $attention = [
+            'missing_tv' => $missingTv,
+            'missing_card' => $missingCard,
+            'gd_fallback' => $gdFallback,
+            'scraper_found' => ($scraper['status'] ?? null) === 'found',
+            'scraper_error' => ($scraper['status'] ?? null) === 'error',
+            'enrichment_due' => (bool) ($enrichment['enrichment_due'] ?? false),
+            'route_fallback' => (bool) (($preflight['route_status']['fallback'] ?? false)),
+            'blocked_publish' => (bool) ($preflight['blocked'] ?? false),
+            'failed_delivery' => false,
+            'main_blocker' => $preflight['blockers'][0] ?? null,
+            'enrichment' => $enrichment,
+        ];
+
+        if ($attention['main_blocker'] === null) {
+            if ($missingCard) {
+                $attention['main_blocker'] = 'missing card';
+            } elseif ($gdFallback) {
+                $attention['main_blocker'] = 'GD fallback render';
+            } elseif ($missingTv) {
+                $attention['main_blocker'] = 'missing TV';
+            } elseif ($attention['scraper_error']) {
+                $attention['main_blocker'] = 'scraper error';
+            }
+        }
+
+        return $attention;
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function readinessChecks(SportsBotFixtureQueue $entry, array $config): array
+    {
+        $fixture = $this->effectiveFixtureData($entry);
+        $preflight = $this->publishPreflight($entry, $config, false);
+        $routeStatus = (array) ($preflight['route_status'] ?? []);
+        $title = $this->fixtureTitle($fixture, $entry);
+        $hasTv = SportsBotFixtureReadiness::hasTv($fixture);
+        $fallback = SportsBotFixtureReadiness::fallbackActive($entry);
+        $hasCard = SportsBotFixtureReadiness::hasCurrentCard($entry);
+        $assetFailures = (array) ($entry->asset_failures ?? []);
+
+        return [
+            [
+                'key' => 'fixture',
+                'label' => 'Fixture data',
+                'state' => $title !== '' ? 'ok' : 'error',
+                'value' => $title !== '' ? 'ready' : 'missing',
+                'message' => 'Fixture title data is missing.',
+            ],
+            [
+                'key' => 'tv',
+                'label' => 'TV data',
+                'state' => $hasTv ? 'ok' : 'warn',
+                'value' => $hasTv ? 'available' : 'missing',
+                'message' => 'TV data is missing.',
+            ],
+            [
+                'key' => 'assets',
+                'label' => 'Assets',
+                'state' => $assetFailures !== [] ? 'error' : (($entry->asset_status === SportsBotFixtureQueue::ASSET_CACHED) ? 'ok' : 'warn'),
+                'value' => $assetFailures !== [] ? 'failed' : (($entry->asset_status === SportsBotFixtureQueue::ASSET_CACHED) ? 'ready' : 'pending'),
+                'message' => $assetFailures !== [] ? 'One or more assets failed to cache.' : 'Artwork assets are still pending.',
+            ],
+            [
+                'key' => 'card',
+                'label' => 'Card render',
+                'state' => $entry->status === SportsBotFixtureQueue::STATUS_FAILED ? 'error' : ($fallback ? 'warn' : ($hasCard ? 'ok' : 'warn')),
+                'value' => $entry->status === SportsBotFixtureQueue::STATUS_FAILED ? 'failed' : ($fallback ? 'GD fallback' : ($hasCard ? 'rendered' : 'missing')),
+                'message' => $entry->status === SportsBotFixtureQueue::STATUS_FAILED ? (string) ($entry->error ?: 'Card render failed.') : ($fallback ? 'Browser v3 did not render this card.' : 'No card has been rendered yet.'),
+            ],
+            [
+                'key' => 'route',
+                'label' => 'Route',
+                'state' => (int) ($routeStatus['target_count'] ?? 0) <= 0 ? 'error' : ((bool) ($routeStatus['fallback'] ?? false) ? 'warn' : 'ok'),
+                'value' => (string) ($routeStatus['resolved_route_key'] ?? $entry->route_key ?? 'default'),
+                'message' => (bool) ($routeStatus['fallback'] ?? false) ? 'Route is falling back to another target.' : 'No route target is configured.',
+            ],
+            [
+                'key' => 'publish',
+                'label' => 'Publish',
+                'state' => ($preflight['blocked'] ?? false) ? 'error' : (($entry->status === SportsBotFixtureQueue::STATUS_READY || $entry->status === SportsBotFixtureQueue::STATUS_SENT) ? 'ok' : 'warn'),
+                'value' => $entry->status === SportsBotFixtureQueue::STATUS_SENT ? 'sent' : (($preflight['blocked'] ?? false) ? 'blocked' : ($entry->status ?: 'draft')),
+                'message' => ($preflight['blocked'] ?? false) ? implode(', ', (array) ($preflight['blockers'] ?? [])) : 'Item is not ready to publish yet.',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function routeStatusForEntry(SportsBotFixtureQueue $entry, array $config): array
+    {
+        static $cache = [];
+
+        $routeKey = $this->routeKeyForEntry($entry, $config);
+        if (isset($cache[$routeKey])) {
+            return $cache[$routeKey];
+        }
+
+        try {
+            $cache[$routeKey] = $this->routingService->resolveTargets($routeKey);
+        } catch (Throwable) {
+            $cache[$routeKey] = [
+                'route_key' => $routeKey,
+                'resolved_route_key' => TelegramRouteKeys::DEFAULT,
+                'fallback' => true,
+                'target_count' => 0,
+                'targets' => [],
+                'source' => 'error',
+            ];
+        }
+
+        return $cache[$routeKey];
+    }
+
+    private function fixtureTitle(array $fixture, SportsBotFixtureQueue $entry): string
+    {
+        $home = trim((string) ($fixture['home_team'] ?? ''));
+        $away = trim((string) ($fixture['away_team'] ?? ''));
+        if ($home !== '' && $away !== '') {
+            return "{$home} vs {$away}";
+        }
+
+        return trim((string) ($fixture['event_name'] ?? $fixture['strEvent'] ?? $entry->event_id ?? ''));
+    }
+
+    private function fixtureIdempotencyKey(SportsBotFixtureQueue $entry, string $routeKey): string
+    {
+        return 'fixture:' . sha1(implode('|', [
+            (string) $entry->sport_key,
+            (string) $entry->publish_date,
+            $routeKey,
+            (string) $entry->event_id,
+        ]));
+    }
+
+    private function leagueHeaderIdempotencyKey(string $sportKey, string $date, string $routeKey, string $league): string
+    {
+        return 'league_header:' . sha1(implode('|', [$sportKey, $date, $routeKey, $league]));
     }
 
     private function buildCaption(array $fixture, array $config): string

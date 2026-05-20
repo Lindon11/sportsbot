@@ -319,7 +319,55 @@ class TheSportsDbClient implements SportsDataProviderInterface
      */
     public function lookupEventStats(string $eventId): array
     {
-        return $this->fetch('/lookup/event_stats/' . rawurlencode($eventId), (int) config('plugins.SportsBot.cache.fixtures', 900), ['stats', 'statistics', 'eventstats']);
+        $ttl = (int) config('plugins.SportsBot.cache.fixtures', 900);
+        $path = '/lookup/event_stats/' . rawurlencode($eventId);
+
+        try {
+            return $this->fetch($path, $ttl, ['lookup', 'stats', 'statistics', 'eventstats']);
+        } catch (RuntimeException) {
+            return $this->fetchV1EventStats($eventId, $ttl);
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchV1EventStats(string $eventId, int $ttl): array
+    {
+        $apiKey = trim((string) config('plugins.SportsBot.provider.api_key', ''));
+        if ($apiKey === '') {
+            throw new RuntimeException('TheSportsDB API key is not configured.');
+        }
+
+        $cacheKey = 'sportsbot:provider:thesportsdb:v1:event_stats:' . $eventId;
+
+        $callback = function () use ($eventId, $apiKey): array {
+            $url = 'https://www.thesportsdb.com/api/v1/json/' . rawurlencode($apiKey)
+                . '/lookupeventstats.php?id=' . rawurlencode($eventId);
+
+            $response = Http::acceptJson()
+                ->connectTimeout((int) config('plugins.SportsBot.provider.connect_timeout', 10))
+                ->timeout((int) config('plugins.SportsBot.provider.timeout', 20))
+                ->get($url);
+
+            if (!$response->successful()) {
+                throw new RuntimeException('TheSportsDB V1 returned HTTP ' . $response->status() . '.');
+            }
+
+            $payload = $response->json();
+
+            if (!is_array($payload)) {
+                throw new RuntimeException('TheSportsDB V1 returned invalid JSON.');
+            }
+
+            return $this->extractList($payload, ['eventstats', 'stats', 'statistics', 'lookup']);
+        };
+
+        if ($ttl <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember($cacheKey, $ttl, $callback);
     }
 
     /**

@@ -34,6 +34,46 @@ class SportsBotCardRenderer
      */
     public function fixtureCard(array $fixture, string $variant = 'v3', array $options = []): array
     {
+        if (empty($fixture['background_image'])) {
+            $sport = strtolower((string) ($fixture['sport'] ?? $fixture['strSport'] ?? ''));
+            if (!in_array($sport, ['fighting', 'boxing', 'mma'], true)) {
+                $bgPath = storage_path('app/sportsbot/assets/bg_stadium.png');
+                if (is_file($bgPath)) {
+                    $mime = mime_content_type($bgPath) ?: 'image/png';
+                    $data = base64_encode((string) file_get_contents($bgPath));
+                    $fixture['background_image'] = 'data:' . $mime . ';base64,' . $data;
+                }
+            }
+        }
+
+        if (!empty($options['kind'])) {
+            $fixture['kind'] = $options['kind'];
+        }
+
+        if (empty($fixture['home_form']) && empty($fixture['away_form'])) {
+            static $formCache = [];
+            $homeTeamId = trim((string) ($fixture['home_team_id'] ?? $fixture['idHomeTeam'] ?? ''));
+            $awayTeamId = trim((string) ($fixture['away_team_id'] ?? $fixture['idAwayTeam'] ?? ''));
+            if ($homeTeamId !== '' || $awayTeamId !== '') {
+                try {
+                    $provider = app(\App\Plugins\SportsBot\Services\TheSportsDbClient::class);
+                    if ($homeTeamId !== '') {
+                        $events = $formCache['team:' . $homeTeamId]
+                            ?? $provider->previousTeamEvents($homeTeamId);
+                        $formCache['team:' . $homeTeamId] = $events;
+                        $fixture['home_form'] = $this->computeFormFromLeague($events, $homeTeamId);
+                    }
+                    if ($awayTeamId !== '') {
+                        $events = $formCache['team:' . $awayTeamId]
+                            ?? $provider->previousTeamEvents($awayTeamId);
+                        $formCache['team:' . $awayTeamId] = $events;
+                        $fixture['away_form'] = $this->computeFormFromLeague($events, $awayTeamId);
+                    }
+                } catch (Throwable) {
+                }
+            }
+        }
+
         $variant = $this->normalizeCardVariant($variant);
         $startedAt = microtime(true);
         $context = $this->templates->resolve(
@@ -100,6 +140,96 @@ class SportsBotCardRenderer
             $this->versusBlock($image, $c, $fixture, 'VS');
             $this->pill($image, $c, 72, 560, $this->displayTimeLabel((string) ($fixture['kickoff_label'] ?? $fixture['dateEvent'] ?? 'Kickoff TBC')), [20, 184, 166]);
             $this->muted($image, (string) ($fixture['venue'] ?? $fixture['strVenue'] ?? 'Venue TBC'), 72, 626, 20);
+        });
+
+        return array_merge($card, $this->renderMeta('gd_v3', $context, $startedAt, [
+            'fallback_reason' => $variant === 'v3' ? ($this->lastBrowserFailureReason ?: 'browser_renderer_unavailable') : null,
+            'browser_failure_reason' => $this->lastBrowserFailureReason,
+        ]));
+    }
+
+    /**
+     * @return array{path:string,type:string,width:int,height:int}
+     */
+    public function leagueCard(array $leagueInfo, string $variant = 'v3', array $options = []): array
+    {
+        $variant = $this->normalizeCardVariant($variant);
+        $startedAt = microtime(true);
+        $context = $this->templates->resolve(
+            (string) ($leagueInfo['sport'] ?? 'sports'),
+            (string) ($options['route_key'] ?? ''),
+            'fixture-card',
+            array_merge($options, ['card_version' => $variant])
+        );
+        $this->lastBrowserFailureReason = null;
+
+        if ($variant === 'v3') {
+            $browserCard = $this->leagueCardV3Browser($leagueInfo, $context);
+            if ($browserCard !== null) {
+                return $browserCard;
+            }
+
+            if (!$this->gdFallbackEnabled()) {
+                throw new RuntimeException('Browser renderer failed and GD fallback is disabled: ' . ($this->lastBrowserFailureReason ?: 'unknown_browser_failure'));
+            }
+        }
+
+        $card = $this->render('league-' . $variant, function ($image, array $c) use ($leagueInfo): void {
+            $sport = $leagueInfo['sport'] ?? 'sports';
+            $normalizedSport = SportsBotSports::normalize($sport);
+            $accentRgb = $this->v3AccentRgb($normalizedSport);
+            $accent = imagecolorallocate($image, $accentRgb[0], $accentRgb[1], $accentRgb[2]);
+            $accentSoft = imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 72);
+            $white = imagecolorallocate($image, 248, 250, 252);
+            $mutedColor = imagecolorallocate($image, 158, 166, 181);
+            $dim = imagecolorallocate($image, 104, 112, 128);
+            $black = imagecolorallocate($image, 2, 4, 9);
+
+            imagefilledrectangle($image, 0, 0, $this->width, $this->height, $black);
+
+            $this->v3Backdrop($image, $accentRgb, $normalizedSport);
+
+            $this->roundedRect($image, 18, 18, 1182, 657, 24, imagecolorallocatealpha($image, 0, 0, 0, 52));
+            imagesetthickness($image, 2);
+            imagerectangle($image, 18, 18, 1182, 657, imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 74));
+            imagesetthickness($image, 1);
+
+            $icon = SportsBotSports::icon($sport);
+            $sportLabel = SportsBotSports::label($normalizedSport);
+            if ($icon !== '') {
+                $this->text($image, $icon . ' ' . $sportLabel, 72, 72, 24, $dim, false);
+            }
+
+            $centerX = (int) ($this->width / 2);
+            $badge = trim((string) ($leagueInfo['badge'] ?? $leagueInfo['logo'] ?? ''));
+            $logoDrawn = false;
+
+            if ($badge !== '') {
+                $logoImage = $this->remoteLogoImage($badge);
+                if ($logoImage) {
+                    $logoSize = 200;
+                    imagefilledellipse($image, $centerX, 250, $logoSize + 60, $logoSize + 60, imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 72));
+                    $drawn = $this->drawLogoImageContain($image, $logoImage, $centerX, 250, $logoSize, $logoSize);
+                    imagedestroy($logoImage);
+                    $logoDrawn = $drawn;
+                }
+            }
+
+            if (!$logoDrawn) {
+                $bg = imagecolorallocate($image, 30, 41, 59);
+                imagefilledellipse($image, $centerX, 250, 280, 280, $bg);
+                $initials = $this->leagueInitials($leagueInfo['name'] ?? 'L');
+                $this->centerFittedText($image, $initials, $centerX, 268, 240, 72, 36, $accent, true);
+            }
+
+            $name = strtoupper($leagueInfo['name'] ?? 'LEAGUE');
+            $this->centerFittedText($image, $name, $centerX, 400, 1020, 52, 28, $white, true);
+
+            $date = $leagueInfo['date'] ?? now()->format('j M Y');
+            $this->pill($image, $c, (int) (($this->width - 420) / 2), 510, strtoupper($date), $accentRgb);
+
+            imagefilledrectangle($image, 20, 655, 1180, 657, $accentSoft);
+            imagefilledrectangle($image, 40, 20, 1160, 22, imagecolorallocatealpha($image, $accentRgb[0], $accentRgb[1], $accentRgb[2], 112));
         });
 
         return array_merge($card, $this->renderMeta('gd_v3', $context, $startedAt, [
@@ -483,6 +613,151 @@ class SportsBotCardRenderer
 
         $this->lastBrowserFailureReason ??= $this->rendererFailureSummary($exitCode, $stderr, $stdout);
         Log::warning('sportsbot.card.no_fixtures_v3_browser_failed', [
+            'exit_code' => $exitCode,
+            'stdout' => $this->strLimit($stdout, 1000),
+            'stderr' => $this->strLimit($stderr, 1000),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'debug_dir' => $debugDir,
+        ]);
+
+        if (@is_file($outputPath)) {
+            @unlink($outputPath);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $leagueInfo
+     * @param array<string, mixed> $context
+     * @return array{path:string,type:string,width:int,height:int}|null
+     */
+    private function leagueCardV3Browser(array $leagueInfo, array $context): ?array
+    {
+        $startedAt = microtime(true);
+        if (!(bool) config('plugins.SportsBot.cards.v3_browser_enabled', true)) {
+            $this->lastBrowserFailureReason = 'browser_renderer_disabled';
+            return null;
+        }
+
+        $script = SportsBotPaths::v3RendererScript();
+        if ($script === '' || !is_file($script)) {
+            Log::debug('sportsbot.card.v3_browser_unavailable', ['reason' => 'renderer_missing', 'script' => $script]);
+            $this->lastBrowserFailureReason = 'renderer_missing';
+            return null;
+        }
+
+        $dir = storage_path('app/sportsbot/cards');
+        if (!@is_dir($dir) && !@mkdir($dir, 0775, true) && !@is_dir($dir)) {
+            return null;
+        }
+
+        $inputDir = storage_path('app/sportsbot/render-input');
+        if (!@is_dir($inputDir) && !@mkdir($inputDir, 0775, true) && !@is_dir($inputDir)) {
+            $this->lastBrowserFailureReason = 'render_input_directory_unwritable';
+            return null;
+        }
+
+        $debugDir = storage_path('app/sportsbot/render-debug/' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+        @mkdir($debugDir, 0775, true);
+        $format = (string) ($context['output']['format'] ?? 'png');
+        $extension = in_array($format, ['png', 'webp', 'jpeg'], true) ? ($format === 'jpeg' ? 'jpg' : $format) : 'png';
+        $outputPath = $dir . '/league-v3-browser-' . now()->format('YmdHis') . '-' . bin2hex(random_bytes(4)) . '.' . $extension;
+        $inputPath = $inputDir . '/league-v3-' . bin2hex(random_bytes(8)) . '.json';
+        $payload = [
+            'kind' => 'league-header',
+            'leagueInfo' => $leagueInfo,
+            'outputPath' => $outputPath,
+            'width' => $this->width,
+            'height' => $this->height,
+            'chromePath' => trim((string) config('plugins.SportsBot.cards.chrome_path', '')),
+            'timeout' => max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15)) * 1000,
+            'retries' => max(0, (int) config('plugins.SportsBot.cards.browser_retries', 1)),
+            'browserArgs' => array_values((array) config('plugins.SportsBot.cards.browser_args', [])),
+            'template' => $context['template'] ?? null,
+            'theme' => $context['theme'] ?? null,
+            'templateType' => $context['template_type'] ?? 'fixture-card',
+            'templatePath' => $context['template_path'] ?? '',
+            'themePath' => $context['theme_path'] ?? '',
+            'branding' => $context['branding'] ?? [],
+            'format' => $format,
+            'target' => $context['output']['target'] ?? 'telegram',
+            'debugDir' => $debugDir,
+            'htmlSnapshotPath' => $debugDir . '/render.html',
+            'consoleLogPath' => $debugDir . '/console.log',
+            'failedScreenshotPath' => $debugDir . '/failed.png',
+        ];
+
+        if (@file_put_contents($inputPath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) === false) {
+            $this->lastBrowserFailureReason = 'render_input_write_failed';
+            return null;
+        }
+
+        $node = trim((string) config('plugins.SportsBot.cards.node_binary', 'node')) ?: 'node';
+        $timeout = max(1, (int) config('plugins.SportsBot.cards.browser_timeout', 15));
+        $command = [$node, $script, $inputPath];
+        $descriptorSpec = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
+        if (!is_resource($process)) {
+            @unlink($inputPath);
+            $this->lastBrowserFailureReason = 'renderer_process_open_failed';
+            return null;
+        }
+
+        $startedAt = time();
+        $stdout = '';
+        $stderr = '';
+        foreach ($pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
+
+        $processExitCode = null;
+        do {
+            $status = proc_get_status($process);
+            $stdout .= isset($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
+            $stderr .= isset($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
+
+            if (!$status['running']) {
+                $processExitCode = is_int($status['exitcode'] ?? null) ? (int) $status['exitcode'] : null;
+                break;
+            }
+
+            if ((time() - $startedAt) > $timeout) {
+                proc_terminate($process);
+                Log::warning('sportsbot.card.league_v3_browser_timeout', ['timeout' => $timeout]);
+                $this->lastBrowserFailureReason = 'browser_timeout';
+                break;
+            }
+
+            usleep(100000);
+        } while (true);
+
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+
+        $closeCode = proc_close($process);
+        $exitCode = $processExitCode ?? $closeCode;
+        @unlink($inputPath);
+
+        if ($exitCode === 0 && @is_file($outputPath) && filesize($outputPath) > 0) {
+            return array_merge([
+                'path' => $outputPath,
+                'type' => 'league-v3-browser',
+                'width' => $this->width,
+                'height' => $this->height,
+            ], $this->renderMeta('browser_v3', $context, $startedAt, [
+                'render_diagnostics' => $this->browserDiagnostics($stdout, $stderr, $debugDir, $exitCode),
+            ]));
+        }
+
+        $this->lastBrowserFailureReason ??= $this->rendererFailureSummary($exitCode, $stderr, $stdout);
+        Log::warning('sportsbot.card.league_v3_browser_failed', [
             'exit_code' => $exitCode,
             'stdout' => $this->strLimit($stdout, 1000),
             'stderr' => $this->strLimit($stderr, 1000),
@@ -1248,12 +1523,45 @@ class SportsBotCardRenderer
         return $initials !== '' ? $initials : 'TV';
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $events
+     * @return array<int, string>
+     */
+    private function computeFormFromLeague(array $events, string $teamId): array
+    {
+        $form = [];
+        foreach ($events as $event) {
+            if (count($form) >= 5) {
+                break;
+            }
+            $homeId = trim((string) ($event['idHomeTeam'] ?? ''));
+            $awayId = trim((string) ($event['idAwayTeam'] ?? ''));
+            $homeScore = $event['intHomeScore'] ?? null;
+            $awayScore = $event['intAwayScore'] ?? null;
+            if ($homeScore === null || $awayScore === null || $homeScore === '' || $awayScore === '' || $homeScore === '-' || $awayScore === '-') {
+                continue;
+            }
+            if ($homeId !== $teamId && $awayId !== $teamId) {
+                continue;
+            }
+            $homeScore = (int) $homeScore;
+            $awayScore = (int) $awayScore;
+            if ($homeId === $teamId) {
+                $form[] = $homeScore > $awayScore ? 'W' : ($homeScore < $awayScore ? 'L' : 'D');
+            } else {
+                $form[] = $awayScore > $homeScore ? 'W' : ($awayScore < $homeScore ? 'L' : 'D');
+            }
+        }
+        return $form;
+    }
+
     private function shortLeagueName(string $league): string
     {
         $league = trim($league);
 
         return match ($league) {
             'English Premier League' => 'Premier League',
+            'English Rugby League Super League' => 'Super League',
             'Scottish Premiership', 'Scottish Premier League' => 'Scottish Premiership',
             default => $league !== '' ? $league : 'Competition TBC',
         };
