@@ -28,13 +28,7 @@
       <section class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
         <h2 class="text-lg font-semibold text-white">Daily Digests</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <TimeToggle v-model:enabled="form.tv_guide_schedule_enabled" v-model:time="form.tv_guide_schedule_time" title="TV Guide" />
         </div>
-        <label class="flex items-center gap-2 text-sm text-slate-300">
-          <input v-model="form.live_now_schedule_enabled" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
-          Send Live Now digest
-        </label>
-        <FrequencySelect v-model="form.live_now_schedule_frequency" :frequencies="frequencies" label="Live Now frequency" />
       </section>
     </div>
 
@@ -109,10 +103,6 @@ const frequencies = ref([])
 const form = reactive({
   schedule_enabled: false,
   schedule_frequency: 'everyTwoMinutes',
-  tv_guide_schedule_enabled: false,
-  tv_guide_schedule_time: '08:00',
-  live_now_schedule_enabled: false,
-  live_now_schedule_frequency: 'everyFiveMinutes',
   fixture_queue_schedule_enabled: false,
   fixture_queue_prefetch_enabled: true,
   fixture_queue_prefetch_time: '05:00',
@@ -198,10 +188,6 @@ function flattenSettings(settings) {
   return {
     schedule_enabled: settings.live_alerts?.enabled ?? false,
     schedule_frequency: settings.live_alerts?.frequency || 'everyTwoMinutes',
-    tv_guide_schedule_enabled: settings.tv_guide?.enabled ?? false,
-    tv_guide_schedule_time: settings.tv_guide?.time || '08:00',
-    live_now_schedule_enabled: settings.live_now?.enabled ?? false,
-    live_now_schedule_frequency: settings.live_now?.frequency || 'everyFiveMinutes',
     fixture_queue_schedule_enabled: settings.fixture_queue?.enabled ?? false,
     fixture_queue_prefetch_enabled: settings.fixture_queue?.prefetch_enabled ?? true,
     fixture_queue_prefetch_time: settings.fixture_queue?.prefetch_time || '05:00',

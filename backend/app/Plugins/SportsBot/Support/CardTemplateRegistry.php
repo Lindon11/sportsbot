@@ -6,7 +6,6 @@ class CardTemplateRegistry
 {
     public const TEMPLATE_TYPES = [
         'fixture-card',
-        'live-now-card',
         'tv-guide-card',
         'result-card',
         'league-table-card',

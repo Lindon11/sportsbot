@@ -3,8 +3,6 @@
 namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
-use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
-use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Support\SportsBotSports;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -15,8 +13,6 @@ class TelegramCallbackService
 {
     public function __construct(
         private readonly TelegramNotifier $notifier = new TelegramNotifier(),
-        private readonly TvGuideContentModule $tvGuideModule = new TvGuideContentModule(),
-        private readonly LiveNowContentModule $liveNowModule = new LiveNowContentModule(),
         private readonly SportsBotRichContentService $richContent = new SportsBotRichContentService(),
         private readonly SportsBotFollowService $followService = new SportsBotFollowService(),
     ) {
@@ -24,7 +20,7 @@ class TelegramCallbackService
 
     public function isValidCallbackData(string $data): bool
     {
-        return preg_match('/^(match|stats|lineups|highlights|tv|table|scorers|team|follow_team|unfollow_team|follow_league|unfollow_league|team_next|team_prev|fixtures|live|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$|^(tv_guide|live_now)$/', $data) === 1;
+        return preg_match('/^(match|stats|lineups|highlights|tv|table|scorers|team|follow_team|unfollow_team|follow_league|unfollow_league|team_next|team_prev|fixtures|live|top_teams):[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?$/', $data) === 1;
     }
 
     /**
@@ -130,17 +126,6 @@ class TelegramCallbackService
     private function processCallback(string $callbackData, string $chatId, mixed $messageId, mixed $messageThreadId, array $telegramUser = []): string
     {
         // Topic-first: top-level menus route to content module responses
-        $topicHandler = match ($callbackData) {
-            'tv_guide' => fn () => $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId),
-            'live_now' => fn () => $this->sendLiveNowResponse($chatId, $messageId, $messageThreadId),
-            default => null,
-        };
-
-        if ($topicHandler !== null) {
-            $topicHandler();
-            return $callbackData;
-        }
-
         // Rich content: parameterised callbacks like match:xxx, stats:xxx, fixtures:xxx, etc.
         $richHandler = $this->processRichCallback($callbackData, $chatId, $messageId, $messageThreadId, $telegramUser);
         if ($richHandler !== null) {
@@ -151,9 +136,7 @@ class TelegramCallbackService
             'callback_data' => $callbackData,
         ]);
 
-        // Fallback: show TV guide (most general topic)
-        $this->sendTvGuideResponse($chatId, $messageId, $messageThreadId);
-        return 'fallback.tv_guide';
+        return $callbackData;
     }
 
     private function processRichCallback(string $callbackData, string $chatId, mixed $messageId, mixed $messageThreadId, array $telegramUser): ?string
@@ -238,26 +221,6 @@ class TelegramCallbackService
         }
 
         return null;
-    }
-
-    private function sendTvGuideResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
-    {
-        $summary = $this->tvGuideModule->buildSummary();
-        $message = $this->tvGuideModule->format($summary);
-        $options = $this->tvGuideModule->telegramOptions($summary);
-        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::tvReplyMarkup());
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
-    }
-
-    private function sendLiveNowResponse(string $chatId, mixed $messageId, mixed $messageThreadId): void
-    {
-        $summary = $this->liveNowModule->buildSummary();
-        $message = $this->liveNowModule->format($summary);
-        $options = $this->liveNowModule->telegramOptions($summary);
-        $replyMarkup = (array) ($options['reply_markup'] ?? SportsBotInlineKeyboardBuilder::liveReplyMarkup());
-
-        $this->deliverText($chatId, $messageId, $message, $replyMarkup, $messageThreadId);
     }
 
     /**

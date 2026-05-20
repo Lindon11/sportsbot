@@ -428,8 +428,6 @@ const pageTitle = computed(() => {
     '/sportsbot/other-sports-fixtures': 'SportsBot Other Sports Fixtures TV',
     '/sportsbot/tennis-fixtures': 'SportsBot Other Sports Fixtures TV',
     '/sportsbot/cricket-fixtures': 'SportsBot Other Sports Fixtures TV',
-    '/sportsbot/tv-guide': 'SportsBot TV Guide',
-    '/sportsbot/live-now': 'SportsBot Live Now',
     '/sportsbot/routing': 'SportsBot Telegram Routes',
     '/sportsbot/discord-routes': 'SportsBot Discord Routes',
     '/sportsbot/coverage': 'SportsBot Coverage Settings',

@@ -14,11 +14,7 @@ use App\Plugins\SportsBot\Models\SportsBotTelegramTopic;
 use App\Plugins\SportsBot\Models\SportsBotTelegramUpdateState;
 use App\Plugins\SportsBot\Services\Content\FightFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\FootballFixturesContentModule;
-use App\Plugins\SportsBot\Services\Content\HighlightsContentModule;
-use App\Plugins\SportsBot\Services\Content\LiveNowContentModule;
-use App\Plugins\SportsBot\Services\Content\MotorsportFixturesContentModule;
 use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
-use App\Plugins\SportsBot\Services\Content\TvGuideContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
@@ -113,10 +109,6 @@ class SportsBotController extends Controller
         $validated = $request->validate([
             'schedule_enabled' => ['sometimes', 'boolean'],
             'schedule_frequency' => ['sometimes', 'string', 'max:80'],
-            'tv_guide_schedule_enabled' => ['sometimes', 'boolean'],
-            'tv_guide_schedule_time' => ['sometimes', 'date_format:H:i'],
-            'live_now_schedule_enabled' => ['sometimes', 'boolean'],
-            'live_now_schedule_frequency' => ['sometimes', 'string', 'max:80'],
             'fixture_queue_schedule_enabled' => ['sometimes', 'boolean'],
             'fixture_queue_prefetch_enabled' => ['sometimes', 'boolean'],
             'fixture_queue_prefetch_time' => ['sometimes', 'date_format:H:i'],
@@ -133,7 +125,6 @@ class SportsBotController extends Controller
         $frequencies = array_column($this->postTimingFrequencies(), 'value');
         foreach ([
             'schedule_frequency',
-            'live_now_schedule_frequency',
             'fixture_queue_enrich_frequency',
             'fixture_queue_render_frequency',
             'fixture_queue_publish_frequency',
@@ -1562,52 +1553,6 @@ class SportsBotController extends Controller
         return trim((string) ($fixture['event_name'] ?? 'Fixture TBC')) ?: 'Fixture TBC';
     }
 
-    public function tvGuidePreview(TvGuideContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        return response()->json($publisher->preview($module));
-    }
-
-    public function tvGuideSend(TvGuideContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        try {
-            return response()->json($publisher->send($module, 'admin_api'));
-        } catch (Throwable $error) {
-            Log::error('sportsbot.admin.tv_guide_send_failed', [
-                'route_key' => TelegramRouteKeys::TV_GUIDE,
-                'error' => $error->getMessage(),
-            ]);
-
-            return response()->json([
-                'route_key' => TelegramRouteKeys::TV_GUIDE,
-                'sent' => false,
-                'error' => $error->getMessage(),
-            ], 422);
-        }
-    }
-
-    public function liveNowPreview(LiveNowContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        return response()->json($publisher->preview($module));
-    }
-
-    public function liveNowSend(LiveNowContentModule $module, SportsBotPublisher $publisher): JsonResponse
-    {
-        try {
-            return response()->json($publisher->send($module, 'admin_api'));
-        } catch (Throwable $error) {
-            Log::error('sportsbot.admin.live_now_send_failed', [
-                'route_key' => TelegramRouteKeys::LIVE_NOW,
-                'error' => $error->getMessage(),
-            ]);
-
-            return response()->json([
-                'route_key' => TelegramRouteKeys::LIVE_NOW,
-                'sent' => false,
-                'error' => $error->getMessage(),
-            ], 422);
-        }
-    }
-
     public function coverageSettings(SportsBotSettingsService $settings, TelegramRoutingService $routingService): JsonResponse
     {
         $cardDir = storage_path('app/sportsbot/cards');
@@ -1623,7 +1568,6 @@ class SportsBotController extends Controller
                 'enabled_sports' => config('plugins.SportsBot.coverage.enabled_sports', []),
                 'featured_league_ids' => config('plugins.SportsBot.fixtures_today.default_league_ids', []),
                 'tv_channels' => config('plugins.SportsBot.tv.channels', []),
-                'live_update_frequency' => config('plugins.SportsBot.publishing.live_now.frequency', 'everyFiveMinutes'),
                 'cards_enabled' => (bool) config('plugins.SportsBot.cards.enabled', true),
                 'rich_cards_enabled' => (bool) config('plugins.SportsBot.features.rich_cards', true),
                 'send_messages' => (bool) config('plugins.SportsBot.send_messages', false),
@@ -2882,14 +2826,6 @@ class SportsBotController extends Controller
             'live_alerts' => [
                 'enabled' => (bool) $settings->get('schedule_enabled', config('plugins.SportsBot.schedule.enabled', false)),
                 'frequency' => (string) $settings->get('schedule_frequency', config('plugins.SportsBot.schedule.frequency', 'everyTwoMinutes')),
-            ],
-            'tv_guide' => [
-                'enabled' => (bool) $settings->get('tv_guide_schedule_enabled', config('plugins.SportsBot.publishing.tv_guide.enabled', false)),
-                'time' => (string) $settings->get('tv_guide_schedule_time', config('plugins.SportsBot.publishing.tv_guide.time', '08:00')),
-            ],
-            'live_now' => [
-                'enabled' => (bool) $settings->get('live_now_schedule_enabled', config('plugins.SportsBot.publishing.live_now.enabled', false)),
-                'frequency' => (string) $settings->get('live_now_schedule_frequency', config('plugins.SportsBot.publishing.live_now.frequency', 'everyFiveMinutes')),
             ],
             'fixture_queue' => [
                 'enabled' => (bool) $settings->get('fixture_queue_schedule_enabled', config('plugins.SportsBot.publishing.fixture_queue.enabled', false)),

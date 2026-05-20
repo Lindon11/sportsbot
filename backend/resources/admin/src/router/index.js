@@ -194,18 +194,8 @@ const router = createRouter({
           name: 'sportsbot-fight-fixtures',
           component: () => import('../views/SportsBotFightFixturesView.vue')
         },
-        {
-          path: '/sportsbot/tv-guide',
-          name: 'sportsbot-tv-guide',
-          component: () => import('../views/SportsBotTvGuideView.vue')
-        },
-        {
-          path: '/sportsbot/live-now',
-          name: 'sportsbot-live-now',
-          component: () => import('../views/SportsBotLiveNowView.vue')
-        },
-        {
-          path: '/sportsbot/routing',
+            {
+                path: '/sportsbot/routing',
           name: 'sportsbot-routing',
           component: () => import('../views/SportsBotRoutingView.vue')
         },

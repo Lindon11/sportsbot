@@ -93,7 +93,7 @@ class SportsBotRunner
 
                     if ($shouldSend) {
                         $results = $this->notifier->send($message, [
-                            'route_key' => TelegramRouteKeys::LIVE_NOW,
+                            'route_key' => TelegramRouteKeys::FOOTBALL,
                             'type' => 'LIVE_ALERT',
                             'alert' => $alert,
                             'payload' => [

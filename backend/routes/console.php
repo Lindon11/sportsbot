@@ -63,23 +63,6 @@ if ((bool) config('plugins.SportsBot.enabled') && (bool) sportsbotSetting('sched
 }
 
 if ((bool) config('plugins.SportsBot.enabled')) {
-    if ((bool) sportsbotSetting('tv_guide_schedule_enabled', config('plugins.SportsBot.publishing.tv_guide.enabled'))) {
-        Schedule::command('sportsbot:tv-guide --send')
-            ->dailyAt((string) sportsbotSetting('tv_guide_schedule_time', config('plugins.SportsBot.publishing.tv_guide.time', '08:00')))
-            ->withoutOverlapping()
-            ->onOneServer()
-            ->appendOutputTo(storage_path('logs/sportsbot-tv-guide.log'));
-    }
-
-    if ((bool) sportsbotSetting('live_now_schedule_enabled', config('plugins.SportsBot.publishing.live_now.enabled'))) {
-        $liveNow = Schedule::command('sportsbot:live-now --send')
-            ->withoutOverlapping()
-            ->onOneServer()
-            ->appendOutputTo(storage_path('logs/sportsbot-live-now.log'));
-
-        sportsbotScheduleFrequency($liveNow, (string) sportsbotSetting('live_now_schedule_frequency', config('plugins.SportsBot.publishing.live_now.frequency', 'everyFiveMinutes')));
-    }
-
     if ((bool) sportsbotSetting('fixture_queue_schedule_enabled', config('plugins.SportsBot.publishing.fixture_queue.enabled'))) {
         if ((bool) sportsbotSetting('fixture_queue_prefetch_enabled', config('plugins.SportsBot.publishing.fixture_queue.prefetch_enabled', true))) {
             Schedule::command('sportsbot:fixtures-prefetch')

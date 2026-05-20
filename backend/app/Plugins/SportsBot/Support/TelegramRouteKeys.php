@@ -6,8 +6,7 @@ class TelegramRouteKeys
 {
     public const DEFAULT = 'default';
     public const FIXTURES_TODAY = 'FIXTURES_TODAY';
-    public const TV_GUIDE = 'TV_GUIDE';
-    public const LIVE_NOW = 'LIVE_NOW';
+
     public const LEAGUE_TABLES = 'LEAGUE_TABLES';
     public const FOOTBALL = 'FOOTBALL';
     public const BASKETBALL = 'BASKETBALL';
@@ -43,9 +42,7 @@ class TelegramRouteKeys
     public const MOTORSPORT = 'MOTORSPORT';
     public const BOXING = 'BOXING';
     public const COMBAT_OTHER = 'COMBAT_OTHER';
-    public const MY_TEAMS = 'MY_TEAMS';
     public const HIGHLIGHTS = 'HIGHLIGHTS';
-    public const NEWS = 'NEWS';
 
     /**
      * @return array<int, string>
@@ -55,8 +52,6 @@ class TelegramRouteKeys
         return [
             self::DEFAULT,
             self::FIXTURES_TODAY,
-            self::TV_GUIDE,
-            self::LIVE_NOW,
             self::LEAGUE_TABLES,
             self::FOOTBALL,
             self::BASKETBALL,
@@ -88,9 +83,7 @@ class TelegramRouteKeys
             self::GOLF,
             self::BOXING,
             self::COMBAT_OTHER,
-            self::MY_TEAMS,
             self::HIGHLIGHTS,
-            self::NEWS,
         ];
     }
 

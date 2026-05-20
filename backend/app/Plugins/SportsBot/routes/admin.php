@@ -41,10 +41,6 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/fixtures/{sport}/preview', [SportsBotController::class, 'sportFixturePreview'])->name('fixtures.preview');
     Route::post('/fixtures/{sport}/send', [SportsBotController::class, 'sportFixtureSend'])->name('fixtures.send');
     Route::post('/fixtures/{sport}/publish', [SportsBotController::class, 'sportFixturePublish'])->name('fixtures.publish');
-    Route::post('/tv-guide/preview', [SportsBotController::class, 'tvGuidePreview'])->name('tv-guide.preview');
-    Route::post('/tv-guide/send', [SportsBotController::class, 'tvGuideSend'])->name('tv-guide.send');
-    Route::post('/live-now/preview', [SportsBotController::class, 'liveNowPreview'])->name('live-now.preview');
-    Route::post('/live-now/send', [SportsBotController::class, 'liveNowSend'])->name('live-now.send');
     Route::get('/highlights', [SportsBotController::class, 'highlightsPreview'])->name('highlights.preview');
     Route::post('/highlights/send', [SportsBotController::class, 'highlightsSend'])->name('highlights.send');
     Route::get('/leagues', [SportsBotController::class, 'allLeagues'])->name('leagues');
