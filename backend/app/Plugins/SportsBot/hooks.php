@@ -36,123 +36,33 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
         'order' => 75,
         'plugin' => 'sportsbot',
         'children' => [
-            // Overview
-            [
-                'route' => '/sportsbot/dashboard',
-                'label' => 'Dashboard',
-                'icon' => 'ChartBarIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/autopilot',
-                'label' => 'Autopilot',
-                'icon' => 'BoltIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/post-timings',
-                'label' => 'Post Timings',
-                'icon' => 'ClockIcon',
-                'plugin' => 'sportsbot',
-            ],
+            ['type' => 'separator', 'label' => 'Overview'],
+            ['route' => '/sportsbot/dashboard', 'label' => 'Dashboard', 'icon' => 'ChartBarIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/autopilot', 'label' => 'Autopilot', 'icon' => 'BoltIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/post-timings', 'label' => 'Post Timings', 'icon' => 'ClockIcon', 'plugin' => 'sportsbot'],
 
-            // Fixture Content
-            [
-                'route' => '/sportsbot/football-fixtures',
-                'label' => 'Football TV',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/rugby-fixtures',
-                'label' => 'Rugby TV',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/fight-fixtures',
-                'label' => 'Fights TV',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/motorsport-fixtures',
-                'label' => 'Motorsport',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/usa-sports-fixtures',
-                'label' => 'USA Sports TV',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/other-sports-fixtures',
-                'label' => 'Other Sports TV',
-                'icon' => 'TvIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/highlights',
-                'label' => 'Highlights',
-                'icon' => 'PlayIcon',
-                'plugin' => 'sportsbot',
-            ],
+            ['type' => 'separator', 'label' => 'Fixture Content'],
+            ['route' => '/sportsbot/football-fixtures', 'label' => 'Football TV', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/rugby-fixtures', 'label' => 'Rugby TV', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/fight-fixtures', 'label' => 'Fights TV', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/motorsport-fixtures', 'label' => 'Motorsport', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/usa-sports-fixtures', 'label' => 'USA Sports TV', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/other-sports-fixtures', 'label' => 'Other Sports TV', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/highlights', 'label' => 'Highlights', 'icon' => 'PlayIcon', 'plugin' => 'sportsbot'],
 
-            // Routing
-            [
-                'route' => '/sportsbot/routing',
-                'label' => 'Telegram Routes',
-                'icon' => 'MapIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/discord-routes',
-                'label' => 'Discord Routes',
-                'icon' => 'MapIcon',
-                'plugin' => 'sportsbot',
-            ],
+            ['type' => 'separator', 'label' => 'Routing'],
+            ['route' => '/sportsbot/routing', 'label' => 'Telegram Routes', 'icon' => 'MapIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/discord-routes', 'label' => 'Discord Routes', 'icon' => 'MapIcon', 'plugin' => 'sportsbot'],
 
-            // Configuration
-            [
-                'route' => '/sportsbot/coverage',
-                'label' => 'Coverage Settings',
-                'icon' => 'Cog6ToothIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/scraper-settings',
-                'label' => 'Scraper Settings',
-                'icon' => 'MagnifyingGlassIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/telegram-settings',
-                'label' => 'Telegram Settings',
-                'icon' => 'Cog6ToothIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/webhook-diagnostics',
-                'label' => 'Webhook Diagnostics',
-                'icon' => 'CommandLineIcon',
-                'plugin' => 'sportsbot',
-            ],
+            ['type' => 'separator', 'label' => 'Configuration'],
+            ['route' => '/sportsbot/coverage', 'label' => 'Coverage Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/scraper-settings', 'label' => 'Scraper Settings', 'icon' => 'MagnifyingGlassIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/telegram-settings', 'label' => 'Telegram Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/webhook-diagnostics', 'label' => 'Webhook Diagnostics', 'icon' => 'CommandLineIcon', 'plugin' => 'sportsbot'],
 
-            // Queue & Maintenance
-            [
-                'route' => '/sportsbot/fixture-queue',
-                'label' => 'Fixture Queue',
-                'icon' => 'QueueListIcon',
-                'plugin' => 'sportsbot',
-            ],
-            [
-                'route' => '/sportsbot/update',
-                'label' => 'Update',
-                'icon' => 'ArrowPathIcon',
-                'plugin' => 'sportsbot',
-            ],
+            ['type' => 'separator', 'label' => 'Queue & Maintenance'],
+            ['route' => '/sportsbot/fixture-queue', 'label' => 'Fixture Queue', 'icon' => 'QueueListIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/update', 'label' => 'Update', 'icon' => 'ArrowPathIcon', 'plugin' => 'sportsbot'],
         ],
     ];
 

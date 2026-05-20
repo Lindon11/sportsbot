@@ -51,21 +51,28 @@
           </button>
           <Transition name="accordion">
             <div v-if="isMenuOpen(section.id) && !sidebarCollapsed" class="mt-1 ml-4 pl-4 border-l border-slate-700/50 space-y-1">
-              <router-link
-                v-for="item in section.children"
-                :key="item.path"
-                :to="item.path"
-                :class="[
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                  route.path === item.path
-                    ? 'text-amber-400 bg-amber-500/10'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
-                ]"
-                @click="closeMobileMenu"
-              >
-                <component :is="item.iconComponent" class="w-4 h-4" />
-                <span>{{ item.label }}</span>
-              </router-link>
+              <template v-for="item in section.children" :key="item.path || item.label">
+                <div
+                  v-if="item.type === 'separator'"
+                  class="pt-3 pb-1"
+                >
+                  <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 px-3">{{ item.label }}</p>
+                </div>
+                <router-link
+                  v-else
+                  :to="item.path"
+                  :class="[
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                    route.path === item.path
+                      ? 'text-amber-400 bg-amber-500/10'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/30'
+                  ]"
+                  @click="closeMobileMenu"
+                >
+                  <component :is="item.iconComponent" class="w-4 h-4" />
+                  <span>{{ item.label }}</span>
+                </router-link>
+              </template>
             </div>
           </Transition>
         </div>
@@ -311,7 +318,7 @@ const normalizeSidebar = (sections) => {
     iconComponent: iconMap[section.icon] ?? BoltIcon,
     children: (section.children || []).map(child => ({
       ...child,
-      path: child.route ?? child.path ?? '/',
+      path: child.type === 'separator' ? '' : (child.route ?? child.path ?? '/'),
       iconComponent: iconMap[child.icon] ?? BoltIcon,
     })),
   }))
