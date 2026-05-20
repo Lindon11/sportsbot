@@ -519,17 +519,6 @@ class DiscordNotifier implements NotifierInterface
         $watchUrl = (string) ($options['embed_url'] ?? '');
         $watchLabel = (string) ($options['embed_title'] ?? '▶ Watch Highlights');
 
-        $embeds = [];
-        if ($watchUrl !== '') {
-            $embeds[] = [
-                'title' => $watchLabel,
-                'url' => $watchUrl,
-                'color' => (int) ($options['embed_color'] ?? 10181043),
-                'description' => mb_substr(strip_tags($caption), 0, 500),
-                'footer' => ['text' => mb_substr((string) ($options['embed_footer'] ?? 'SportsBot'), 0, 100)],
-            ];
-        }
-
         $components = [];
         if ($watchUrl !== '') {
             $components[] = [
@@ -550,7 +539,6 @@ class DiscordNotifier implements NotifierInterface
             $photoPath,
             [
                 'content' => mb_substr(strip_tags($caption), 0, 2000),
-                'embeds' => $embeds,
                 'components' => $components,
                 'allowed_mentions' => ['parse' => []],
             ],
