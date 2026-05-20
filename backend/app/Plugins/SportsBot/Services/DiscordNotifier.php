@@ -520,22 +520,31 @@ class DiscordNotifier implements NotifierInterface
         $watchLabel = (string) ($options['embed_title'] ?? '▶ Watch Highlights');
 
         $components = [];
-        $components[] = [
-            'type' => 1,
-            'components' => [
-                $watchUrl !== '' ? [
-                    'type' => 2,
-                    'style' => 5,
-                    'label' => $watchLabel,
-                    'url' => $watchUrl,
-                ] : [
-                    'type' => 2,
-                    'style' => 5,
-                    'label' => '❌ No Highlights',
-                    'url' => 'https://',
+        if ($watchUrl !== '') {
+            $components[] = [
+                'type' => 1,
+                'components' => [
+                    [
+                        'type' => 2,
+                        'style' => 5,
+                        'label' => $watchLabel,
+                        'url' => $watchUrl,
+                    ],
                 ],
-            ],
-        ];
+            ];
+        } elseif (!empty($options['embed_title'])) {
+            $components[] = [
+                'type' => 1,
+                'components' => [
+                    [
+                        'type' => 2,
+                        'style' => 5,
+                        'label' => '❌ No Highlights',
+                        'url' => 'https://example.com/no-highlights',
+                    ],
+                ],
+            ];
+        }
 
         return $this->postToBotApiWithFile(
             "/channels/{$channelId}/messages",
