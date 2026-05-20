@@ -135,6 +135,7 @@
           </button>
           <span v-if="filteredLeagues(key).length === 0" class="text-xs text-slate-500 italic px-2 py-1">no matches</span>
         </div>
+      </div>
       <div v-if="totalLeagueCount === 0" class="text-sm text-slate-500 text-center py-4">Loading leagues...</div>
     </div>
 
