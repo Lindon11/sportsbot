@@ -96,7 +96,7 @@
       <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div>
           <h2 class="text-lg font-semibold text-white">League Coverage</h2>
-          <p class="text-xs text-slate-400 mt-1">{{ featuredCount }} enabled / {{ totalLeagueCount }} total across {{ sportWithLeagues }} sports — only enabled leagues will be fetched</p>
+          <p class="text-xs text-slate-400 mt-1">{{ featuredCount }} extra enabled / {{ totalLeagueCount }} total across {{ sportWithLeagues }} sports — default leagues from config are always included</p>
         </div>
         <div class="flex items-center gap-2">
           <label class="flex items-center gap-1.5 text-xs text-slate-400">
