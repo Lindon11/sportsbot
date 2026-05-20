@@ -118,7 +118,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
             'generated_at' => Carbon::now()->toIso8601String(),
         ];
 
-        \Illuminate\Support\Facades\Cache::put($cacheKey, $summary, now()->addMinutes(15));
+        \Illuminate\Support\Facades\Cache::put($cacheKey, $summary, now()->addMinutes(60));
 
         return $summary;
     }
