@@ -93,7 +93,7 @@ const groups = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/highlights/preview', {})
+    const { data } = await api.get('/admin/sportsbot/highlights')
     summary.value = data.summary || {}
   } catch (error) {
     toast.error('Failed to load highlights')
@@ -105,7 +105,7 @@ async function load() {
 async function sendAll() {
   sending.value = true
   try {
-    const { data } = await api.post('/admin/sportsbot/highlights/send', {})
+    const { data } = await api.post('/admin/sportsbot/highlights/send', { limit: 20 })
     toast.success(`Sent ${(data.sent || 0)} cards`)
   } catch (error) {
     toast.error(error?.response?.data?.error || 'Failed to send')
