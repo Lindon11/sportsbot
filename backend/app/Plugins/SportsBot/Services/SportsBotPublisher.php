@@ -142,7 +142,16 @@ class SportsBotPublisher
                     if (empty($card['path']) || !is_file($card['path'])) {
                         continue;
                     }
-                    foreach ($this->notifier->sendPhoto((string) $card['path'], '', $options) as $result) {
+                    $cardOptions = $options;
+                    $videoUrl = trim((string) ($card['video_url'] ?? ''));
+                    if ($videoUrl !== '') {
+                        $cardOptions['reply_markup'] = [
+                            'inline_keyboard' => [[
+                                ['text' => '▶️ Watch Highlights', 'url' => $videoUrl],
+                            ]],
+                        ];
+                    }
+                    foreach ($this->notifier->sendPhoto((string) $card['path'], '', $cardOptions) as $result) {
                         $results[] = $result;
                     }
                 }
