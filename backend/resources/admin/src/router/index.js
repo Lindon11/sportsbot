@@ -272,11 +272,16 @@ const router = createRouter({
             ]
           }
         },
-        {
-          path: '/sportsbot/highlights',
-          name: 'sportsbot-highlights',
-          component: () => import('../views/SportsBotHighlightsView.vue')
-        },
+            {
+                path: '/sportsbot/highlights',
+                name: 'sportsbot-highlights',
+                component: () => import('../views/SportsBotHighlightsView.vue')
+            },
+            {
+                path: '/sportsbot/highlights-queue',
+                name: 'sportsbot-highlights-queue',
+                component: () => import('../views/SportsBotHighlightsQueueView.vue')
+            },
         {
           path: '/sportsbot/tennis-fixtures',
           redirect: '/sportsbot/other-sports-fixtures'
