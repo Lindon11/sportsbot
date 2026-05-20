@@ -109,15 +109,16 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                 try {
                     $result = $publisher->send($module, 'schedule');
                     \Illuminate\Support\Facades\Log::info('sportsbot.highlights.scheduled_sent', [
-                        'total' => (int) ($result['results'] ?? 0),
-                        'sent' => (int) ($result['sent'] ?? false),
+                        'total' => count($result['results'] ?? []),
+                        'sent' => (bool) ($result['sent'] ?? false),
                     ]);
                 } catch (\Throwable $error) {
                     \Illuminate\Support\Facades\Log::warning('sportsbot.highlights.scheduled_failed', [
                         'error' => $error->getMessage(),
                     ]);
                 }
-            })->everyThirtyMinutes()
+            })->name('sportsbot-highlights')
+                ->everyThirtyMinutes()
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-highlights.log'));
