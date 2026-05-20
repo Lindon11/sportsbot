@@ -26,9 +26,12 @@
       </section>
 
       <section class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-5 space-y-4">
-        <h2 class="text-lg font-semibold text-white">Daily Digests</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        </div>
+        <h2 class="text-lg font-semibold text-white">Match Highlights</h2>
+        <label class="flex items-center gap-2 text-sm text-slate-300">
+          <input v-model="form.highlights_schedule_enabled" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-500">
+          Send highlights automatically
+        </label>
+        <FrequencySelect v-model="form.highlights_schedule_frequency" :frequencies="frequencies" label="Highlights frequency" />
       </section>
     </div>
 
@@ -114,6 +117,8 @@ const form = reactive({
   fixture_queue_render_frequency: 'everyTenMinutes',
   fixture_queue_publish_enabled: true,
   fixture_queue_publish_frequency: 'everyFiveMinutes',
+  highlights_schedule_enabled: true,
+  highlights_schedule_frequency: 'everyThirtyMinutes',
 })
 
 const FrequencySelect = defineComponent({
@@ -199,6 +204,8 @@ function flattenSettings(settings) {
     fixture_queue_render_frequency: settings.fixture_queue?.render_frequency || 'everyTenMinutes',
     fixture_queue_publish_enabled: settings.fixture_queue?.publish_enabled ?? true,
     fixture_queue_publish_frequency: settings.fixture_queue?.publish_frequency || 'everyFiveMinutes',
+    highlights_schedule_enabled: settings.highlights?.enabled ?? true,
+    highlights_schedule_frequency: settings.highlights?.frequency || 'everyThirtyMinutes',
   }
 }
 

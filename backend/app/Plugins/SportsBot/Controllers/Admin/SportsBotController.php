@@ -121,6 +121,8 @@ class SportsBotController extends Controller
             'fixture_queue_render_frequency' => ['sometimes', 'string', 'max:80'],
             'fixture_queue_publish_enabled' => ['sometimes', 'boolean'],
             'fixture_queue_publish_frequency' => ['sometimes', 'string', 'max:80'],
+            'highlights_schedule_enabled' => ['sometimes', 'boolean'],
+            'highlights_schedule_frequency' => ['sometimes', 'string', 'max:80'],
         ]);
 
         $frequencies = array_column($this->postTimingFrequencies(), 'value');
@@ -129,6 +131,7 @@ class SportsBotController extends Controller
             'fixture_queue_enrich_frequency',
             'fixture_queue_render_frequency',
             'fixture_queue_publish_frequency',
+            'highlights_schedule_frequency',
         ] as $frequencyKey) {
             if (isset($validated[$frequencyKey]) && !in_array($validated[$frequencyKey], $frequencies, true)) {
                 return response()->json([
@@ -2920,6 +2923,10 @@ class SportsBotController extends Controller
                 'render_frequency' => (string) $settings->get('fixture_queue_render_frequency', config('plugins.SportsBot.publishing.fixture_queue.render_frequency', 'everyTenMinutes')),
                 'publish_enabled' => (bool) $settings->get('fixture_queue_publish_enabled', config('plugins.SportsBot.publishing.fixture_queue.publish_enabled', true)),
                 'publish_frequency' => (string) $settings->get('fixture_queue_publish_frequency', config('plugins.SportsBot.publishing.fixture_queue.publish_frequency', 'everyFiveMinutes')),
+            ],
+            'highlights' => [
+                'enabled' => (bool) $settings->get('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true)),
+                'frequency' => (string) $settings->get('highlights_schedule_frequency', config('plugins.SportsBot.publishing.highlights.frequency', 'everyThirtyMinutes')),
             ],
         ];
     }
