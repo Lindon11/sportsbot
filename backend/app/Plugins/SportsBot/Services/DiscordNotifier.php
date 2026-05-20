@@ -156,16 +156,14 @@ class DiscordNotifier implements NotifierInterface
         $base = self::BOT_API . '/channels/' . rawurlencode($channelId);
 
         foreach (array_chunk($messageIds, 100) as $chunk) {
+            $http = Http::withToken($token, 'Bot')->timeout(15);
+
             if (count($chunk) === 1) {
-                $response = Http::withToken($token)
-                    ->timeout(15)
-                    ->delete($base . '/messages/' . rawurlencode($chunk[0]));
+                $response = $http->delete($base . '/messages/' . rawurlencode($chunk[0]));
             } else {
-                $response = Http::withToken($token)
-                    ->timeout(15)
-                    ->post($base . '/messages/bulk-delete', [
-                        'messages' => $chunk,
-                    ]);
+                $response = $http->post($base . '/messages/bulk-delete', [
+                    'messages' => $chunk,
+                ]);
             }
 
             if (!$response->successful()) {
