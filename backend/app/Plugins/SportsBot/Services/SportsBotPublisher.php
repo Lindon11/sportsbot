@@ -144,8 +144,12 @@ class SportsBotPublisher
                     }
                     $cardOptions = $options;
                     $cardType = $card['type'] ?? 'result';
+                    $eventName = trim((string) ($card['event_name'] ?? ''));
+                    $caption = '';
 
-                    if ($cardType === 'result') {
+                    if ($cardType === 'league_header') {
+                        $caption = mb_substr('📋 ' . $eventName, 0, 200);
+                    } elseif ($cardType === 'result') {
                         $videoUrl = trim((string) ($card['video_url'] ?? ''));
                         if ($videoUrl !== '') {
                             $cardOptions['reply_markup'] = [
@@ -165,7 +169,7 @@ class SportsBotPublisher
                         }
                     }
 
-                    foreach ($this->notifier->sendPhoto((string) $card['path'], '', $cardOptions) as $result) {
+                    foreach ($this->notifier->sendPhoto((string) $card['path'], $caption, $cardOptions) as $result) {
                         $results[] = $result;
                     }
                 }
