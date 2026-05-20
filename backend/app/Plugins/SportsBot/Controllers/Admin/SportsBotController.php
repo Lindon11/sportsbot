@@ -2309,20 +2309,20 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'channel_id' => ['required', 'string', 'max:100'],
-            'message_ids' => ['required', 'array'],
-            'message_ids.*' => ['string', 'max:100'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
         $channelId = (string) $validated['channel_id'];
-        $messageIds = array_map('strval', (array) $validated['message_ids']);
+        $limit = (int) ($validated['limit'] ?? 50);
 
         try {
-            $ok = $notifier->deleteMessages($channelId, $messageIds);
+            $result = $notifier->purgeBotMessages($channelId, $limit);
 
             return response()->json([
-                'cleared' => $ok,
+                'cleared' => true,
                 'channel_id' => $channelId,
-                'count' => count($messageIds),
+                'deleted' => $result['deleted'],
+                'total' => $result['total'],
             ]);
         } catch (Throwable $error) {
             return response()->json([
@@ -2714,6 +2714,7 @@ class SportsBotController extends Controller
             'discord_bot_token_configured' => (bool) ($diagnostics['bot_token_configured'] ?? false),
             'discord_bot_channel_count' => (int) ($diagnostics['bot_channel_count'] ?? 0),
             'discord_default_bot_channel_configured' => (bool) ($diagnostics['default_bot_channel_configured'] ?? false),
+            'discord_bot_channels' => (array) ($diagnostics['bot_channels'] ?? []),
         ];
     }
 

@@ -181,6 +181,59 @@ class DiscordNotifier implements NotifierInterface
         return true;
     }
 
+    /**
+     * Fetch recent messages from a Discord channel and delete any posted by this bot.
+     *
+     * @return array{deleted:int,total:int}
+     */
+    public function purgeBotMessages(string $channelId, int $limit = 50): array
+    {
+        $token = $this->botToken();
+        if ($token === '') {
+            throw new RuntimeException('Discord bot token is not configured.');
+        }
+
+        // Fetch recent messages
+        $resp = Http::withToken($token, 'Bot')
+            ->timeout(15)
+            ->get(self::BOT_API . '/channels/' . rawurlencode($channelId) . '/messages', [
+                'limit' => min(100, max(1, $limit)),
+            ]);
+
+        if (!$resp->successful()) {
+            throw new RuntimeException('Failed to fetch Discord messages: HTTP ' . $resp->status());
+        }
+
+        $messages = (array) $resp->json();
+        $botId = $this->resolveBotUserId($token);
+        $toDelete = [];
+
+        foreach ($messages as $msg) {
+            $authorId = $msg['author']['id'] ?? '';
+            if ($authorId === $botId) {
+                $toDelete[] = (string) $msg['id'];
+            }
+        }
+
+        $total = count($toDelete);
+        $deleted = 0;
+
+        if ($toDelete !== []) {
+            $deleted = $this->deleteMessages($channelId, $toDelete) ? count($toDelete) : 0;
+        }
+
+        return ['deleted' => $deleted, 'total' => $total];
+    }
+
+    private function resolveBotUserId(string $token): string
+    {
+        $resp = Http::withToken($token, 'Bot')
+            ->timeout(10)
+            ->get(self::BOT_API . '/users/@me');
+
+        return $resp->successful() ? (string) ($resp->json('id') ?? '') : '';
+    }
+
     public function configured(?string $routeKey = null): bool
     {
         if (!$this->enabled()) {
@@ -233,12 +286,26 @@ class DiscordNotifier implements NotifierInterface
             ];
         }
 
+        $botChannels = [];
+        if ($tokenConfigured) {
+            $token = $this->botToken();
+            foreach ($channels as $routeKey => $channelId) {
+                $name = '';
+                $resp = Http::withToken($token, 'Bot')->timeout(5)->get(self::BOT_API . '/channels/' . rawurlencode($channelId));
+                if ($resp->successful()) {
+                    $name = (string) ($resp->json('name') ?? '');
+                }
+                $botChannels[$routeKey] = ['id' => $channelId, 'name' => $name];
+            }
+        }
+
         return [
             'enabled' => $enabled,
             'mode' => $tokenConfigured ? 'bot' : 'webhook',
             'bot_token_configured' => $tokenConfigured,
             'bot_channel_count' => count($channels),
             'default_bot_channel_configured' => isset($channels[TelegramRouteKeys::DEFAULT]) && trim((string) $channels[TelegramRouteKeys::DEFAULT]) !== '',
+            'bot_channels' => $botChannels,
             'webhook_route_count' => count($webhooks),
             'default_webhook_configured' => $defaultWebhook !== '',
             'route_statuses' => $routeStatuses,

@@ -119,6 +119,14 @@
         </div>
         <p class="text-slate-400 text-xs mt-2">Source: {{ routeStatuses[key]?.source || 'none' }}</p>
         <p v-if="routeStatuses[key]?.fallback" class="text-amber-300 text-xs mt-1">Using default webhook</p>
+        <button
+          v-if="botChannels[key]"
+          @click="clearChannel(key)"
+          :disabled="clearingChannel === key"
+          class="mt-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+        >
+          {{ clearingChannel === key ? 'Clearing...' : 'Clear channel' }}
+        </button>
       </div>
     </div>
 
@@ -151,7 +159,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import { useToast } from '@/composables/useToast'
 
@@ -161,9 +169,11 @@ const loading = ref(false)
 const savingSettings = ref(false)
 const savingRoute = ref(false)
 const testingRouteKey = ref('')
+const clearingChannel = ref('')
 const routeKeys = ref([])
 const routes = ref([])
 const routeStatuses = ref({})
+const settings = ref({})
 
 const settingsForm = reactive({
   discord_enabled: false,
@@ -177,10 +187,38 @@ const form = reactive({
   webhook_url: '',
 })
 
+const botChannels = computed(() => {
+  const channels = settings.value?.discord_bot_channels || {}
+  const map = {}
+  for (const [routeKey, info] of Object.entries(channels)) {
+    map[routeKey] = info
+  }
+  return map
+})
+
+async function clearChannel(routeKey) {
+  const channel = botChannels.value[routeKey]
+  if (!channel) return
+  if (!confirm(`Delete the bot's recent messages in #${channel.name || channel.id}?`)) return
+  clearingChannel.value = routeKey
+  try {
+    const { data } = await api.post('/admin/sportsbot/discord/clear-channel', {
+      channel_id: channel.id,
+      limit: 100,
+    })
+    toast.success(`Cleared ${data.deleted} bot messages from #${channel.name || channel.id}`)
+  } catch (error) {
+    toast.error(error?.response?.data?.error || 'Failed to clear channel')
+  } finally {
+    clearingChannel.value = ''
+  }
+}
+
 function applyData(data) {
   routeKeys.value = data.route_keys || []
   routes.value = data.routes || []
   routeStatuses.value = data.route_statuses || {}
+  settings.value = data.settings || {}
   Object.assign(settingsForm, {
     discord_enabled: data.settings?.discord_enabled ?? false,
     discord_default_webhook_url: data.settings?.discord_default_webhook_url || '',
