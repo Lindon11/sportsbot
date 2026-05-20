@@ -147,9 +147,7 @@ class SportsBotPublisher
                     $eventName = trim((string) ($card['event_name'] ?? ''));
                     $caption = '';
 
-                    if ($cardType === 'league_header') {
-                        $caption = mb_substr('📋 ' . $eventName, 0, 200);
-                    } elseif ($cardType === 'result') {
+                    if ($cardType === 'result') {
                         $videoUrl = trim((string) ($card['video_url'] ?? ''));
                         if ($videoUrl !== '') {
                             $cardOptions['reply_markup'] = [
