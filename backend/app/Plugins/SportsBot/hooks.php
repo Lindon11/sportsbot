@@ -44,7 +44,7 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
             ['type' => 'separator', 'label' => 'Fixture Content'],
             ['route' => '/sportsbot/football-fixtures', 'label' => 'Football Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/rugby-fixtures', 'label' => 'Rugby Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
-            ['route' => '/sportsbot/fight-fixtures', 'label' => 'Fights', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/fight-fixtures', 'label' => 'Fight Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/motorsport-fixtures', 'label' => 'Motorsport Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/usa-sports-fixtures', 'label' => 'USA Sports Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/other-sports-fixtures', 'label' => 'Other Sports Fixtures', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
