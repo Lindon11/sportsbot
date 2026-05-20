@@ -62,14 +62,6 @@ class AdminSidebarService
         usort($sections, function ($a, $b) {
             return ($a['order'] ?? 100) <=> ($b['order'] ?? 100);
         });
-        // Optionally, sort children by label
-        foreach ($sections as &$section) {
-            if (isset($section['children']) && is_array($section['children'])) {
-                usort($section['children'], function ($a, $b) {
-                    return strcmp($a['label'], $b['label']);
-                });
-            }
-        }
         return array_values($sections);
     }
 }
