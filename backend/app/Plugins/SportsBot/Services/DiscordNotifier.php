@@ -182,47 +182,65 @@ class DiscordNotifier implements NotifierInterface
     }
 
     /**
-     * Fetch recent messages from a Discord channel and delete any posted by this bot.
+     * Delete all bot messages from a Discord channel by paginating through history.
      *
      * @return array{deleted:int,total:int}
      */
-    public function purgeBotMessages(string $channelId, int $limit = 50): array
+    public function purgeBotMessages(string $channelId, int $limit = 1000): array
     {
         $token = $this->botToken();
         if ($token === '') {
             throw new RuntimeException('Discord bot token is not configured.');
         }
 
-        // Fetch recent messages
-        $resp = Http::withToken($token, 'Bot')
-            ->timeout(15)
-            ->get(self::BOT_API . '/channels/' . rawurlencode($channelId) . '/messages', [
-                'limit' => min(100, max(1, $limit)),
-            ]);
-
-        if (!$resp->successful()) {
-            throw new RuntimeException('Failed to fetch Discord messages: HTTP ' . $resp->status());
-        }
-
-        $messages = (array) $resp->json();
         $botId = $this->resolveBotUserId($token);
-        $toDelete = [];
+        $base = self::BOT_API . '/channels/' . rawurlencode($channelId);
+        $totalDeleted = 0;
+        $totalFound = 0;
+        $maxPages = (int) ceil(max(1, $limit) / 100);
 
-        foreach ($messages as $msg) {
-            $authorId = $msg['author']['id'] ?? '';
-            if ($authorId === $botId) {
-                $toDelete[] = (string) $msg['id'];
+        for ($page = 0; $page < $maxPages; $page++) {
+            $params = ['limit' => 100];
+            if ($page > 0) {
+                $params['before'] = $lastId;
+            }
+
+            $resp = Http::withToken($token, 'Bot')
+                ->timeout(15)
+                ->get($base . '/messages', $params);
+
+            if (!$resp->successful()) {
+                break;
+            }
+
+            $messages = (array) $resp->json();
+            if ($messages === []) {
+                break;
+            }
+
+            $toDelete = [];
+            foreach ($messages as $msg) {
+                $lastId = $msg['id'];
+                $authorId = $msg['author']['id'] ?? '';
+                if ($authorId === $botId) {
+                    $toDelete[] = (string) $msg['id'];
+                }
+            }
+
+            $totalFound += count($toDelete);
+
+            if ($toDelete !== []) {
+                $this->deleteMessages($channelId, $toDelete);
+                $totalDeleted += count($toDelete);
+            }
+
+            // If fewer than 100 returned, no more messages to fetch
+            if (count($messages) < 100) {
+                break;
             }
         }
 
-        $total = count($toDelete);
-        $deleted = 0;
-
-        if ($toDelete !== []) {
-            $deleted = $this->deleteMessages($channelId, $toDelete) ? count($toDelete) : 0;
-        }
-
-        return ['deleted' => $deleted, 'total' => $total];
+        return ['deleted' => $totalDeleted, 'total' => $totalFound];
     }
 
     private function resolveBotUserId(string $token): string

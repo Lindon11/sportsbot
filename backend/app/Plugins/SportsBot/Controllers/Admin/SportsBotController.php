@@ -2309,11 +2309,11 @@ class SportsBotController extends Controller
     {
         $validated = $request->validate([
             'channel_id' => ['required', 'string', 'max:100'],
-            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:1000'],
         ]);
 
         $channelId = (string) $validated['channel_id'];
-        $limit = (int) ($validated['limit'] ?? 50);
+        $limit = (int) ($validated['limit'] ?? 1000);
 
         try {
             $result = $notifier->purgeBotMessages($channelId, $limit);
