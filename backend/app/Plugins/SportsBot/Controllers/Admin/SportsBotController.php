@@ -1639,14 +1639,9 @@ class SportsBotController extends Controller
             'football' => ['default_league_ids', 'international_league_ids'],
             'rugby' => ['rugby_league_ids'],
             'fights' => ['fight_league_ids'],
-            'formula_1' => ['formula_1_league_ids'],
-            'american_football' => ['american_football_league_ids'],
-            'ice_hockey' => ['ice_hockey_league_ids'],
-            'cricket' => ['cricket_league_ids'],
-            'basketball' => ['basketball_league_ids'],
-            'baseball' => ['baseball_league_ids'],
-            'tennis' => ['tennis_league_ids'],
-            'golf' => [],
+            'motorsports' => ['formula_1_league_ids'],
+            'usa_sports' => ['american_football_league_ids', 'ice_hockey_league_ids', 'basketball_league_ids', 'baseball_league_ids'],
+            'other_sports' => ['tennis_league_ids', 'cricket_league_ids'],
         ];
 
         $dbFeaturedIds = array_values(array_unique(array_filter(array_map(
@@ -1668,8 +1663,14 @@ class SportsBotController extends Controller
         $allSports = SportsBotSports::all();
         $result = [];
 
+        $fallbackDefinitions = [
+            'motorsports' => ['label' => 'Motorsports', 'sport' => 'Motorsport', 'icon' => '🏁', 'route_key' => TelegramRouteKeys::MOTORSPORT_OTHER],
+            'usa_sports' => ['label' => 'USA Sports', 'sport' => 'Basketball', 'icon' => '🏀', 'route_key' => TelegramRouteKeys::USA_SPORTS],
+            'other_sports' => ['label' => 'Other Sports', 'sport' => 'Tennis', 'icon' => '🎾', 'route_key' => TelegramRouteKeys::OTHER_SPORTS],
+        ];
+
         foreach ($sportToConfigKeys as $sportKey => $configKeys) {
-            $definition = $allSports[$sportKey] ?? null;
+            $definition = $allSports[$sportKey] ?? $fallbackDefinitions[$sportKey] ?? null;
             if ($definition === null) {
                 continue;
             }
