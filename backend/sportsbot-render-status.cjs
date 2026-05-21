@@ -27,15 +27,24 @@ for (const site of data.sites) {
 
   servicesHtml += `
   <div class="row">
-    <div class="name">${site.name}</div>
-    <span class="badge ${badgeClass}">${badgeText}</span>
+    <span class="site-name">${site.name}</span>
+    <span class="status-badge ${badgeClass}">${badgeText}</span>
   </div>`;
 }
 
 const statusClass = anyDown ? 'down' : '';
-const statusMsg = anyDown ? '<span class="down">Experiencing downtime</span>' : '<span class="up">All systems operational</span>';
+const statusTitle = anyDown ? 'Experiencing Downtime' : 'All Systems Operational';
+const statusMsg = anyDown
+  ? 'Some services are currently experiencing downtime. Please wait while we restore normal operation.'
+  : 'All systems are running smoothly. No issues detected.';
+const icon = anyDown
+  ? '<svg fill="#ef4444" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+  : '<svg fill="#22c55e" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+
 const html = template
   .replace('{{STATUS_CLASS}}', statusClass)
+  .replace('{{ICON}}', icon)
+  .replace('{{STATUS_TITLE}}', statusTitle)
   .replace('{{STATUS_MSG}}', statusMsg)
   .replace('{{DATE}}', date)
   .replace('{{SERVICES}}', servicesHtml);
