@@ -62,6 +62,10 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                         foreach ($events as $event) {
                             $video = trim((string) ($event['strVideo'] ?? ''));
 
+                            if ($video === '') {
+                                continue;
+                            }
+
                             $eventId = trim((string) ($event['idEvent'] ?? ''));
                             if ($eventId === '') {
                                 $emptyEventIds++;
