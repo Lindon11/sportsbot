@@ -2,88 +2,43 @@
 <html>
 <head>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: #07111f;
-  font-family: Inter, Arial, sans-serif;
-  color: #f5f7fb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 600px;
-}
-.status-card {
-  width: 1200px;
-  padding: 34px;
-  background: linear-gradient(145deg, #101c2b, #081321);
-  border: 1px solid #203247;
-  border-radius: 26px;
-}
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 28px;
-}
-.title { font-size: 34px; font-weight: 800; }
-.subtitle { margin-top: 12px; font-size: 25px; color: #aeb8c8; }
-.dot {
-  display: inline-block; width: 22px; height: 22px; border-radius: 50%;
-  background: #25d366; margin-right: 14px; box-shadow: 0 0 22px #25d36680;
-  vertical-align: middle;
-}
-.dot.warn { background: #f7b500; box-shadow: 0 0 22px #f7b50060; }
-.dot.down { background: #ff4d4f; box-shadow: 0 0 22px #ff4d4f60; }
-.time { color: #aeb8c8; font-size: 22px; }
-.overall-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 6px; }
-.overall-dot.up { background: #25d366; box-shadow: 0 0 8px #25d36680; }
-.service {
-  display: grid; grid-template-columns: 110px 200px 1fr 170px;
-  align-items: center; gap: 24px; padding: 28px 20px; margin-bottom: 20px;
-  background: #101d2c; border: 1px solid #22354c; border-radius: 22px;
-}
-.icon {
-  width: 72px; height: 72px; border-radius: 16px; background: #1b2a3c;
-  display: flex; align-items: center; justify-content: center; font-size: 36px;
-}
-.name { font-size: 27px; font-weight: 800; }
-.bars { display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
-.bar {
-  width: 15px; height: 48px; border-radius: 10px;
-  background: #25d366; box-shadow: 0 0 14px #25d36650;
-}
-.bar.warn { background: #f7b500; box-shadow: 0 0 14px #f7b50060; }
-.bar.down { background: #ff4d4f; box-shadow: 0 0 14px #ff4d4f60; }
-.bar.none { background: #1b2a3c; box-shadow: none; }
-.days { margin-top: 14px; color: #aeb8c8; font-size: 20px; }
-.stats { font-size: 24px; color: #aeb8c8; }
-.percent { font-size: 30px; font-weight: 800; color: #25d366; }
+body { margin: 0; background: #07111f; font-family: Inter, Arial, sans-serif; color: #f5f7fb; padding: 40px; box-sizing: border-box; }
+* { box-sizing: border-box; }
+.status-card { width: 1000px; max-width: 100%; padding: 34px; background: linear-gradient(145deg, #101c2b, #081321); border: 1px solid #203247; border-radius: 26px; overflow: hidden; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
+.title { font-size: 30px; font-weight: 800; }
+.subtitle { margin-top: 10px; font-size: 20px; color: #aeb8c8; }
+.dot { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #25d366; margin-right: 12px; box-shadow: 0 0 18px #25d36680; vertical-align: middle; }
+.time { color: #aeb8c8; font-size: 18px; white-space: nowrap; }
+.service { display: grid; grid-template-columns: 90px 210px minmax(0, 1fr) 150px; align-items: center; gap: 20px; padding: 26px; margin-bottom: 20px; background: #101d2c; border: 1px solid #22354c; border-radius: 22px; overflow: hidden; }
+.icon { width: 64px; height: 64px; border-radius: 14px; background: #1b2a3c; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+.name { font-size: 24px; font-weight: 800; }
+.bars { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.bar { flex: 1; max-width: 14px; min-width: 8px; height: 46px; border-radius: 10px; background: #25d366; }
+.bar.warn { background: #f7b500; }
+.bar.down { background: #ff4d4f; }
+.bar.none { background: #1b2a3c; }
+.days { margin-top: 10px; color: #aeb8c8; font-size: 17px; }
+.stats { min-width: 0; text-align: left; font-size: 20px; color: #aeb8c8; }
+.percent { font-size: 26px; font-weight: 800; color: #25d366; white-space: nowrap; }
 .percent.warn { color: #f7b500; }
 .percent.down { color: #ff4d4f; }
-.status-dot {
-  display: inline-block; width: 17px; height: 17px; border-radius: 50%;
-  background: #25d366; margin-right: 12px; vertical-align: middle;
-}
+.status-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #25d366; margin-right: 10px; vertical-align: middle; }
 .status-dot.warn { background: #f7b500; }
 .status-dot.down { background: #ff4d4f; }
-.footer {
-  border-top: 1px solid #203247; margin-top: 12px; padding-top: 26px;
-  display: flex; justify-content: space-between; color: #aeb8c8; font-size: 23px;
-}
+.footer { border-top: 1px solid #203247; margin-top: 12px; padding-top: 22px; display: flex; justify-content: space-between; color: #aeb8c8; font-size: 20px; }
 </style>
 </head>
 <body>
 <div class="status-card">
   <div class="header">
     <div>
-      <div class="title"><span class="dot"></span>SYSTEM STATUS</div>
+      <div class="title"><span class="dot"></span>System Status</div>
       <div class="subtitle">All systems operational</div>
     </div>
     <div class="time">{{DATE}}</div>
   </div>
-
   {{SERVICES}}
-
   <div class="footer">
     <div>🛡 Systems status</div>
     <div>Uptime Monitor</div>
