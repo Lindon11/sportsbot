@@ -62,10 +62,6 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                         foreach ($events as $event) {
                             $video = trim((string) ($event['strVideo'] ?? ''));
 
-                            if ($video === '') {
-                                continue;
-                            }
-
                             $eventId = trim((string) ($event['idEvent'] ?? ''));
                             if ($eventId === '') {
                                 $emptyEventIds++;
@@ -264,6 +260,11 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
         $currentLeague = null;
 
         foreach ($highlights as $h) {
+            $videoUrl = trim((string) ($h['video_url'] ?? ''));
+            if ($videoUrl === '') {
+                continue;
+            }
+
             $leagueName = trim((string) ($h['league'] ?? ''));
 
             // League header card when league changes
