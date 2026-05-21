@@ -13,63 +13,88 @@ use Throwable;
 class SportsBotEpgImportCommand extends Command
 {
     protected $signature = 'sportsbot:epg-import
-        {--url= : XMLTV feed URL (overrides config)}
+        {--url= : XMLTV feed URL (overrides all config URLs)}
         {--match : Run fixture matching after import}
         {--days=3 : Number of days of EPG data to keep}';
 
-    protected $description = 'Download XMLTV EPG feed and import TV programme data';
+    protected $description = 'Download XMLTV EPG feeds and import TV programme data';
 
     public function handle(): int
     {
-        $url = $this->option('url') ?: config('plugins.SportsBot.epg.feed_url', '');
-        if ($url === '') {
-            $this->error('No EPG feed URL configured');
-            return Command::FAILURE;
-        }
-
         $days = max(1, min(14, (int) $this->option('days')));
 
-        $this->info("Downloading EPG feed: {$url}");
-        $response = Http::timeout(60)
-            ->withHeaders(['User-Agent' => 'SportsBot/1.0'])
-            ->get($url);
-
-        if (!$response->successful()) {
-            $this->error("Failed to download feed: HTTP {$response->status()}");
+        $urls = $this->resolveFeedUrls();
+        if ($urls === []) {
+            $this->error('No EPG feed URLs configured');
             return Command::FAILURE;
         }
-
-        $xml = $this->decompress($response->body());
-        if ($xml === null) {
-            $this->error('Failed to decompress feed');
-            return Command::FAILURE;
-        }
-
-        $this->info('Parsing XMLTV data...');
-        $programmes = $this->parseXml($xml);
-        if ($programmes === []) {
-            $this->warn('No programmes found in feed');
-            return Command::SUCCESS;
-        }
-
-        $this->info("Found {$programmes['total']} programmes, importing...");
 
         $cutoff = now()->subDays(1);
         SportsBotXmltvProgramme::where('created_at', '<', $cutoff)->delete();
 
-        $imported = 0;
-        foreach (array_chunk($programmes['rows'], 500) as $chunk) {
-            SportsBotXmltvProgramme::upsert($chunk, ['channel', 'title', 'start_time'], ['description', 'end_time', 'raw_data']);
-            $imported += count($chunk);
+        $totalImported = 0;
+
+        foreach ($urls as $url) {
+            $this->info("Downloading EPG feed: {$url}");
+            $response = Http::timeout(120)
+                ->withHeaders(['User-Agent' => 'SportsBot/1.0'])
+                ->get($url);
+
+            if (!$response->successful()) {
+                $this->warn("Failed to download feed: HTTP {$response->status()}");
+                continue;
+            }
+
+            $xml = $this->decompress($response->body());
+            if ($xml === null) {
+                $this->warn('Failed to decompress feed');
+                continue;
+            }
+
+            $this->info('Parsing XMLTV data...');
+            $programmes = $this->parseXml($xml);
+            if ($programmes === []) {
+                $this->warn('No programmes found in feed');
+                continue;
+            }
+
+            $imported = 0;
+            foreach (array_chunk($programmes['rows'], 500) as $chunk) {
+                SportsBotXmltvProgramme::upsert($chunk, ['channel', 'title', 'start_time'], ['description', 'end_time', 'raw_data']);
+                $imported += count($chunk);
+            }
+
+            $totalImported += $imported;
+            $this->info("Imported {$imported} programmes from {$url}");
         }
 
-        $this->info("Imported {$imported} programmes");
+        $this->info("Total imported: {$totalImported} programmes");
 
         if ($this->option('match')) {
             $this->matchFixtures();
         }
 
         return Command::SUCCESS;
+    }
+
+    private function resolveFeedUrls(): array
+    {
+        $optionUrl = $this->option('url');
+        if ($optionUrl) {
+            return [trim($optionUrl)];
+        }
+
+        $configUrl = config('plugins.SportsBot.epg.feed_url', '');
+        if ($configUrl !== '') {
+            return [trim($configUrl)];
+        }
+
+        $urls = config('plugins.SportsBot.epg.feed_urls', []);
+        if (is_array($urls) && $urls !== []) {
+            return array_values(array_unique(array_filter(array_map('trim', $urls))));
+        }
+
+        return [];
     }
 
     private function decompress(string $body): ?string

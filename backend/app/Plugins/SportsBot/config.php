@@ -855,6 +855,16 @@ return [
 
     'epg' => [
         'feed_url' => env('SPORTSBOT_EPG_FEED_URL', ''),
+        'feed_urls' => [
+            env('SPORTSBOT_EPG_FEED_URL_UK', 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_DE', 'https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_FR', 'https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_ES', 'https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_IT', 'https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_AU', 'https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_NL', 'https://epgshare01.online/epgshare01/epg_ripper_NL1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_BR', 'https://epgshare01.online/epgshare01/epg_ripper_BR1.xml.gz'),
+        ],
         'import_enabled' => env('SPORTSBOT_EPG_IMPORT_ENABLED', false),
     ],
 
