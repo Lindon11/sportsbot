@@ -16,6 +16,8 @@ class SportsBotXmltvProgramme extends Model
         'end_time',
         'fixture_id',
         'raw_data',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [

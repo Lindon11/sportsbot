@@ -59,11 +59,7 @@ class SportsBotEpgImportCommand extends Command
 
         $imported = 0;
         foreach (array_chunk($programmes['rows'], 500) as $chunk) {
-            SportsBotXmltvProgramme::upsert(
-                $chunk,
-                ['channel', 'title', 'start_time'],
-                ['description', 'end_time', 'raw_data', 'updated_at']
-            );
+            SportsBotXmltvProgramme::upsert($chunk, ['channel', 'title', 'start_time'], ['description', 'end_time', 'raw_data']);
             $imported += count($chunk);
         }
 
@@ -135,11 +131,11 @@ class SportsBotEpgImportCommand extends Command
                 'description' => $desc,
                 'start_time' => $startTime,
                 'end_time' => $endTime,
-                'raw_data' => [
+                'raw_data' => json_encode([
                     'channel_id' => $channelId,
                     'category' => trim((string) $prog->category),
                     'sub_title' => trim((string) $prog->{'sub-title'}),
-                ],
+                ]),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
