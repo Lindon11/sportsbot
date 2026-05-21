@@ -8,6 +8,7 @@ use App\Plugins\SportsBot\Services\Scrapers\BroadcastScheduleScraper;
 use App\Plugins\SportsBot\Services\Scrapers\CombatPosterScraper;
 use App\Plugins\SportsBot\Services\Scrapers\F1ScheduleScraper;
 use App\Plugins\SportsBot\Services\Scrapers\RugbyLeagueTvScraper;
+use App\Plugins\SportsBot\Services\Scrapers\TheSportsDbTvScraper;
 
 class SportsBotScraperService
 {
@@ -24,6 +25,7 @@ class SportsBotScraperService
         private readonly ScraperResultNormalizer $normalizer = new ScraperResultNormalizer(),
     ) {
         $this->providers = $providers ?? [
+            new TheSportsDbTvScraper(),
             new CombatPosterScraper($this->normalizer),
             new BroadcastScheduleScraper($this->normalizer),
             new F1ScheduleScraper($this->normalizer),
