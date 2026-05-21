@@ -34,6 +34,9 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/epg-provider/import', [SportsBotController::class, 'epgProviderImport'])->name('epg-provider.import');
     Route::post('/epg-provider/match', [SportsBotController::class, 'epgProviderMatch'])->name('epg-provider.match');
     Route::post('/epg-provider/export', [SportsBotController::class, 'epgProviderExport'])->name('epg-provider.export');
+    Route::post('/epg-provider/grabbers/discover', [SportsBotController::class, 'epgProviderDiscoverGrabbers'])->name('epg-provider.grabbers.discover');
+    Route::post('/epg-provider/grabbers/run', [SportsBotController::class, 'epgProviderRunGrabbers'])->name('epg-provider.grabbers.run');
+    Route::post('/epg-provider/policy/uk-sports', [SportsBotController::class, 'epgProviderApplyPolicy'])->name('epg-provider.policy.uk-sports');
     Route::post('/epg-provider/matches/{id}/accept', [SportsBotController::class, 'epgProviderAcceptMatch'])->name('epg-provider.matches.accept');
     Route::post('/epg-provider/matches/{id}/reject', [SportsBotController::class, 'epgProviderRejectMatch'])->name('epg-provider.matches.reject');
     Route::post('/football-fixtures/preview', [SportsBotController::class, 'footballFixturesPreview'])->name('football-fixtures.preview');

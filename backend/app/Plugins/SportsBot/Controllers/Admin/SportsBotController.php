@@ -5,6 +5,8 @@ namespace App\Plugins\SportsBot\Controllers\Admin;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotEpgFixtureMatch;
+use App\Plugins\SportsBot\Models\SportsBotEpgGrabber;
+use App\Plugins\SportsBot\Models\SportsBotEpgGrabberRun;
 use App\Plugins\SportsBot\Models\SportsBotEpgImportRun;
 use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
@@ -27,7 +29,9 @@ use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
+use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
+use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
 use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\SportsBotNotifier;
@@ -921,7 +925,7 @@ class SportsBotController extends Controller
         ]);
     }
 
-    public function epgProvider(): JsonResponse
+    public function epgProvider(SportsBotEpgGrabberRuntime $grabbers, SportsBotEpgRuntimeLock $lock): JsonResponse
     {
         if (! Schema::hasTable('sportsbot_epg_sources')) {
             return response()->json([
@@ -967,11 +971,29 @@ class SportsBotController extends Controller
                 ->latest('id')
                 ->limit(25)
                 ->get(),
+            'grabbers' => Schema::hasTable('sportsbot_epg_grabbers')
+                ? SportsBotEpgGrabber::query()->latest('updated_at')->limit(100)->get()
+                : [],
+            'recent_grabber_runs' => Schema::hasTable('sportsbot_epg_grabber_runs')
+                ? SportsBotEpgGrabberRun::query()->latest('id')->limit(25)->get()
+                : [],
             'review_matches' => SportsBotEpgFixtureMatch::query()
                 ->where('status', 'needs_review')
                 ->latest('id')
                 ->limit(50)
                 ->get(),
+            'performance_health' => [
+                'runtime_lock' => $lock->status(),
+                'last_import' => SportsBotEpgImportRun::query()->latest('id')->first(),
+                'skipped_unchanged_24h' => SportsBotEpgImportRun::query()
+                    ->where('status', 'skipped_unchanged')
+                    ->where('created_at', '>=', now()->subDay())
+                    ->count(),
+                'import_chunk_size' => (int) config('plugins.SportsBot.epg.import_chunk_size', 2000),
+                'max_programmes' => (int) config('plugins.SportsBot.epg.max_programmes', 80000),
+                'source_policy' => (string) config('plugins.SportsBot.epg.source_policy', 'uk_sports_first'),
+            ],
+            'missing_channels' => $grabbers->missingUkSportsChannels(),
             'export_health' => [
                 'token_configured' => trim((string) app(SportsBotSettingsService::class)->get('epg_export_token', config('plugins.SportsBot.epg.export_token', ''))) !== '',
                 'xml_path' => storage_path('app/sportsbot/epg/guide.xml'),
@@ -985,50 +1007,99 @@ class SportsBotController extends Controller
         ]);
     }
 
-    public function epgProviderImport(Request $request, SportsBotEpgSourceImporter $importer, SportsBotEpgMatcher $matcher, SportsBotEpgExporter $exporter): JsonResponse
+    public function epgProviderImport(Request $request, SportsBotEpgSourceImporter $importer, SportsBotEpgMatcher $matcher, SportsBotEpgExporter $exporter, SportsBotEpgRuntimeLock $lock): JsonResponse
     {
         $validated = $request->validate([
             'days' => ['sometimes', 'integer', 'min:1', 'max:14'],
+            'region' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'source_limit' => ['sometimes', 'integer', 'min:0', 'max:100'],
+            'max_programmes' => ['sometimes', 'integer', 'min:0', 'max:500000'],
+            'chunk_size' => ['sometimes', 'integer', 'min:100', 'max:10000'],
+            'skip_unchanged' => ['sometimes', 'boolean'],
             'match' => ['sometimes', 'boolean'],
             'export' => ['sometimes', 'boolean'],
         ]);
 
         $days = (int) ($validated['days'] ?? 3);
-        $result = ['import' => $importer->importAll([], $days)];
+        $result = $lock->run('admin-epg-import', function () use ($importer, $matcher, $exporter, $validated, $days): array {
+            $result = ['import' => $importer->importAll([], $days, [
+                'region' => (string) ($validated['region'] ?? config('plugins.SportsBot.epg.default_region', 'UK')),
+                'source_limit' => (int) ($validated['source_limit'] ?? 0),
+                'max_programmes' => (int) ($validated['max_programmes'] ?? config('plugins.SportsBot.epg.max_programmes', 80000)),
+                'chunk_size' => (int) ($validated['chunk_size'] ?? config('plugins.SportsBot.epg.import_chunk_size', 2000)),
+                'skip_unchanged' => (bool) ($validated['skip_unchanged'] ?? true),
+            ])];
 
-        if ((bool) ($validated['match'] ?? true)) {
-            $result['match'] = $matcher->matchFixtures($days, 300, true);
-        }
+            if ((bool) ($validated['match'] ?? true)) {
+                $result['match'] = $matcher->matchFixtures($days, 300, true);
+            }
 
-        if ((bool) ($validated['export'] ?? true)) {
-            $result['export'] = $exporter->writeCachedExports();
-        }
+            if ((bool) ($validated['export'] ?? true)) {
+                $result['export'] = $exporter->writeCachedExports();
+            }
+
+            return $result;
+        }, 3600);
 
         return response()->json($result);
     }
 
-    public function epgProviderMatch(Request $request, SportsBotEpgMatcher $matcher): JsonResponse
+    public function epgProviderMatch(Request $request, SportsBotEpgMatcher $matcher, SportsBotEpgRuntimeLock $lock): JsonResponse
     {
         $validated = $request->validate([
             'days' => ['sometimes', 'integer', 'min:1', 'max:14'],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:1000'],
+            'force' => ['sometimes', 'boolean'],
             'dry_run' => ['sometimes', 'boolean'],
         ]);
 
-        return response()->json($matcher->matchFixtures(
+        return response()->json($lock->run('admin-epg-match', fn (): array => $matcher->matchFixtures(
             (int) ($validated['days'] ?? 3),
             (int) ($validated['limit'] ?? 200),
             ! (bool) ($validated['dry_run'] ?? false),
-        ));
+            ['force' => (bool) ($validated['force'] ?? false)],
+        ), 1800));
     }
 
-    public function epgProviderExport(Request $request, SportsBotEpgExporter $exporter): JsonResponse
+    public function epgProviderExport(Request $request, SportsBotEpgExporter $exporter, SportsBotEpgRuntimeLock $lock): JsonResponse
     {
         $validated = $request->validate([
             'hours' => ['sometimes', 'integer', 'min:1', 'max:336'],
         ]);
 
-        return response()->json($exporter->writeCachedExports((int) ($validated['hours'] ?? 72)));
+        return response()->json($lock->run('admin-epg-export', fn (): array => $exporter->writeCachedExports((int) ($validated['hours'] ?? 72)), 900));
+    }
+
+    public function epgProviderDiscoverGrabbers(Request $request, SportsBotEpgGrabberRuntime $grabbers): JsonResponse
+    {
+        $validated = $request->validate([
+            'region' => ['sometimes', 'nullable', 'string', 'max:40'],
+        ]);
+
+        return response()->json($grabbers->discover((string) ($validated['region'] ?? config('plugins.SportsBot.epg.default_region', 'UK'))));
+    }
+
+    public function epgProviderRunGrabbers(Request $request, SportsBotEpgGrabberRuntime $grabbers, SportsBotEpgRuntimeLock $lock): JsonResponse
+    {
+        $validated = $request->validate([
+            'region' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'only' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'import' => ['sometimes', 'boolean'],
+            'export' => ['sometimes', 'boolean'],
+        ]);
+
+        return response()->json($lock->run('admin-epg-grabbers-run', fn (): array => $grabbers->run(
+            (string) ($validated['region'] ?? config('plugins.SportsBot.epg.default_region', 'UK')),
+            isset($validated['only']) ? (string) $validated['only'] : null,
+            (bool) ($validated['import'] ?? true),
+            (bool) ($validated['export'] ?? true),
+            ['region' => (string) ($validated['region'] ?? config('plugins.SportsBot.epg.default_region', 'UK'))],
+        ), 3600));
+    }
+
+    public function epgProviderApplyPolicy(SportsBotEpgGrabberRuntime $grabbers): JsonResponse
+    {
+        return response()->json($grabbers->applyUkSportsPolicy());
     }
 
     public function epgProviderAcceptMatch(int $id, SportsBotEpgMatcher $matcher): JsonResponse

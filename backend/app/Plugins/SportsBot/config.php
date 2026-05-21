@@ -854,19 +854,31 @@ return [
     ],
 
     'epg' => [
+        'default_region' => env('SPORTSBOT_EPG_DEFAULT_REGION', 'UK'),
+        'source_policy' => env('SPORTSBOT_EPG_SOURCE_POLICY', 'uk_sports_first'),
         'feed_url' => env('SPORTSBOT_EPG_FEED_URL', ''),
         'feed_urls' => [
             env('SPORTSBOT_EPG_FEED_URL_UK', 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_DE', 'https://epgshare01.online/epgshare01/epg_ripper_DE1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_FR', 'https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_ES', 'https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_IT', 'https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_AU', 'https://epgshare01.online/epgshare01/epg_ripper_AU1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_NL', 'https://epgshare01.online/epgshare01/epg_ripper_NL1.xml.gz'),
-            env('SPORTSBOT_EPG_FEED_URL_BR', 'https://epgshare01.online/epgshare01/epg_ripper_BR1.xml.gz'),
+            env('SPORTSBOT_EPG_FEED_URL_DE', ''),
+            env('SPORTSBOT_EPG_FEED_URL_FR', ''),
+            env('SPORTSBOT_EPG_FEED_URL_ES', ''),
+            env('SPORTSBOT_EPG_FEED_URL_IT', ''),
+            env('SPORTSBOT_EPG_FEED_URL_AU', ''),
+            env('SPORTSBOT_EPG_FEED_URL_NL', ''),
+            env('SPORTSBOT_EPG_FEED_URL_BR', ''),
         ],
         'import_enabled' => env('SPORTSBOT_EPG_IMPORT_ENABLED', false),
         'export_token' => env('SPORTSBOT_EPG_EXPORT_TOKEN', ''),
+        'import_chunk_size' => (int) env('SPORTSBOT_EPG_IMPORT_CHUNK_SIZE', 2000),
+        'max_programmes' => (int) env('SPORTSBOT_EPG_MAX_PROGRAMMES', 80000),
+        'skip_unchanged' => env('SPORTSBOT_EPG_SKIP_UNCHANGED', true),
+        'grabbers' => [
+            'tools_path' => env('SPORTSBOT_EPG_GRABBER_TOOLS_PATH', storage_path('app/sportsbot/epg/tools')),
+            'output_path' => env('SPORTSBOT_EPG_GRABBER_OUTPUT_PATH', storage_path('app/sportsbot/epg/grabber-output')),
+            'iptv_org_path' => env('SPORTSBOT_EPG_IPTV_ORG_PATH', storage_path('app/sportsbot/epg/tools/iptv-org-epg')),
+            'iptv_org_sites' => env('SPORTSBOT_EPG_IPTV_ORG_SITES', 'sky.com,bbc.co.uk,itv.com,channel4.com'),
+            'external_timeout' => (int) env('SPORTSBOT_EPG_GRABBER_TIMEOUT', 900),
+        ],
     ],
 
     'publishing' => [

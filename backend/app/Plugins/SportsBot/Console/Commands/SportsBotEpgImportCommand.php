@@ -5,6 +5,7 @@ namespace App\Plugins\SportsBot\Console\Commands;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
+use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
 use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -21,16 +22,30 @@ class SportsBotEpgImportCommand extends Command
 
     protected $description = 'Download XMLTV EPG feeds and import TV programme data';
 
-    public function handle(): int
+    public function handle(SportsBotEpgRuntimeLock $lock): int
     {
         $days = max(1, min(14, (int) $this->option('days')));
         $optionUrl = trim((string) ($this->option('url') ?? ''));
         $urls = $optionUrl !== '' ? [$optionUrl] : [];
-        $result = app(SportsBotEpgSourceImporter::class)->importAll($urls, $days);
+        $result = $lock->run('epg-import', function () use ($days, $urls): array {
+            $result = app(SportsBotEpgSourceImporter::class)->importAll($urls, $days);
+
+            if ($this->option('match')) {
+                $result['match'] = app(SportsBotEpgMatcher::class)->matchFixtures($days, 300, true);
+            }
+
+            return $result;
+        }, 3600);
+
+        if (($result['locked'] ?? false) === true) {
+            $this->warn('Another EPG job is already running.');
+            return Command::SUCCESS;
+        }
+
         $this->info("Total imported: {$result['programme_count']} programmes");
 
-        if ($this->option('match')) {
-            $match = app(SportsBotEpgMatcher::class)->matchFixtures($days, 300, true);
+        if (isset($result['match'])) {
+            $match = $result['match'];
             $this->info("Matched {$match['checked']} fixtures: {$match['auto_applied']} auto, {$match['needs_review']} review.");
         }
 

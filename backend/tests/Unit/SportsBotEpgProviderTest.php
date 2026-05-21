@@ -3,14 +3,20 @@
 namespace Tests\Unit;
 
 use App\Plugins\SportsBot\Models\SportsBotEpgCorrection;
+use App\Plugins\SportsBot\Models\SportsBotEpgGrabber;
 use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Services\SportsBotEpgChannelNormalizer;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
+use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
+use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
+use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -22,8 +28,10 @@ class SportsBotEpgProviderTest extends TestCase
 
         config()->set('database.default', 'sqlite');
         config()->set('database.connections.sqlite.database', ':memory:');
+        config()->set('cache.default', 'array');
         DB::purge('sqlite');
         DB::reconnect('sqlite');
+        Cache::flush();
 
         $this->createTables();
     }
@@ -130,6 +138,113 @@ class SportsBotEpgProviderTest extends TestCase
         $this->assertSame('sky_sports_main_event', $json['programmes'][0]['channel_id']);
     }
 
+    public function test_uk_sports_policy_disables_non_uk_epgshare_sources(): void
+    {
+        $uk = $this->source('https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz', 50);
+        $us = $this->source('https://epgshare01.online/epgshare01/epg_ripper_US1.xml.gz', 60);
+        $us->fill(['region' => 'US'])->save();
+
+        $result = (new SportsBotEpgSourceImporter())->applyUkSportsPolicy();
+
+        $this->assertSame(1, $result['enabled_uk_sources']);
+        $this->assertSame(1, $result['disabled_non_uk_epgshare_sources']);
+        $this->assertTrue($uk->fresh()->enabled);
+        $this->assertFalse($us->fresh()->enabled);
+    }
+
+    public function test_streaming_import_reads_local_xmltv_and_skips_unchanged_output(): void
+    {
+        $path = storage_path('app/sportsbot/epg/testing-' . uniqid() . '.xml');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, $this->xmltvFixture());
+
+        try {
+            $source = $this->source('file://' . $path, 5);
+            $source->fill(['type' => 'grabber_output'])->save();
+            $importer = new SportsBotEpgSourceImporter();
+
+            $first = $importer->importSource($source, 3, [
+                'chunk_size' => 2000,
+                'max_programmes' => 50,
+                'skip_unchanged' => true,
+            ]);
+            $second = $importer->importSource($source->fresh(), 3, [
+                'chunk_size' => 2000,
+                'max_programmes' => 50,
+                'skip_unchanged' => true,
+            ]);
+
+            $this->assertSame('working', $first['status']);
+            $this->assertSame(1, $first['programme_count']);
+            $this->assertSame('skipped_unchanged', $second['status']);
+            $this->assertSame(1, SportsBotXmltvProgramme::query()->where('source_id', $source->id)->count());
+        } finally {
+            File::delete($path);
+        }
+    }
+
+    public function test_grabber_discovery_registers_enabled_public_feed_sources(): void
+    {
+        $source = $this->source('https://example.test/public-uk.xml.gz', 10);
+
+        $discovered = (new SportsBotEpgGrabberRuntime())->discover('UK');
+        $grabber = SportsBotEpgGrabber::query()
+            ->where('type', 'public_xmltv_feed')
+            ->where('command', $source->url)
+            ->first();
+
+        $this->assertSame(1, $discovered['public_xmltv_feed']['found']);
+        $this->assertNotNull($grabber);
+        $this->assertTrue($grabber->enabled);
+        $this->assertTrue($grabber->installed);
+    }
+
+    public function test_batched_matcher_skips_fixtures_with_existing_tv_unless_forced(): void
+    {
+        $covered = $this->fixture([
+            'event_name' => 'Arsenal vs Chelsea',
+            'home_team' => 'Arsenal',
+            'away_team' => 'Chelsea',
+            'league' => 'Premier League',
+            'dateEvent' => now()->toDateString(),
+            'time' => '20:00',
+            'tv_channel' => 'Sky Sports Main Event',
+        ]);
+        $missing = $this->fixture([
+            'event_name' => 'Liverpool vs Spurs',
+            'home_team' => 'Liverpool',
+            'away_team' => 'Spurs',
+            'league' => 'Premier League',
+            'dateEvent' => now()->toDateString(),
+            'time' => '20:00',
+        ]);
+
+        $matcher = new SportsBotEpgMatcher();
+        $normal = $matcher->matchFixtures(3, 20, false);
+        $forced = $matcher->matchFixtures(3, 20, false, ['force' => true]);
+
+        $this->assertSame(1, $normal['checked']);
+        $this->assertSame($missing->id, $normal['rows'][0]['fixture_queue_id']);
+        $this->assertSame(2, $forced['checked']);
+        $this->assertContains($covered->id, array_column($forced['rows'], 'fixture_queue_id'));
+    }
+
+    public function test_runtime_lock_blocks_nested_epg_jobs(): void
+    {
+        $lock = new SportsBotEpgRuntimeLock();
+
+        $result = $lock->run('outer-test', function () use ($lock): array {
+            return [
+                'inner' => $lock->run('inner-test', fn (): array => ['ran' => true]),
+                'status' => $lock->status(),
+            ];
+        });
+
+        $this->assertTrue($result['status']['locked']);
+        $this->assertTrue($result['inner']['locked']);
+        $this->assertFalse($lock->status()['locked']);
+    }
+
     private function fixture(array $fixtureData): SportsBotFixtureQueue
     {
         return SportsBotFixtureQueue::query()->create([
@@ -210,6 +325,25 @@ class SportsBotEpgProviderTest extends TestCase
             $table->timestamp('last_success_at')->nullable();
             $table->timestamp('last_failure_at')->nullable();
             $table->text('last_error')->nullable();
+            $table->string('etag')->nullable();
+            $table->string('last_modified_header')->nullable();
+            $table->string('content_hash', 64)->nullable();
+            $table->unsignedBigInteger('bytes_downloaded')->default(0);
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('sportsbot_epg_import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->string('source_url')->nullable();
+            $table->string('status');
+            $table->integer('programme_count')->default(0);
+            $table->integer('channel_count')->default(0);
+            $table->integer('duration_ms')->default(0);
+            $table->text('error')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
         });
@@ -272,5 +406,75 @@ class SportsBotEpgProviderTest extends TestCase
             $table->unsignedBigInteger('created_by')->nullable();
             $table->timestamps();
         });
+
+        Schema::create('sportsbot_epg_grabbers', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('type');
+            $table->string('region')->nullable();
+            $table->string('command')->nullable();
+            $table->json('arguments')->nullable();
+            $table->string('working_directory')->nullable();
+            $table->string('output_path')->nullable();
+            $table->boolean('enabled')->default(false);
+            $table->boolean('installed')->default(false);
+            $table->string('status')->default('missing');
+            $table->timestamp('last_run_at')->nullable();
+            $table->timestamp('last_success_at')->nullable();
+            $table->timestamp('last_failure_at')->nullable();
+            $table->text('last_error')->nullable();
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+            $table->unique(['type', 'name', 'region']);
+        });
+
+        Schema::create('sportsbot_epg_grabber_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('grabber_id')->nullable();
+            $table->string('type')->nullable();
+            $table->string('region')->nullable();
+            $table->string('status');
+            $table->integer('duration_ms')->default(0);
+            $table->unsignedBigInteger('output_bytes')->default(0);
+            $table->string('output_path')->nullable();
+            $table->text('error')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('sportsbot_epg_grabber_outputs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('grabber_id')->nullable();
+            $table->unsignedBigInteger('run_id')->nullable();
+            $table->string('region')->nullable();
+            $table->string('path');
+            $table->string('source_url')->nullable();
+            $table->unsignedBigInteger('bytes')->default(0);
+            $table->string('content_hash', 64)->nullable();
+            $table->timestamp('generated_at')->nullable();
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    private function xmltvFixture(): string
+    {
+        $start = now()->addHour()->format('YmdHis O');
+        $stop = now()->addHours(3)->format('YmdHis O');
+
+        return <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="sky.main">
+    <display-name>Sky Sports Main Event HD</display-name>
+  </channel>
+  <programme start="{$start}" stop="{$stop}" channel="sky.main">
+    <title>Arsenal vs Chelsea Live</title>
+    <desc>Premier League coverage</desc>
+  </programme>
+</tv>
+XML;
     }
 }

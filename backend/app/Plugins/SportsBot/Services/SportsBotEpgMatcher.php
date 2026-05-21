@@ -7,6 +7,7 @@ use App\Plugins\SportsBot\Models\SportsBotEpgFixtureMatch;
 use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
+use App\Plugins\SportsBot\Support\SportsBotFixtureReadiness;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -14,6 +15,11 @@ class SportsBotEpgMatcher
 {
     public const AUTO_CONFIDENCE = 0.85;
     public const REVIEW_CONFIDENCE = 0.55;
+
+    /**
+     * @var array<int, SportsBotEpgSource|null>
+     */
+    private array $sourceCache = [];
 
     public function __construct(
         private readonly SportsBotEpgChannelNormalizer $channels = new SportsBotEpgChannelNormalizer(),
@@ -23,8 +29,9 @@ class SportsBotEpgMatcher
     /**
      * @return array<string, mixed>
      */
-    public function matchFixtures(int $days = 3, int $limit = 200, bool $apply = true): array
+    public function matchFixtures(int $days = 3, int $limit = 200, bool $apply = true, array $options = []): array
     {
+        $force = (bool) ($options['force'] ?? false);
         $from = Carbon::today()->subDay()->toDateString();
         $to = Carbon::today()->addDays(max(1, min(14, $days)))->toDateString();
 
@@ -39,6 +46,19 @@ class SportsBotEpgMatcher
             ->limit(max(1, $limit))
             ->get();
 
+        $fixtures = $fixtures
+            ->filter(fn (SportsBotFixtureQueue $fixture): bool => $this->needsMatch($fixture, $force))
+            ->values();
+
+        $globalWindow = $this->globalProgrammeWindow($fixtures);
+        $programmes = $globalWindow === null
+            ? collect()
+            : SportsBotXmltvProgramme::query()
+                ->where('start_time', '>=', $globalWindow[0])
+                ->where('start_time', '<=', $globalWindow[1])
+                ->orderBy('start_time')
+                ->get();
+
         $summary = [
             'checked' => 0,
             'auto_applied' => 0,
@@ -49,7 +69,7 @@ class SportsBotEpgMatcher
         ];
 
         foreach ($fixtures as $fixture) {
-            $result = $this->matchFixture($fixture, $apply);
+            $result = $this->matchFixtureAgainstProgrammes($fixture, $programmes, $apply);
             $status = (string) ($result['status'] ?? 'no_candidate');
             $summary['checked']++;
             if (array_key_exists($status, $summary)) {
@@ -67,16 +87,29 @@ class SportsBotEpgMatcher
     public function matchFixture(SportsBotFixtureQueue $entry, bool $apply = true): array
     {
         $fixture = (array) ($entry->fixture_data ?? []);
-        $kickoff = $this->fixtureKickoff($entry, $fixture);
-        $windowStart = $kickoff ? $kickoff->copy()->subHours(4) : Carbon::parse($entry->publish_date)->subHours(6);
-        $windowEnd = $kickoff ? $kickoff->copy()->addHours(5) : Carbon::parse($entry->publish_date)->addHours(30);
-
+        [$windowStart, $windowEnd] = $this->programmeWindow($entry, $fixture);
         $programmes = SportsBotXmltvProgramme::query()
             ->where('start_time', '>=', $windowStart)
             ->where('start_time', '<=', $windowEnd)
             ->orderBy('start_time')
             ->limit(2000)
             ->get();
+
+        return $this->matchFixtureAgainstProgrammes($entry, $programmes, $apply);
+    }
+
+    /**
+     * @param Collection<int, SportsBotXmltvProgramme> $programmes
+     * @return array<string, mixed>
+     */
+    private function matchFixtureAgainstProgrammes(SportsBotFixtureQueue $entry, Collection $programmes, bool $apply = true): array
+    {
+        $fixture = (array) ($entry->fixture_data ?? []);
+        $kickoff = $this->fixtureKickoff($entry, $fixture);
+        [$windowStart, $windowEnd] = $this->programmeWindow($entry, $fixture);
+        $programmes = $programmes
+            ->filter(fn (SportsBotXmltvProgramme $programme): bool => $programme->start_time !== null && $programme->start_time >= $windowStart && $programme->start_time <= $windowEnd)
+            ->values();
 
         if ($programmes->isEmpty()) {
             return [
@@ -133,6 +166,52 @@ class SportsBotEpgMatcher
             'match_id' => $match->id,
             'evidence' => $best['evidence'],
             'candidate_count' => count($candidates),
+        ];
+    }
+
+    private function needsMatch(SportsBotFixtureQueue $entry, bool $force): bool
+    {
+        if ($force) {
+            return true;
+        }
+
+        $payload = (array) ($entry->payload ?? []);
+        $epg = (array) ($payload['epg_match'] ?? []);
+        if (in_array((string) ($epg['status'] ?? ''), ['auto_applied', 'accepted'], true)
+            && (float) ($epg['confidence'] ?? 0) >= self::AUTO_CONFIDENCE) {
+            return false;
+        }
+
+        return ! SportsBotFixtureReadiness::hasTv((array) ($entry->fixture_data ?? []));
+    }
+
+    /**
+     * @param Collection<int, SportsBotFixtureQueue> $fixtures
+     * @return array{0: Carbon, 1: Carbon}|null
+     */
+    private function globalProgrammeWindow(Collection $fixtures): ?array
+    {
+        $start = null;
+        $end = null;
+        foreach ($fixtures as $entry) {
+            [$windowStart, $windowEnd] = $this->programmeWindow($entry, (array) ($entry->fixture_data ?? []));
+            $start = $start === null || $windowStart < $start ? $windowStart : $start;
+            $end = $end === null || $windowEnd > $end ? $windowEnd : $end;
+        }
+
+        return $start && $end ? [$start, $end] : null;
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function programmeWindow(SportsBotFixtureQueue $entry, array $fixture): array
+    {
+        $kickoff = $this->fixtureKickoff($entry, $fixture);
+
+        return [
+            $kickoff ? $kickoff->copy()->subHours(4) : Carbon::parse($entry->publish_date)->subHours(6),
+            $kickoff ? $kickoff->copy()->addHours(5) : Carbon::parse($entry->publish_date)->addHours(30),
         ];
     }
 
@@ -358,7 +437,9 @@ class SportsBotEpgMatcher
 
     private function sourceScore(SportsBotXmltvProgramme $programme, array &$parts): float
     {
-        $source = $programme->source_id ? SportsBotEpgSource::query()->find($programme->source_id) : null;
+        $source = $programme->source_id
+            ? ($this->sourceCache[$programme->source_id] ??= SportsBotEpgSource::query()->find($programme->source_id))
+            : null;
         if (! $source) {
             $parts['source_quality'] = 0.02;
             return 0.02;

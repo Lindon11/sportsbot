@@ -101,11 +101,11 @@ if ((bool) config('plugins.SportsBot.enabled')) {
         }
 
         if ((bool) sportsbotSetting('epg_import_enabled', config('plugins.SportsBot.epg.import_enabled', false))) {
-            Schedule::command('sportsbot:epg-sources-import --match --export')
-                ->cron('0 */6 * * *')
+            Schedule::command('sportsbot:epg-grabbers-run --region=UK --import --export')
+                ->cron('5 */6 * * *')
                 ->withoutOverlapping()
                 ->onOneServer()
-                ->appendOutputTo(storage_path('logs/sportsbot-epg-import.log'));
+                ->appendOutputTo(storage_path('logs/sportsbot-epg-grabbers.log'));
 
             Schedule::command('sportsbot:epg-match-fixtures --days=3')
                 ->everyThirtyMinutes()

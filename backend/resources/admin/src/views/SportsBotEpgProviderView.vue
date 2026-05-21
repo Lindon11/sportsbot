@@ -15,6 +15,12 @@
         <button @click="runExport" :disabled="busy === 'export'" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60">
           {{ busy === 'export' ? 'Exporting...' : 'Refresh Export' }}
         </button>
+        <button @click="discoverGrabbers" :disabled="busy === 'discover'" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-60">
+          {{ busy === 'discover' ? 'Discovering...' : 'Discover Grabbers' }}
+        </button>
+        <button @click="runGrabbers" :disabled="busy === 'grabbers'" class="rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-100 hover:bg-violet-500/20 disabled:opacity-60">
+          {{ busy === 'grabbers' ? 'Running...' : 'Run Grabbers' }}
+        </button>
       </div>
     </div>
 
@@ -90,6 +96,79 @@
       </section>
     </div>
 
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5 xl:col-span-2">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-white">Grabber Catalog</h2>
+          <button @click="applyUkPolicy" :disabled="busy === 'policy'" class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/20 disabled:opacity-60">
+            {{ busy === 'policy' ? 'Applying...' : 'Use UK Sports Policy' }}
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="border-b border-slate-700 text-slate-400">
+              <tr>
+                <th class="py-2 text-left">Grabber</th>
+                <th class="py-2 text-left">Type</th>
+                <th class="py-2 text-left">State</th>
+                <th class="py-2 text-left">Last Run</th>
+                <th class="py-2 text-right">Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="grabber in grabbers" :key="grabber.id" class="border-b border-slate-800">
+                <td class="max-w-[320px] py-3 pr-3">
+                  <p class="truncate font-medium text-white">{{ grabber.name }}</p>
+                  <p class="truncate text-xs text-slate-500">{{ grabber.region || 'global' }} · {{ grabber.enabled ? 'enabled' : 'disabled' }}</p>
+                </td>
+                <td class="py-3 text-slate-300">{{ grabber.type }}</td>
+                <td class="py-3"><span class="rounded px-2 py-1 text-xs font-medium" :class="statusClass(grabber.status)">{{ grabber.installed ? grabber.status : 'missing' }}</span></td>
+                <td class="py-3 text-slate-400">{{ formatDate(grabber.last_run_at) }}</td>
+                <td class="max-w-[220px] truncate py-3 text-right text-slate-400">{{ grabber.output_path ? shortPath(grabber.output_path) : '-' }}</td>
+              </tr>
+              <tr v-if="grabbers.length === 0">
+                <td colspan="5" class="py-6 text-center text-slate-500">Discover grabbers to populate managed public feed and local tool entries.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
+        <h2 class="text-lg font-semibold text-white">Performance Health</h2>
+        <div class="mt-4 space-y-3 text-sm">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">EPG Runtime</span>
+            <span :class="performance.runtime_lock?.locked ? 'text-amber-300' : 'text-emerald-300'">{{ performance.runtime_lock?.locked ? 'Busy' : 'Free' }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Chunk Size</span>
+            <span class="text-slate-200">{{ performance.import_chunk_size || '-' }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Max Programmes</span>
+            <span class="text-slate-200">{{ performance.max_programmes || '-' }}</span>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Skipped Unchanged</span>
+            <span class="text-slate-200">{{ performance.skipped_unchanged_24h || 0 }}</span>
+          </div>
+          <div>
+            <p class="text-slate-400">Last Import</p>
+            <p class="mt-1 text-slate-200">{{ formatDate(performance.last_import?.finished_at) }}</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
+      <h2 class="mb-4 text-lg font-semibold text-white">Missing UK Sports Channels</h2>
+      <div v-if="missingChannels.length === 0" class="text-sm text-emerald-200">Expected UK sports channel guide coverage is present.</div>
+      <div v-else class="flex flex-wrap gap-2">
+        <span v-for="channel in missingChannels" :key="channel.canonical_channel_id" class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{{ channel.name }}</span>
+      </div>
+    </section>
+
     <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
       <h2 class="mb-4 text-lg font-semibold text-white">EPG Matches Review</h2>
       <div class="overflow-x-auto">
@@ -141,6 +220,21 @@
         </div>
       </div>
     </section>
+
+    <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
+      <h2 class="mb-4 text-lg font-semibold text-white">Recent Grabber Runs</h2>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div v-for="run in recentGrabberRuns" :key="run.id" class="rounded-lg border border-slate-700 bg-slate-900 p-3">
+          <div class="flex items-center justify-between gap-3">
+            <span class="rounded px-2 py-1 text-xs font-medium" :class="statusClass(run.status)">{{ run.status }}</span>
+            <span class="text-xs text-slate-500">{{ run.duration_ms || 0 }}ms</span>
+          </div>
+          <p class="mt-2 truncate text-xs text-slate-500">{{ run.type }} · {{ run.region || 'global' }}</p>
+          <p class="mt-2 text-sm text-slate-200">{{ bytes(run.output_bytes) }}</p>
+          <p v-if="run.error" class="mt-2 line-clamp-2 text-xs text-red-300">{{ run.error }}</p>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -156,8 +250,12 @@ const error = ref('')
 const summary = ref({})
 const sources = ref([])
 const recentRuns = ref([])
+const grabbers = ref([])
+const recentGrabberRuns = ref([])
 const reviewMatches = ref([])
 const exportHealth = ref({})
+const performance = ref({})
+const missingChannels = ref([])
 
 const tiles = computed(() => [
   { label: 'Sources', value: summary.value.source_count || 0, tone: 'text-white' },
@@ -178,8 +276,12 @@ async function load() {
     summary.value = data.summary || {}
     sources.value = data.sources || []
     recentRuns.value = data.recent_runs || []
+    grabbers.value = data.grabbers || []
+    recentGrabberRuns.value = data.recent_grabber_runs || []
     reviewMatches.value = data.review_matches || []
     exportHealth.value = data.export_health || {}
+    performance.value = data.performance_health || {}
+    missingChannels.value = data.missing_channels || []
   } catch (err) {
     error.value = err.response?.data?.error || err.message || 'Failed to load EPG provider state'
   } finally {
@@ -197,6 +299,18 @@ async function runMatch() {
 
 async function runExport() {
   return run('export', '/admin/sportsbot/epg-provider/export', { hours: 72 }, 'EPG export refreshed')
+}
+
+async function discoverGrabbers() {
+  return run('discover', '/admin/sportsbot/epg-provider/grabbers/discover', { region: 'UK' }, 'EPG grabbers discovered')
+}
+
+async function runGrabbers() {
+  return run('grabbers', '/admin/sportsbot/epg-provider/grabbers/run', { region: 'UK', import: true, export: true }, 'EPG grabber run complete')
+}
+
+async function applyUkPolicy() {
+  return run('policy', '/admin/sportsbot/epg-provider/policy/uk-sports', {}, 'UK sports source policy applied')
 }
 
 async function run(key, endpoint, payload, message) {
@@ -224,6 +338,7 @@ async function review(id, action) {
 
 function statusClass(status) {
   if (status === 'working' || status === 'auto_applied' || status === 'accepted') return 'bg-emerald-500/15 text-emerald-200'
+  if (status === 'available' || status === 'success' || status === 'skipped_unchanged') return 'bg-sky-500/15 text-sky-200'
   if (status === 'stale' || status === 'empty' || status === 'needs_review') return 'bg-amber-500/15 text-amber-200'
   if (status === 'blocked' || status === 'failed' || status === 'rejected') return 'bg-red-500/15 text-red-200'
   return 'bg-slate-700 text-slate-200'
@@ -251,6 +366,18 @@ function host(url) {
   } catch {
     return url || '-'
   }
+}
+
+function shortPath(value) {
+  return String(value || '').split('/').slice(-2).join('/')
+}
+
+function bytes(value) {
+  const count = Number(value || 0)
+  if (count <= 0) return 'No output'
+  if (count > 1024 * 1024) return `${(count / (1024 * 1024)).toFixed(1)} MB`
+  if (count > 1024) return `${(count / 1024).toFixed(1)} KB`
+  return `${count} B`
 }
 
 onMounted(load)

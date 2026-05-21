@@ -25,6 +25,10 @@ class SportsBotEpgSource extends Model
         'last_success_at',
         'last_failure_at',
         'last_error',
+        'etag',
+        'last_modified_header',
+        'content_hash',
+        'bytes_downloaded',
         'metadata',
     ];
 
@@ -36,5 +40,6 @@ class SportsBotEpgSource extends Model
         'last_success_at' => 'datetime',
         'last_failure_at' => 'datetime',
         'average_confidence' => 'float',
+        'bytes_downloaded' => 'integer',
     ];
 }
