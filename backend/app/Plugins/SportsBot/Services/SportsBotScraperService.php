@@ -8,8 +8,6 @@ use App\Plugins\SportsBot\Services\Scrapers\BroadcastScheduleScraper;
 use App\Plugins\SportsBot\Services\Scrapers\CombatPosterScraper;
 use App\Plugins\SportsBot\Services\Scrapers\F1ScheduleScraper;
 use App\Plugins\SportsBot\Services\Scrapers\RugbyLeagueTvScraper;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class SportsBotScraperService
 {

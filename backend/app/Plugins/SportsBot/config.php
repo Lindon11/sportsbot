@@ -853,6 +853,11 @@ return [
         'f1_schedule_search_queries' => $csv(env('SPORTSBOT_F1_SCHEDULE_SEARCH_QUERIES', '')),
     ],
 
+    'epg' => [
+        'feed_url' => env('SPORTSBOT_EPG_FEED_URL', ''),
+        'import_enabled' => env('SPORTSBOT_EPG_IMPORT_ENABLED', false),
+    ],
+
     'publishing' => [
         'tv_guide' => [
             'enabled' => env('SPORTSBOT_TV_GUIDE_SCHEDULE_ENABLED', false),
