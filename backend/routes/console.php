@@ -109,6 +109,12 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                 ->appendOutputTo(storage_path('logs/sportsbot-epg-import.log'));
         }
 
+        Schedule::command('sportsbot:uptime-check')
+            ->withoutOverlapping()
+            ->everyMinute()
+            ->onOneServer()
+            ->appendOutputTo(storage_path('logs/sportsbot-uptime.log'));
+
         if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {
             $highlights = Schedule::call(function (): void {
                 $module = app(\App\Plugins\SportsBot\Services\Content\HighlightsContentModule::class);
