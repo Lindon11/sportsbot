@@ -54,6 +54,10 @@ class MonitorBotTelegramNotifier
                     continue;
                 }
 
+                if ($target['message_thread_id'] !== null) {
+                    $this->closeTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
+                }
+
                 $results[] = [
                     'platform' => 'monitor_telegram',
                     'chat_id' => (string) $target['chat_id'],
@@ -115,6 +119,10 @@ class MonitorBotTelegramNotifier
                 if (!$ok) {
                     $failures[] = 'Telegram sendPhoto failed for monitor target ' . $target['chat_id'];
                     continue;
+                }
+
+                if ($target['message_thread_id'] !== null) {
+                    $this->closeTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
                 }
 
                 $results[] = [
@@ -239,6 +247,24 @@ class MonitorBotTelegramNotifier
                 ]);
         } catch (Throwable $error) {
             Log::debug('monitor_bot.telegram.reopen_topic_failed', [
+                'chat_id' => $chatId,
+                'message_thread_id' => $messageThreadId,
+                'error' => $error->getMessage(),
+            ]);
+        }
+    }
+
+    private function closeTopic(string $chatId, int $messageThreadId): void
+    {
+        try {
+            Http::asForm()
+                ->timeout(5)
+                ->post($this->apiUrl('closeForumTopic'), [
+                    'chat_id' => $chatId,
+                    'message_thread_id' => $messageThreadId,
+                ]);
+        } catch (Throwable $error) {
+            Log::debug('monitor_bot.telegram.close_topic_failed', [
                 'chat_id' => $chatId,
                 'message_thread_id' => $messageThreadId,
                 'error' => $error->getMessage(),
