@@ -33,10 +33,9 @@ for (const site of data.sites) {
 
   servicesHtml += `
   <div class="service">
-    <div class="icon">🌐</div>
+    <div class="icon">📡</div>
     <div>
       <div class="name">${site.name}</div>
-      <div class="url">${site.url}</div>
     </div>
     <div>
       <div class="bars">${barsHtml}</div>
