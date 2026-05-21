@@ -85,6 +85,10 @@ class TelegramNotifier implements NotifierInterface
                 $payload['message_thread_id'] = (string) $messageThreadId;
             }
 
+            if ($messageThreadId !== null) {
+                $this->reopenTopic($token, $chatId, $messageThreadId);
+            }
+
             try {
                 $response = Http::asForm()
                     ->timeout(15)
@@ -459,6 +463,10 @@ class TelegramNotifier implements NotifierInterface
                 $payload['message_thread_id'] = (string) $messageThreadId;
             }
 
+            if ($messageThreadId !== null) {
+                $this->reopenTopic($token, $chatId, $messageThreadId);
+            }
+
             try {
                 $response = Http::asMultipart()
                     ->attach('photo', file_get_contents($photoPath), basename($photoPath))
@@ -736,6 +744,19 @@ class TelegramNotifier implements NotifierInterface
             ]);
 
             return false;
+        }
+    }
+
+    private function reopenTopic(string $token, string $chatId, string $threadId): void
+    {
+        try {
+            Http::asForm()
+                ->timeout(5)
+                ->post("https://api.telegram.org/bot{$token}/reopenForumTopic", [
+                    'chat_id' => $chatId,
+                    'message_thread_id' => $threadId,
+                ]);
+        } catch (Throwable) {
         }
     }
 }
