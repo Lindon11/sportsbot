@@ -183,6 +183,12 @@ class SportsBotPublisher
                             $cardOptions['embed_url'] = $videoUrl;
                             $cardOptions['embed_title'] = '▶ Watch Highlights';
                             $cardOptions['embed_footer'] = 'Highlights';
+                        } else {
+                            $cardOptions['reply_markup'] = [
+                                'inline_keyboard' => [[
+                                    ['text' => '❌ No Highlights Available!', 'url' => 'https://google.com'],
+                                ]],
+                            ];
                         }
                     }
 
