@@ -260,9 +260,6 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
         $currentLeague = null;
 
         foreach ($highlights as $h) {
-            $leagueName = trim((string) ($h['league'] ?? ''));
-            $leagueChanged = $leagueName !== '' && $leagueName !== $currentLeague;
-
             try {
                 $eventId = $h['event_id'] ?? '';
                 $stats = [];
@@ -324,43 +321,16 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
                     'kind' => 'result',
                 ]);
                 $path = (string) ($card['path'] ?? '');
-                if ($path === '' || !is_file($path)) {
-                    continue;
+                if ($path !== '' && is_file($path)) {
+                    $cards[] = [
+                        'path' => $path,
+                        'type' => 'result',
+                        'event_id' => (string) ($h['event_id'] ?? ''),
+                        'event_name' => $h['event_name'],
+                        'video_url' => $h['video_url'],
+                        'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
+                    ];
                 }
-
-                // Only add league header after result card succeeds
-                if ($leagueChanged) {
-                    $currentLeague = $leagueName;
-                    try {
-                        $leagueCard = $this->cards->leagueCard([
-                            'name' => $leagueName,
-                            'sport' => SportsBotSports::providerSport($h['sport_key']),
-                            'badge' => $h['league_badge'] ?? '',
-                            'logo' => $h['league_badge'] ?? '',
-                            'date' => $h['date'] ?? '',
-                        ], $cardVersion, ['route_key' => TelegramRouteKeys::HIGHLIGHTS]);
-                        $leaguePath = (string) ($leagueCard['path'] ?? '');
-                        if ($leaguePath !== '' && is_file($leaguePath)) {
-                            $cards[] = [
-                                'path' => $leaguePath,
-                                'type' => 'league_header',
-                                'event_id' => '',
-                                'event_name' => $leagueName . ' Results',
-                                'video_url' => '',
-                            ];
-                        }
-                    } catch (Throwable) {
-                    }
-                }
-
-                $cards[] = [
-                    'path' => $path,
-                    'type' => 'result',
-                    'event_id' => (string) ($h['event_id'] ?? ''),
-                    'event_name' => $h['event_name'],
-                    'video_url' => $h['video_url'],
-                    'data_url' => 'data:image/png;base64,' . base64_encode((string) file_get_contents($path)),
-                ];
             } catch (Throwable) {
                 continue;
             }
