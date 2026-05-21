@@ -3336,21 +3336,60 @@ class SportsBotController extends Controller
 
     public function uptimeSites(): JsonResponse
     {
-        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(fn ($s) => [
-            'id' => $s->id,
-            'name' => $s->name,
-            'url' => $s->url,
-            'status' => $s->status,
-            'uptime_percentage' => $s->uptime_percentage,
-            'last_checked_at' => $s->last_checked_at?->diffForHumans(),
-            'last_online_at' => $s->last_online_at?->diffForHumans(),
-            'consecutive_failures' => $s->consecutive_failures,
-            'failure_threshold' => $s->failure_threshold,
-            'check_interval_seconds' => $s->check_interval_seconds,
-            'alert_route_key' => $s->alert_route_key,
-            'alerts_enabled' => $s->alerts_enabled,
-            'enabled' => $s->enabled,
-        ]);
+        $thirtyDaysAgo = now()->subDays(30);
+
+        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(function ($s) use ($thirtyDaysAgo) {
+            $dailyStatus = [];
+            $cursor = $thirtyDaysAgo->copy()->startOfDay();
+
+            for ($day = 0; $day < 30; $day++) {
+                $dayStart = $cursor->copy();
+                $dayEnd = $cursor->copy()->endOfDay();
+
+                $failCount = SportsBotUptimeLog::where('site_id', $s->id)
+                    ->where('checked_at', '>=', $dayStart)
+                    ->where('checked_at', '<=', $dayEnd)
+                    ->where('status', 'offline')
+                    ->count();
+
+                $totalCount = SportsBotUptimeLog::where('site_id', $s->id)
+                    ->where('checked_at', '>=', $dayStart)
+                    ->where('checked_at', '<=', $dayEnd)
+                    ->count();
+
+                if ($totalCount === 0) {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'none'];
+                } elseif ($failCount === 0) {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'up'];
+                } elseif ($failCount === $totalCount) {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'down'];
+                } else {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'degraded'];
+                }
+
+                $cursor->addDay();
+            }
+
+            return [
+                'id' => $s->id,
+                'name' => $s->name,
+                'url' => $s->url,
+                'status' => $s->status,
+                'uptime_percentage' => $s->uptime_percentage,
+                'last_checked_at' => $s->last_checked_at?->diffForHumans(),
+                'last_online_at' => $s->last_online_at?->diffForHumans(),
+                'last_offline_at' => $s->last_offline_at?->diffForHumans(),
+                'consecutive_failures' => $s->consecutive_failures,
+                'failure_threshold' => $s->failure_threshold,
+                'check_interval_seconds' => $s->check_interval_seconds,
+                'alert_route_key' => $s->alert_route_key,
+                'alerts_enabled' => $s->alerts_enabled,
+                'enabled' => $s->enabled,
+                'total_checks' => $s->total_checks,
+                'total_failures' => $s->total_failures,
+                'daily_status' => $dailyStatus,
+            ];
+        });
 
         return response()->json(['sites' => $sites]);
     }
