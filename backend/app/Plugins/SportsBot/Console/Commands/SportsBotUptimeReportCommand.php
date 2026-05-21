@@ -74,7 +74,7 @@ class SportsBotUptimeReportCommand extends Command
 
         if ($send && is_file($outputPath)) {
             try {
-                $notifier->sendPhoto($outputPath, 'Uptime report');
+                $notifier->sendPhoto($outputPath, '');
                 $this->info('Sent through Monitor Bot');
             } catch (Throwable $e) {
                 $this->error("Send failed: {$e->getMessage()}");
