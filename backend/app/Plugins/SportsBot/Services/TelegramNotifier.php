@@ -123,6 +123,10 @@ class TelegramNotifier implements NotifierInterface
                     ]),
                 ]);
 
+                if ($messageThreadId !== null) {
+                    $this->closeTopicInChat($token, $chatId, $messageThreadId);
+                }
+
                 $results[] = [
                     'chat_id' => $chatId,
                     'message_thread_id' => $messageThreadId,
@@ -494,6 +498,10 @@ class TelegramNotifier implements NotifierInterface
                     'sent_at' => now(),
                     'payload' => array_merge((array) $logRow->payload, ['telegram_response' => $responseBody]),
                 ]);
+
+                if ($messageThreadId !== null) {
+                    $this->closeTopicInChat($token, $chatId, $messageThreadId);
+                }
 
                 $results[] = [
                     'chat_id' => $chatId,
