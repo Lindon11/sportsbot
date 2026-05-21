@@ -17,39 +17,29 @@ const date = new Date().toLocaleDateString('en-US', {
   month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
 });
 
+let anyDown = false;
 let servicesHtml = '';
 for (const site of data.sites) {
   const isOnline = site.status === 'online';
-  const pct = site.uptime_percentage || 100;
-  const pctClass = pct >= 99 ? '' : pct >= 95 ? 'warn' : 'down';
-  const dotClass = isOnline ? '' : 'down';
-
-  let barsHtml = '';
-  const days = site.daily_status || [];
-  for (const d of days) {
-    const barClass = d.status === 'up' ? '' : d.status === 'degraded' ? 'warn' : d.status === 'down' ? 'down' : 'none';
-    barsHtml += `<span class="bar ${barClass}"></span>`;
-  }
+  if (!isOnline) anyDown = true;
+  const badgeClass = isOnline ? 'up' : 'down';
+  const badgeText = isOnline ? 'Operational' : 'Experiencing downtime';
 
   servicesHtml += `
-  <div class="service">
+  <div class="site">
     <div class="icon">📡</div>
-    <div>
-      <div class="name">${site.name}</div>
-    </div>
-    <div>
-      <div class="bars">${barsHtml}</div>
-      <div class="days">Last 30 days</div>
-    </div>
-    <div class="stats">
-      <div><span class="status-dot ${dotClass}"></span><span class="percent ${pctClass}">${pct.toFixed(3)}%</span></div>
-      <div>uptime</div>
-      <div>${site.avg_response || '-'}</div>
-    </div>
+    <div class="name">${site.name}</div>
+    <div class="badge ${badgeClass}">${badgeText}</div>
   </div>`;
 }
 
-const html = template.replace('{{DATE}}', date).replace('{{SERVICES}}', servicesHtml);
+const statusClass = anyDown ? 'down' : '';
+const statusMsg = anyDown ? 'Experiencing downtime' : 'System now online';
+const html = template
+  .replace('{{STATUS_CLASS}}', statusClass)
+  .replace('{{STATUS_MSG}}', statusMsg)
+  .replace('{{DATE}}', date)
+  .replace('{{SERVICES}}', servicesHtml);
 
 (async () => {
   const browser = await puppeteer.launch({

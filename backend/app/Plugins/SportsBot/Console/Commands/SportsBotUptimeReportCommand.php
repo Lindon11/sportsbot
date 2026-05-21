@@ -38,19 +38,9 @@ class SportsBotUptimeReportCommand extends Command
 
         $sitesData = [];
         foreach ($sites as $site) {
-            $dailyStatus = $this->buildDailyStatus($site, $days);
-            $avgResponse = SportsBotUptimeLog::where('site_id', $site->id)
-                ->whereNotNull('response_time_ms')
-                ->where('checked_at', '>=', now()->subDays($days))
-                ->avg('response_time_ms');
-
             $sitesData[] = [
                 'name' => $site->name,
-                'url' => $site->url,
                 'status' => $site->status,
-                'uptime_percentage' => $site->uptime_percentage,
-                'avg_response' => $avgResponse ? 'Avg ' . round($avgResponse) . 'ms' : '-',
-                'daily_status' => $dailyStatus,
             ];
         }
 
