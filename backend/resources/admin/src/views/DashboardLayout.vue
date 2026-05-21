@@ -443,6 +443,7 @@ const pageTitle = computed(() => {
     '/sportsbot/telegram-settings': 'SportsBot Telegram Settings',
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
     '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
+    '/sportsbot/uptime': 'SportsBot Uptime Monitor',
     '/sportsbot/update': 'SportsBot Update',
   }
 

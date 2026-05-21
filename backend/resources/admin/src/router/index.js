@@ -230,6 +230,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotFixtureQueueView.vue')
         },
         {
+          path: '/sportsbot/uptime',
+          name: 'sportsbot-uptime',
+          component: () => import('../views/SportsBotUptimeMonitorView.vue')
+        },
+        {
           path: '/sportsbot/update',
           name: 'sportsbot-update',
           component: () => import('../views/SportsBotUpdateView.vue')

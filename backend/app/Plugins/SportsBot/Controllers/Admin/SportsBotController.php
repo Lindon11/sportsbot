@@ -6,6 +6,8 @@ use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotHighlightSent;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
+use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
+use App\Plugins\SportsBot\Models\SportsBotUptimeLog;
 use App\Plugins\SportsBot\Models\SportsBotPipelineRun;
 use App\Plugins\SportsBot\Models\SportsBotRun;
 use App\Plugins\SportsBot\Models\SportsBotSentAlert;
@@ -3330,5 +3332,86 @@ class SportsBotController extends Controller
         }
 
         return $cleaned !== [] ? $cleaned : null;
+    }
+
+    public function uptimeSites(): JsonResponse
+    {
+        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(fn ($s) => [
+            'id' => $s->id,
+            'name' => $s->name,
+            'url' => $s->url,
+            'status' => $s->status,
+            'uptime_percentage' => $s->uptime_percentage,
+            'last_checked_at' => $s->last_checked_at?->diffForHumans(),
+            'last_online_at' => $s->last_online_at?->diffForHumans(),
+            'consecutive_failures' => $s->consecutive_failures,
+            'failure_threshold' => $s->failure_threshold,
+            'check_interval_seconds' => $s->check_interval_seconds,
+            'alert_route_key' => $s->alert_route_key,
+            'alerts_enabled' => $s->alerts_enabled,
+            'enabled' => $s->enabled,
+        ]);
+
+        return response()->json(['sites' => $sites]);
+    }
+
+    public function uptimeSiteCreate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'url' => ['required', 'url', 'max:500'],
+            'check_interval_seconds' => ['sometimes', 'integer', 'min:60', 'max:86400'],
+            'timeout_seconds' => ['sometimes', 'integer', 'min:3', 'max:60'],
+            'failure_threshold' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'alerts_enabled' => ['sometimes', 'boolean'],
+            'alert_route_key' => ['sometimes', 'string', 'max:60'],
+        ]);
+
+        $site = SportsBotUptimeSite::create($validated);
+
+        return response()->json(['site' => $site->fresh()], 201);
+    }
+
+    public function uptimeSiteUpdate(Request $request, int $id): JsonResponse
+    {
+        $site = SportsBotUptimeSite::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:120'],
+            'url' => ['sometimes', 'url', 'max:500'],
+            'check_interval_seconds' => ['sometimes', 'integer', 'min:60', 'max:86400'],
+            'timeout_seconds' => ['sometimes', 'integer', 'min:3', 'max:60'],
+            'failure_threshold' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'enabled' => ['sometimes', 'boolean'],
+            'alerts_enabled' => ['sometimes', 'boolean'],
+            'alert_route_key' => ['sometimes', 'string', 'max:60'],
+        ]);
+
+        $site->update($validated);
+
+        return response()->json(['site' => $site->fresh()]);
+    }
+
+    public function uptimeSiteDelete(int $id): JsonResponse
+    {
+        SportsBotUptimeSite::findOrFail($id)->delete();
+        return response()->json(['deleted' => true]);
+    }
+
+    public function uptimeLogs(int $id): JsonResponse
+    {
+        $logs = SportsBotUptimeLog::where('site_id', $id)
+            ->orderByDesc('checked_at')
+            ->limit(100)
+            ->get()
+            ->map(fn ($l) => [
+                'status' => $l->status,
+                'status_code' => $l->status_code,
+                'response_time_ms' => $l->response_time_ms,
+                'error' => $l->error,
+                'checked_at' => $l->checked_at->diffForHumans(),
+            ]);
+
+        return response()->json(['logs' => $logs]);
     }
 }

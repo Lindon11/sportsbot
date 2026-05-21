@@ -71,6 +71,13 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::post('/telegram/webhook/set', [SportsBotController::class, 'setTelegramWebhook'])->name('telegram.webhook.set');
     Route::delete('/telegram/webhook', [SportsBotController::class, 'deleteTelegramWebhook'])->name('telegram.webhook.delete');
 
+    // Uptime Monitor
+    Route::get('/uptime', [SportsBotController::class, 'uptimeSites'])->name('uptime');
+    Route::post('/uptime', [SportsBotController::class, 'uptimeSiteCreate'])->name('uptime.create');
+    Route::put('/uptime/{id}', [SportsBotController::class, 'uptimeSiteUpdate'])->name('uptime.update');
+    Route::delete('/uptime/{id}', [SportsBotController::class, 'uptimeSiteDelete'])->name('uptime.delete');
+    Route::get('/uptime/{id}/logs', [SportsBotController::class, 'uptimeLogs'])->name('uptime.logs');
+
     // Update
     Route::get('/update/check', [UpdateController::class, 'check'])->name('update.check');
     Route::post('/update/run', [UpdateController::class, 'update'])->name('update.run');
