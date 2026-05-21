@@ -90,15 +90,6 @@ class SportsBotUptimeReportCommand extends Command
         $font = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
         $fontRegular = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
 
-        // Title
-        $this->drawText($img, $font, "📊 Uptime — {$site->name}", 55, 65, 24, $white);
-        $this->drawText($img, $fontRegular, "{$days}-day history  •  {$days} days", 55, 98, 14, $dim);
-
-        // Uptime percentage badge
-        $pct = $site->uptime_percentage;
-        $pctColor = $pct >= 99 ? $green : ($pct >= 95 ? $amber : $red);
-        $this->drawText($img, $font, "{$pct}%", $w - 160, 65, 36, $pctColor);
-
         // Status bar
         $last30 = SportsBotUptimeLog::where('site_id', $site->id)
             ->where('checked_at', '>=', now()->subDays($days))
@@ -134,12 +125,6 @@ class SportsBotUptimeReportCommand extends Command
         $startX = $pad;
         $now = now()->startOfDay();
 
-        // Legend
-        $legendY = 118;
-        $this->drawText($img, $fontRegular, "■ Up", $w - 320, $legendY, 12, $green);
-        $this->drawText($img, $fontRegular, "■ Degraded", $w - 220, $legendY, 12, $amber);
-        $this->drawText($img, $fontRegular, "■ Down", $w - 90, $legendY, 12, $red);
-
         $totalOnline = 0;
         $totalDays = 0;
 
@@ -174,11 +159,6 @@ class SportsBotUptimeReportCommand extends Command
 
         // Baseline
         imageline($img, $pad, $chartBottom, $w - $pad - 30, $chartBottom, $gray);
-
-        // Date labels
-        $this->drawText($img, $fontRegular, $now->copy()->subDays($days - 1)->format('M j'), $startX, $chartBottom + 20, 11, $dim);
-        $this->drawText($img, $fontRegular, $now->format('M j'), $w - $pad - 60, $chartBottom + 20, 11, $dim);
-        $this->drawText($img, $fontRegular, "Today", $w - $pad - 60, $chartBottom + 38, 11, $dim);
 
         $path = storage_path("app/sportsbot/cards/uptime-{$site->id}-" . time() . ".png");
         @mkdir(dirname($path), 0755, true);
