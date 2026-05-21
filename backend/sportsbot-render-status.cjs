@@ -54,13 +54,16 @@ const html = template.replace('{{DATE}}', date).replace('{{SERVICES}}', services
 (async () => {
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=medium'],
   });
   const page = await browser.newPage();
-  await page.setViewport({ width: 1200, height: 800 });
+  await page.setViewport({ width: 1200, height: 1200, deviceScaleFactor: 2 });
   await page.setContent(html, { waitUntil: 'networkidle0' });
+  await page.emulateMediaType('screen');
+  await page.evaluateHandle('document.fonts.ready');
   const el = await page.$('.status-card');
-  await el.screenshot({ path: outputPath, omitBackground: true });
+  const box = await el.boundingBox();
+  await el.screenshot({ path: outputPath, omitBackground: true, clip: { x: box.x, y: box.y, width: box.width, height: box.height } });
   await browser.close();
   console.log('Rendered:', outputPath);
 })();
