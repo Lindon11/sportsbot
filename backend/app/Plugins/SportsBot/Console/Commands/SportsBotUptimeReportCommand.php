@@ -47,7 +47,7 @@ class SportsBotUptimeReportCommand extends Command
 
             if ($send) {
                 try {
-                    $notifier->sendPhoto($path, "📊 Uptime: {$site->name} ({$days}d)", [
+                    $notifier->sendPhoto($path, '📊', [
                         'route_key' => $route,
                         'type' => 'UPTIME_REPORT',
                     ]);
@@ -64,48 +64,49 @@ class SportsBotUptimeReportCommand extends Command
     private function renderReport(SportsBotUptimeSite $site, int $days): ?string
     {
         $w = 1200;
-        $h = 630;
-        $pad = 50;
-        $chartTop = 140;
-        $chartBottom = $h - 80;
-        $chartH = $chartBottom - $chartTop;
+        $h = 400;
+        $padX = 50;
+        $padY = 30;
+        $chartW = $w - $padX * 2;
+        $chartH = $h - $padY * 2;
 
         $img = imagecreatetruecolor($w, $h);
         if (!$img) return null;
 
-        $bg = imagecolorallocate($img, 7, 17, 31);
-        $card = imagecolorallocate($img, 15, 26, 44);
+        $bg = imagecolorallocate($img, 10, 20, 35);
+        $card = imagecolorallocate($img, 17, 30, 50);
         $green = imagecolorallocate($img, 34, 197, 94);
         $red = imagecolorallocate($img, 239, 68, 68);
         $amber = imagecolorallocate($img, 250, 204, 21);
-        $gray = imagecolorallocate($img, 51, 65, 85);
-        $white = imagecolorallocate($img, 248, 250, 252);
-        $dim = imagecolorallocate($img, 148, 163, 184);
-        $dark = imagecolorallocate($img, 30, 41, 59);
+        $dark = imagecolorallocate($img, 25, 40, 60);
+        $gridColor = imagecolorallocate($img, 25, 40, 60);
 
         imagefilledrectangle($img, 0, 0, $w, $h, $bg);
-        imagefilledrectangle($img, 30, 20, $w - 30, $h - 20, $card);
-        imagerectangle($img, 30, 20, $w - 30, $h - 20, $dark);
 
-        $font = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-        $fontRegular = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+        $chartLeft = $padX + 5;
+        $chartRight = $w - $padX - 5;
+        $chartTop = $padY + 5;
+        $chartBottom = $h - $padY - 5;
+        $barArea = $chartBottom - $chartTop;
 
-        // Status bar
+        // Grid lines
+        for ($i = 0; $i <= 4; $i++) {
+            $y = $chartTop + ($barArea / 4) * $i;
+            imageline($img, $chartLeft, (int) $y, $chartRight, (int) $y, $gridColor);
+        }
+
         $last30 = SportsBotUptimeLog::where('site_id', $site->id)
             ->where('checked_at', '>=', now()->subDays($days))
             ->orderBy('checked_at')
             ->get();
 
         if ($last30->isEmpty()) {
-            $this->drawText($img, $fontRegular, "No data yet", 55, 300, 20, $dim);
             $path = storage_path("app/sportsbot/cards/uptime-{$site->id}.png");
-            @mkdir(dirname($path), 0755, true);
             imagepng($img, $path);
             imagedestroy($img);
             return $path;
         }
 
-        // Group by day
         $daily = [];
         foreach ($last30 as $log) {
             $date = $log->checked_at->toDateString();
@@ -118,47 +119,40 @@ class SportsBotUptimeReportCommand extends Command
             }
         }
 
-        // Generate last X days including empty ones
-        $barW = max(8, ($w - $pad * 2 - 60) / $days);
-        $gap = max(2, $barW * 0.25);
-        $barTotalW = $barW + $gap;
-        $startX = $pad;
+        $barTotalW = $chartW / $days;
+        $barW = max(4, $barTotalW - 2);
         $now = now()->startOfDay();
-
-        $totalOnline = 0;
-        $totalDays = 0;
 
         for ($i = $days - 1; $i >= 0; $i--) {
             $date = $now->copy()->subDays($i)->toDateString();
-            $x = $startX + ($days - 1 - $i) * $barTotalW;
+            $x = $chartLeft + ($days - 1 - $i) * $barTotalW;
             $dayData = $daily[$date] ?? null;
 
             if ($dayData && $dayData['total'] > 0) {
-                $totalDays++;
                 $failPct = $dayData['fail'] / $dayData['total'];
                 if ($failPct === 0) {
                     $color = $green;
-                    $totalOnline++;
                 } elseif ($failPct >= 0.9) {
                     $color = $red;
                 } else {
                     $color = $amber;
                 }
-                $barH = $chartH;
+                $barH = $barArea;
             } else {
                 $color = $dark;
-                $barH = 4;
+                $barH = 3;
             }
 
             $x1 = (int) $x;
             $y1 = (int) ($chartBottom - $barH);
             $x2 = (int) ($x + $barW);
             $y2 = (int) $chartBottom;
-            imagefilledrectangle($img, $x1, $y1, $x2, $y2, $color);
-        }
 
-        // Baseline
-        imageline($img, $pad, $chartBottom, $w - $pad - 30, $chartBottom, $gray);
+            // Rounded top
+            $radius = min(3, (int) ($barW / 2));
+            imagefilledrectangle($img, $x1, $y1 + $radius, $x2, $y2, $color);
+            imagefilledellipse($img, (int) ($x1 + $x2) / 2, $y1 + $radius, $x2 - $x1, $radius * 2, $color);
+        }
 
         $path = storage_path("app/sportsbot/cards/uptime-{$site->id}-" . time() . ".png");
         @mkdir(dirname($path), 0755, true);
@@ -166,10 +160,5 @@ class SportsBotUptimeReportCommand extends Command
         imagedestroy($img);
 
         return $path;
-    }
-
-    private function drawText($img, $font, string $text, int $x, int $y, int $size, $color): void
-    {
-        @imagettftext($img, $size, 0, $x, $y, $color, $font, $text);
     }
 }
