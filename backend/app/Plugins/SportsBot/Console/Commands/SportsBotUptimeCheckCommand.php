@@ -62,7 +62,7 @@ class SportsBotUptimeCheckCommand extends Command
 
         try {
             $response = Http::timeout($site->timeout_seconds)
-                ->withHeaders(['User-Agent' => 'SportsBot-Uptime/1.0'])
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; MonitoringBot/1.0)'])
                 ->get($site->url);
 
             $statusCode = $response->status();
