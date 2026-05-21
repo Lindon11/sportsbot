@@ -3357,14 +3357,14 @@ class SportsBotController extends Controller
                     ->where('checked_at', '<=', $dayEnd)
                     ->count();
 
-                if ($totalCount > 0) {
-                    if ($failCount === 0) {
-                        $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'up'];
-                    } elseif ($failCount === $totalCount) {
-                        $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'down'];
-                    } else {
-                        $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'degraded'];
-                    }
+                if ($totalCount === 0) {
+                    $dailyStatus[] = ['day' => $day, 'status' => 'none'];
+                } elseif ($failCount === 0) {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'up'];
+                } elseif ($failCount === $totalCount) {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'down'];
+                } else {
+                    $dailyStatus[] = ['day' => $day, 'label' => $cursor->format('M j'), 'status' => 'degraded'];
                 }
 
                 $cursor->addDay();
