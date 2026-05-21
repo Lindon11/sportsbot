@@ -23,18 +23,17 @@ for (const site of data.sites) {
   const isOnline = site.status === 'online';
   if (!isOnline) anyDown = true;
   const badgeClass = isOnline ? 'up' : 'down';
-  const badgeText = isOnline ? 'Operational' : 'Experiencing downtime';
+  const badgeText = isOnline ? 'Operational' : 'Downtime';
 
   servicesHtml += `
-  <div class="site">
-    <div class="icon">📡</div>
+  <div class="row">
     <div class="name">${site.name}</div>
-    <div class="badge ${badgeClass}">${badgeText}</div>
+    <span class="badge ${badgeClass}">${badgeText}</span>
   </div>`;
 }
 
 const statusClass = anyDown ? 'down' : '';
-const statusMsg = anyDown ? 'Experiencing downtime' : 'System now online';
+const statusMsg = anyDown ? '<span class="down">Experiencing downtime</span>' : '<span class="up">All systems operational</span>';
 const html = template
   .replace('{{STATUS_CLASS}}', statusClass)
   .replace('{{STATUS_MSG}}', statusMsg)
