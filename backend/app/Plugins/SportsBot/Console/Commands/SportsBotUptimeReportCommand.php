@@ -61,7 +61,7 @@ class SportsBotUptimeReportCommand extends Command
 
         file_put_contents($inputPath, json_encode(['sites' => $sitesData]));
 
-        $script = base_path('sportsbot-render-status.js');
+        $script = base_path('sportsbot-render-status.cjs');
         if (!is_file($script)) {
             $this->error('Render script not found');
             return Command::FAILURE;
