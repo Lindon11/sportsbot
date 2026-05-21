@@ -68,7 +68,7 @@ class SportsBotUptimeCheckCommand extends Command
             $statusCode = $response->status();
             $body = $response->body();
 
-            if (!$response->successful()) {
+            if ($statusCode >= 500) {
                 $status = 'offline';
                 $error = "HTTP {$statusCode}";
             } elseif ($site->expected_keyword && !str_contains($body, $site->expected_keyword)) {
