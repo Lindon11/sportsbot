@@ -50,7 +50,7 @@ const html = template
   await page.setContent(html, { waitUntil: 'networkidle0' });
   await page.emulateMediaType('screen');
   await page.evaluateHandle('document.fonts.ready');
-  const el = await page.$('.status-card');
+  const el = await page.$('.card');
   const box = await el.boundingBox();
   await el.screenshot({ path: outputPath, omitBackground: true, clip: { x: box.x, y: box.y, width: box.width, height: box.height } });
   await browser.close();
