@@ -2,25 +2,32 @@
 
 namespace App\Plugins\SportsBot\Console\Commands;
 
+use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Models\SportsBotUptimeLog;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
-use App\Plugins\SportsBot\Services\SportsBotNotifier;
-use App\Plugins\SportsBot\Support\TelegramRouteKeys;
-use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Throwable;
 
 class SportsBotUptimeCheckCommand extends Command
 {
-    protected $signature = 'sportsbot:uptime-check
+    protected $signature = 'monitor:uptime-check
         {--site= : Check a specific site by ID}
         {--force : Force check all sites regardless of interval}';
 
-    protected $description = 'Check uptime for all monitored sites and send alerts';
+    protected $description = 'Check uptime for monitored sites and send Monitor Bot Telegram alerts';
 
-    public function handle(SportsBotNotifier $notifier): int
+    public function handle(MonitorBotTelegramNotifier $notifier): int
     {
+        if (!Schema::hasTable('sportsbot_uptime_sites') || !Schema::hasTable('sportsbot_uptime_logs')) {
+            $this->warn('Uptime monitor tables are missing. Run migrations before enabling Monitor Bot uptime checks.');
+
+            return Command::SUCCESS;
+        }
+
         $sites = $this->getSites();
 
         if ($sites->isEmpty()) {
@@ -45,15 +52,15 @@ class SportsBotUptimeCheckCommand extends Command
 
         $force = $this->option('force');
         if (!$force) {
-            $sites = $query->get()->filter(fn (SportsBotUptimeSite $s) =>
+            return $query->get()->filter(fn (SportsBotUptimeSite $s) =>
                 $s->last_checked_at === null || $s->last_checked_at->diffInSeconds(now()) >= $s->check_interval_seconds
-            );
+            )->values();
         }
 
         return $query->get();
     }
 
-    private function checkSite(SportsBotUptimeSite $site, SportsBotNotifier $notifier): void
+    private function checkSite(SportsBotUptimeSite $site, MonitorBotTelegramNotifier $notifier): void
     {
         $start = microtime(true);
         $status = 'online';
@@ -91,7 +98,7 @@ class SportsBotUptimeCheckCommand extends Command
             'checked_at' => now(),
         ]);
 
-        $wasOnline = $site->isOnline();
+        $wasOffline = $site->status === 'offline';
         $site->last_checked_at = now();
         $site->total_checks++;
 
@@ -100,8 +107,8 @@ class SportsBotUptimeCheckCommand extends Command
             $site->last_online_at = now();
             $site->consecutive_failures = 0;
 
-            if (!$wasOnline) {
-                $this->sendAlert($site, 'recovered', $notifier, $responseTime);
+            if ($wasOffline) {
+                $this->sendAlert($site, 'recovered', $notifier, $responseTime, null, $statusCode);
             }
         } else {
             $site->consecutive_failures++;
@@ -111,8 +118,8 @@ class SportsBotUptimeCheckCommand extends Command
                 $site->status = 'offline';
                 $site->last_offline_at = now();
 
-                if ($wasOnline) {
-                    $this->sendAlert($site, 'down', $notifier, $responseTime, $error);
+                if (!$wasOffline) {
+                    $this->sendAlert($site, 'down', $notifier, $responseTime, $error, $statusCode);
                 }
             }
         }
@@ -126,27 +133,99 @@ class SportsBotUptimeCheckCommand extends Command
         $this->line("[{$site->name}] {$status} ({$responseTime}ms)" . ($error ? " - {$error}" : ''));
     }
 
-    private function sendAlert(SportsBotUptimeSite $site, string $type, SportsBotNotifier $notifier, int $responseTime, ?string $error = null): void
+    private function sendAlert(SportsBotUptimeSite $site, string $type, MonitorBotTelegramNotifier $notifier, int $responseTime, ?string $error = null, ?int $statusCode = null): void
     {
         if (!$site->alerts_enabled) {
             return;
         }
 
-        $routeKey = $site->alert_route_key ?: TelegramRouteKeys::DEFAULT;
+        $isDown = $type === 'down';
+        $siteName = trim((string) $site->name);
+        $captionName = htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $caption = $isDown
+            ? "⚠️ <b>{$captionName}</b> is experiencing downtime. Please wait for an update."
+            : "✅ <b>{$captionName}</b> is now online.";
 
-        if ($type === 'down') {
-            $message = "🚨 <b>DOWN:</b> {$site->name}\n<b>Error:</b> {$error}";
-        } else {
-            $message = "✅ <b>RECOVERED:</b> {$site->name}\n<b>Response:</b> {$responseTime}ms";
+        if (!$notifier->configured()) {
+            Log::warning('monitor_bot.telegram.not_configured', [
+                'site_id' => $site->id,
+                'type' => $type,
+            ]);
+
+            return;
         }
 
         try {
-            $notifier->send($message, [
-                'route_key' => $routeKey,
-                'type' => 'UPTIME_ALERT',
-                'parse_mode' => 'HTML',
+            $cardPath = $this->renderAlertCard($site, $type, $responseTime, $error, $statusCode);
+            $notifier->sendPhoto($cardPath, $caption);
+        } catch (Throwable $error) {
+            Log::warning('monitor_bot.uptime.card_alert_failed', [
+                'site_id' => $site->id,
+                'type' => $type,
+                'error' => $error->getMessage(),
             ]);
-        } catch (Throwable) {
+
+            try {
+                $notifier->sendMessage($caption);
+            } catch (Throwable $fallbackError) {
+                Log::warning('monitor_bot.uptime.text_alert_failed', [
+                    'site_id' => $site->id,
+                    'type' => $type,
+                    'error' => $fallbackError->getMessage(),
+                ]);
+            }
         }
+    }
+
+    private function renderAlertCard(SportsBotUptimeSite $site, string $type, int $responseTime, ?string $error, ?int $statusCode): string
+    {
+        $dir = storage_path('app/monitor-bot/cards');
+        @mkdir($dir, 0755, true);
+
+        $stamp = now()->format('YmdHis');
+        $inputPath = $dir . '/uptime-alert-input-' . $site->id . '-' . $stamp . '.json';
+        $outputPath = $dir . '/uptime-alert-' . $site->id . '-' . $stamp . '.png';
+
+        $status = $type === 'down' ? 'offline' : 'online';
+        $payload = [
+            'mode' => 'alert',
+            'type' => $type,
+            'checked_at' => now()->toIso8601String(),
+            'title' => $type === 'down' ? 'Server Experiencing Downtime' : 'Server Is Now Online',
+            'message' => $type === 'down'
+                ? "{$site->name} is currently experiencing downtime. Please wait for an update."
+                : "{$site->name} is now back online and operating normally.",
+            'sites' => [[
+                'name' => $site->name,
+                'url' => $site->url,
+                'status' => $status,
+                'status_code' => $statusCode,
+                'response_time_ms' => $responseTime,
+                'error' => $error,
+            ]],
+        ];
+
+        file_put_contents($inputPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        $script = base_path('sportsbot-render-status.cjs');
+        if (!is_file($script)) {
+            @unlink($inputPath);
+            throw new RuntimeException('Render script not found');
+        }
+
+        $command = sprintf(
+            'node %s %s %s 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($inputPath),
+            escapeshellarg($outputPath)
+        );
+        exec($command, $output, $exitCode);
+        @unlink($inputPath);
+
+        if ($exitCode !== 0 || !is_file($outputPath)) {
+            throw new RuntimeException('Render failed: ' . implode("\n", $output));
+        }
+
+        return $outputPath;
     }
 }

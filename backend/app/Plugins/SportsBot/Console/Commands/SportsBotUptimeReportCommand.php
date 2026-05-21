@@ -2,30 +2,33 @@
 
 namespace App\Plugins\SportsBot\Console\Commands;
 
+use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Models\SportsBotUptimeLog;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
-use App\Plugins\SportsBot\Services\SportsBotNotifier;
-use App\Plugins\SportsBot\Support\TelegramRouteKeys;
-use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class SportsBotUptimeReportCommand extends Command
 {
-    protected $signature = 'sportsbot:uptime-report
+    protected $signature = 'monitor:uptime-report
         {--site= : Site ID to report on (default: all)}
         {--days=30 : Number of days to show}
-        {--send : Send report to Telegram}
-        {--route= : Route key to send to}';
+        {--send : Send report through the Monitor Bot Telegram account}';
 
-    protected $description = 'Generate and optionally send an uptime report card via Puppeteer';
+    protected $description = 'Generate and optionally send a Monitor Bot uptime report card';
 
-    public function handle(SportsBotNotifier $notifier): int
+    public function handle(MonitorBotTelegramNotifier $notifier): int
     {
+        if (!Schema::hasTable('sportsbot_uptime_sites') || !Schema::hasTable('sportsbot_uptime_logs')) {
+            $this->warn('Uptime monitor tables are missing. Run migrations before generating reports.');
+
+            return Command::SUCCESS;
+        }
+
         $days = max(7, min(90, (int) $this->option('days')));
         $siteId = $this->option('site');
         $send = (bool) $this->option('send');
-        $route = $this->option('route') ?: TelegramRouteKeys::HIGHLIGHTS;
 
         $sites = $siteId
             ? SportsBotUptimeSite::where('id', (int) $siteId)->get()
@@ -44,7 +47,7 @@ class SportsBotUptimeReportCommand extends Command
             ];
         }
 
-        $dir = storage_path('app/sportsbot/cards');
+        $dir = storage_path('app/monitor-bot/cards');
         @mkdir($dir, 0755, true);
         $inputPath = $dir . '/uptime-input-' . time() . '.json';
         $outputPath = $dir . '/uptime-' . time() . '.png';
@@ -57,7 +60,7 @@ class SportsBotUptimeReportCommand extends Command
             return Command::FAILURE;
         }
 
-        $cmd = "node {$script} {$inputPath} {$outputPath} 2>&1";
+        $cmd = sprintf('node %s %s %s 2>&1', escapeshellarg($script), escapeshellarg($inputPath), escapeshellarg($outputPath));
         exec($cmd, $output, $exitCode);
 
         @unlink($inputPath);
@@ -71,11 +74,8 @@ class SportsBotUptimeReportCommand extends Command
 
         if ($send && is_file($outputPath)) {
             try {
-                $notifier->sendPhoto($outputPath, '📊', [
-                    'route_key' => $route,
-                    'type' => 'UPTIME_REPORT',
-                ]);
-                $this->info("Sent to {$route}");
+                $notifier->sendPhoto($outputPath, 'Uptime report');
+                $this->info('Sent through Monitor Bot');
             } catch (Throwable $e) {
                 $this->error("Send failed: {$e->getMessage()}");
             }

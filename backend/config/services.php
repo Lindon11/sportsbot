@@ -42,6 +42,16 @@ return [
         ],
     ],
 
+    'monitor_bot' => [
+        'uptime_enabled' => env('MONITOR_BOT_UPTIME_ENABLED', true),
+        'telegram_token' => env('MONITOR_BOT_TELEGRAM_TOKEN'),
+        'telegram_chat_id' => env('MONITOR_BOT_TELEGRAM_CHAT_ID'),
+        'telegram_message_thread_id' => env('MONITOR_BOT_TELEGRAM_MESSAGE_THREAD_ID'),
+        'telegram_extra_targets' => env('MONITOR_BOT_TELEGRAM_EXTRA_TARGETS', ''),
+        'telegram_parse_mode' => env('MONITOR_BOT_TELEGRAM_PARSE_MODE', 'HTML'),
+        'telegram_disable_notification' => env('MONITOR_BOT_TELEGRAM_DISABLE_NOTIFICATION', false),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | OAuth Providers
