@@ -880,7 +880,7 @@ return [
         'fixture_queue' => [
             'enabled' => env('SPORTSBOT_FIXTURE_QUEUE_SCHEDULE_ENABLED', false),
             'prefetch_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_ENABLED', true),
-            'prefetch_time' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_TIME', '00:00'),
+            'prefetch_time' => env('SPORTSBOT_FIXTURE_QUEUE_PREFETCH_TIME', '01:00'),
             'enrich_enabled' => env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_ENABLED', true),
             'enrich_frequency' => env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_FREQUENCY', 'everyThirtyMinutes'),
             'enrich_days' => (int) env('SPORTSBOT_FIXTURE_QUEUE_ENRICH_DAYS', 2),

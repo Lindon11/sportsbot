@@ -111,7 +111,7 @@ const form = reactive({
   schedule_frequency: 'everyTwoMinutes',
   fixture_queue_schedule_enabled: false,
   fixture_queue_prefetch_enabled: true,
-  fixture_queue_prefetch_time: '00:00',
+  fixture_queue_prefetch_time: '01:00',
   fixture_queue_enrich_enabled: true,
   fixture_queue_enrich_frequency: 'everyThirtyMinutes',
   fixture_queue_enrich_days: 2,

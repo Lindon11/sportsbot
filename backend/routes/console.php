@@ -66,7 +66,7 @@ if ((bool) config('plugins.SportsBot.enabled')) {
     if ((bool) sportsbotSetting('fixture_queue_schedule_enabled', config('plugins.SportsBot.publishing.fixture_queue.enabled'))) {
         if ((bool) sportsbotSetting('fixture_queue_prefetch_enabled', config('plugins.SportsBot.publishing.fixture_queue.prefetch_enabled', true))) {
             Schedule::command('sportsbot:fixtures-prefetch')
-                ->dailyAt((string) sportsbotSetting('fixture_queue_prefetch_time', config('plugins.SportsBot.publishing.fixture_queue.prefetch_time', '00:00')))
+                ->dailyAt((string) sportsbotSetting('fixture_queue_prefetch_time', config('plugins.SportsBot.publishing.fixture_queue.prefetch_time', '01:00')))
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-fixture-queue-prefetch.log'));
