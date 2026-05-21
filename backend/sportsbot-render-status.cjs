@@ -45,10 +45,10 @@ const firstSite = (data.sites || [])[0] || {};
 const isAlert = data.mode === 'alert';
 const statusClass = anyDown ? 'down' : 'up';
 const kicker = isAlert ? (anyDown ? 'Downtime Alert' : 'Recovery Notice') : 'Uptime Monitor';
-const headline = data.title || (anyDown ? 'Server Experiencing Downtime' : 'Server Is Now Online');
+const headline = data.title || (anyDown ? 'Experiencing Downtime' : 'We Are Now Back Online');
 const statusMsg = data.message || (anyDown
-  ? 'A monitored server is experiencing downtime. Please wait for an update.'
-  : 'The monitored server is now online.');
+  ? 'Some services are currently experiencing downtime.'
+  : 'All operations are now functioning normally.');
 
 const html = template
   .replace('{{KICKER}}', esc(kicker))
