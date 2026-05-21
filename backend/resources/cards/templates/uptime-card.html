@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #07111f;
+  font-family: Inter, Arial, sans-serif;
+  color: #f5f7fb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 600px;
+}
+.status-card {
+  width: 1200px;
+  padding: 34px;
+  background: linear-gradient(145deg, #101c2b, #081321);
+  border: 1px solid #203247;
+  border-radius: 26px;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+.title { font-size: 34px; font-weight: 800; }
+.subtitle { margin-top: 12px; font-size: 25px; color: #aeb8c8; }
+.dot {
+  display: inline-block; width: 22px; height: 22px; border-radius: 50%;
+  background: #25d366; margin-right: 14px; box-shadow: 0 0 22px #25d36680;
+  vertical-align: middle;
+}
+.dot.warn { background: #f7b500; box-shadow: 0 0 22px #f7b50060; }
+.dot.down { background: #ff4d4f; box-shadow: 0 0 22px #ff4d4f60; }
+.time { color: #aeb8c8; font-size: 22px; }
+.service {
+  display: grid; grid-template-columns: 110px 240px 1fr 170px;
+  align-items: center; gap: 24px; padding: 28px 20px; margin-bottom: 20px;
+  background: #101d2c; border: 1px solid #22354c; border-radius: 22px;
+}
+.icon {
+  width: 72px; height: 72px; border-radius: 16px; background: #1b2a3c;
+  display: flex; align-items: center; justify-content: center; font-size: 36px;
+}
+.name { font-size: 27px; font-weight: 800; }
+.url { margin-top: 10px; font-size: 22px; color: #aeb8c8; }
+.bars { display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
+.bar {
+  width: 15px; height: 48px; border-radius: 10px;
+  background: #25d366; box-shadow: 0 0 14px #25d36650;
+}
+.bar.warn { background: #f7b500; box-shadow: 0 0 14px #f7b50060; }
+.bar.down { background: #ff4d4f; box-shadow: 0 0 14px #ff4d4f60; }
+.bar.none { background: #1b2a3c; box-shadow: none; }
+.days { margin-top: 14px; color: #aeb8c8; font-size: 20px; }
+.stats { font-size: 24px; color: #aeb8c8; }
+.percent { font-size: 30px; font-weight: 800; color: #25d366; }
+.percent.warn { color: #f7b500; }
+.percent.down { color: #ff4d4f; }
+.status-dot {
+  display: inline-block; width: 17px; height: 17px; border-radius: 50%;
+  background: #25d366; margin-right: 12px; vertical-align: middle;
+}
+.status-dot.warn { background: #f7b500; }
+.status-dot.down { background: #ff4d4f; }
+.footer {
+  border-top: 1px solid #203247; margin-top: 12px; padding-top: 26px;
+  display: flex; justify-content: space-between; color: #aeb8c8; font-size: 23px;
+}
+</style>
+</head>
+<body>
+<div class="status-card">
+  <div class="header">
+    <div>
+      <div class="title"><span class="dot"></span>SYSTEM STATUS</div>
+      <div class="subtitle">All systems operational</div>
+    </div>
+    <div class="time">{{DATE}}</div>
+  </div>
+
+  {{SERVICES}}
+
+  <div class="footer">
+    <div>🛡 Reliable. Fast. Always online.</div>
+    <div>Powered by Monitoring Bot 🤖</div>
+  </div>
+</div>
+</body>
+</html>
