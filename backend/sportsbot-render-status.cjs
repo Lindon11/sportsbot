@@ -54,9 +54,10 @@ const html = template.replace('{{DATE}}', date).replace('{{SERVICES}}', services
 (async () => {
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=none'],
   });
   const page = await browser.newPage();
+  await page.setViewport({ width: 1200, height: 800 });
   await page.setContent(html, { waitUntil: 'networkidle0' });
   const el = await page.$('.status-card');
   await el.screenshot({ path: outputPath, omitBackground: true });
