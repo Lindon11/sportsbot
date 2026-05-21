@@ -1011,6 +1011,7 @@ class FixtureQueueService
         }
 
         $force = (bool) ($options['force'] ?? false);
+        $leagueHeadersSent = [];
         $alreadySent = $entry->status === SportsBotFixtureQueue::STATUS_SENT
             || $entry->sent_at !== null
             || $entry->telegram_message_id !== null;
@@ -1059,6 +1060,41 @@ class FixtureQueueService
                     'error' => 'Blocked from publish: ' . implode(', ', (array) ($preflight['blockers'] ?? [])),
                     'preflight' => $preflight,
                 ];
+            }
+
+            $fixture = $this->effectiveFixtureData($entry);
+            $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
+            $leagueKey = $league !== '' ? $league : 'Other';
+            $routeKey = $this->routeKeyForEntry($entry, $config);
+
+            if (!isset($leagueHeadersSent[$leagueKey])) {
+                $leagueHeadersSent[$leagueKey] = true;
+
+                $leagueInfo = [
+                    'name' => $leagueKey,
+                    'sport' => $sportKey,
+                    'badge' => $fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? '',
+                    'logo' => $fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? '',
+                    'date' => $entry->publish_date?->toDateString() ?: now()->toDateString(),
+                ];
+
+                $card = $this->cards->leagueCard($leagueInfo, $this->desiredCardVersion($sportKey, $config), ['route_key' => $routeKey]);
+                $cardPath = (string) ($card['path'] ?? '');
+
+                if ($cardPath !== '' && @is_file($cardPath)) {
+                    $this->notifier->sendPhoto($cardPath, '', [
+                        'route_key' => $routeKey,
+                        'type' => strtoupper($sportKey) . '_FIXTURES',
+                        'idempotency_key' => $this->leagueHeaderIdempotencyKey($sportKey, $entry->publish_date?->toDateString() ?: now()->toDateString(), $routeKey, $leagueKey),
+                        'payload' => [
+                            'source' => 'publish_now',
+                            'content_key' => strtoupper($sportKey) . '_FIXTURES',
+                            'idempotency_key' => $this->leagueHeaderIdempotencyKey($sportKey, $entry->publish_date?->toDateString() ?: now()->toDateString(), $routeKey, $leagueKey),
+                            'type' => 'LEAGUE_HEADER',
+                            'league' => $leagueKey,
+                        ],
+                    ]);
+                }
             }
 
             $results = $this->sendToTelegram($entry, $config, []);
