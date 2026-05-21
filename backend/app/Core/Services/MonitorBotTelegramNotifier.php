@@ -166,8 +166,21 @@ class MonitorBotTelegramNotifier
     {
         $targets = [];
 
-        $primaryChatId = trim((string) config('services.monitor_bot.telegram_chat_id', ''));
+        $settings = app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class);
+        $savedChatId = trim((string) $settings->get('monitor_bot_chat_id', ''));
+        $savedThreadId = $savedChatId !== '' ? $this->nullableInt($settings->get('monitor_bot_message_thread_id', '')) : null;
+        $savedExtra = $savedChatId !== '' ? trim((string) $settings->get('monitor_bot_extra_targets', '')) : '';
+
+        $primaryChatId = $savedChatId ?: trim((string) config('services.monitor_bot.telegram_chat_id', ''));
         if ($primaryChatId !== '') {
+            $targets[] = [
+                'chat_id' => $primaryChatId,
+                'message_thread_id' => $savedThreadId ?? $this->nullableInt(config('services.monitor_bot.telegram_message_thread_id')),
+            ];
+        }
+
+        $extra = $savedExtra ?: trim((string) config('services.monitor_bot.telegram_extra_targets', ''));
+        foreach ($this->parseExtraTargets($extra) as $target) {
             $targets[] = [
                 'chat_id' => $primaryChatId,
                 'message_thread_id' => $this->nullableInt(config('services.monitor_bot.telegram_message_thread_id')),
