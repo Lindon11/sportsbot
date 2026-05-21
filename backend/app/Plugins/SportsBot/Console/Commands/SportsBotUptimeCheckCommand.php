@@ -135,9 +135,9 @@ class SportsBotUptimeCheckCommand extends Command
         $routeKey = $site->alert_route_key ?: TelegramRouteKeys::DEFAULT;
 
         if ($type === 'down') {
-            $message = "🚨 <b>DOWN:</b> {$site->name}\n{$site->url}\n<b>Error:</b> {$error}";
+            $message = "🚨 <b>DOWN:</b> {$site->name}\n<b>Error:</b> {$error}";
         } else {
-            $message = "✅ <b>RECOVERED:</b> {$site->name}\n{$site->url}\n<b>Response:</b> {$responseTime}ms";
+            $message = "✅ <b>RECOVERED:</b> {$site->name}\n<b>Response:</b> {$responseTime}ms";
         }
 
         try {

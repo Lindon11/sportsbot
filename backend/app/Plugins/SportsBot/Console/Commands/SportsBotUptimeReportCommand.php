@@ -92,7 +92,7 @@ class SportsBotUptimeReportCommand extends Command
 
         // Title
         $this->drawText($img, $font, "📊 Uptime — {$site->name}", 55, 65, 24, $white);
-        $this->drawText($img, $fontRegular, "{$days}-day history  •  {$site->url}", 55, 98, 14, $dim);
+        $this->drawText($img, $fontRegular, "{$days}-day history  •  {$days} days", 55, 98, 14, $dim);
 
         // Uptime percentage badge
         $pct = $site->uptime_percentage;
