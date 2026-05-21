@@ -39,24 +39,25 @@
         </div>
       </div>
 
-      <div v-if="site.daily_status && site.daily_status.length" class="mt-3">
-        <div class="flex gap-[2px] h-7 items-end">
+      <div v-if="site.daily_status && site.daily_status.length" class="mt-4">
+        <div class="flex gap-[3px] h-10 items-end">
           <div v-for="d in site.daily_status" :key="d.day"
-            :title="(d.label || 'No data') + ': ' + d.status"
-            :class="d.status === 'up' ? 'bg-emerald-500/80' : d.status === 'degraded' ? 'bg-amber-500/80' : d.status === 'down' ? 'bg-red-500/80' : 'bg-slate-700/50'"
-            class="flex-1 rounded-sm cursor-pointer hover:opacity-80 transition-opacity"
+            :title="(d.label || '') + ': ' + d.status"
+            :class="d.status === 'up' ? 'bg-emerald-500' : d.status === 'degraded' ? 'bg-amber-500' : d.status === 'down' ? 'bg-red-500' : 'bg-slate-700'"
+            class="flex-1 rounded-t cursor-pointer hover:opacity-80 transition-opacity"
             :style="{ height: d.status === 'up' ? '100%' : d.status === 'degraded' ? '60%' : d.status === 'down' ? '30%' : '4px' }">
           </div>
         </div>
-        <div class="flex justify-between text-xs text-slate-500 mt-1">
-          <span>30 days ago</span>
+        <div class="flex justify-between text-xs mt-2">
           <div class="flex gap-3">
-            <span><span class="inline-block w-2 h-2 rounded bg-emerald-500/80 mr-1"></span>Up</span>
-            <span><span class="inline-block w-2 h-2 rounded bg-amber-500/80 mr-1"></span>Degraded</span>
-            <span><span class="inline-block w-2 h-2 rounded bg-red-500/80 mr-1"></span>Down</span>
-            <span><span class="inline-block w-2 h-2 rounded bg-slate-700/50 mr-1"></span>No data</span>
+            <span v-if="site.uptime_percentage !== undefined" class="text-white font-semibold">{{ site.uptime_percentage }}% uptime</span>
+            <span v-if="site.consecutive_failures > 0" class="text-amber-400">{{ site.consecutive_failures }} consecutive failures</span>
           </div>
-          <span>Today</span>
+          <div class="flex gap-2 text-slate-500">
+            <span><span class="inline-block w-2 h-2 rounded bg-emerald-500 mr-1 align-middle"></span>Up</span>
+            <span><span class="inline-block w-2 h-2 rounded bg-amber-500 mr-1 align-middle"></span>Deg</span>
+            <span><span class="inline-block w-2 h-2 rounded bg-red-500 mr-1 align-middle"></span>Down</span>
+          </div>
         </div>
       </div>
     </div>
