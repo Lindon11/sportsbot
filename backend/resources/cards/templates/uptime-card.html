@@ -2,31 +2,57 @@
 <html>
 <head>
 <style>
-body { margin: 0; background: #07111f; font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #f5f7fb; padding: 40px; box-sizing: border-box; }
 * { box-sizing: border-box; }
-.status-card { width: 1000px; max-width: 100%; padding: 34px; background: linear-gradient(145deg, #101c2b, #081321); border: 1px solid #203247; border-radius: 26px; overflow: hidden; }
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
-.title { font-size: 30px; font-weight: 800; }
-.subtitle { margin-top: 10px; font-size: 20px; color: #aeb8c8; }
-.dot { display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: #27d66b; margin-right: 12px; box-shadow: 0 0 18px #27d66b80; vertical-align: middle; }
+body {
+  margin: 0;
+  background: #07111f;
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+  color: #f5f7fb;
+  padding: 40px;
+}
+.status-card {
+  width: 1000px;
+  padding: 34px;
+  background: linear-gradient(145deg, #101c2b, #081321);
+  border: 1px solid #203247;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,.28);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+.title { font-size: 32px; font-weight: 900; }
+.subtitle { margin-top: 10px; font-size: 20px; color: #27d66b; font-weight: 700; }
+.dot {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+  background: #27d66b; margin-right: 12px; box-shadow: 0 0 22px #27d66b;
+}
 .time { color: #aeb8c8; font-size: 18px; white-space: nowrap; }
-.service { display: grid; grid-template-columns: 90px 210px minmax(0, 1fr) 160px; align-items: center; gap: 28px; padding: 26px; margin-bottom: 20px; background: #101d2c; border: 1px solid #22354c; border-radius: 22px; overflow: hidden; }
-.icon { width: 64px; height: 64px; border-radius: 14px; background: #1b2a3c; display: flex; align-items: center; justify-content: center; font-size: 30px; }
-.name { font-size: 24px; font-weight: 800; }
-.bars { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.bar { flex: 1; max-width: 14px; min-width: 8px; height: 46px; border-radius: 10px; background: #27d66b; }
-.bar.warn { background: #ffbf1a; }
-.bar.down { background: #ff4d5a; }
-.bar.none { background: #1b2a3c; }
-.days { margin-top: 10px; color: #aeb8c8; font-size: 17px; }
-.stats { min-width: 0; text-align: left; font-size: 20px; color: #aeb8c8; }
-.percent { font-size: 26px; font-weight: 800; color: #27d66b; white-space: nowrap; }
+.service {
+  display: grid; grid-template-columns: 76px 210px minmax(0, 1fr) 170px;
+  align-items: center; gap: 24px; padding: 24px; margin-bottom: 18px;
+  background: rgba(16, 29, 44, .92); border: 1px solid #22354c; border-radius: 22px;
+}
+.icon { width: 58px; height: 58px; border-radius: 16px; background: #1b2a3c; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.name { font-size: 24px; font-weight: 900; }
+.bars { display: grid; grid-template-columns: repeat(30, 1fr); gap: 5px; }
+.bar { height: 44px; border-radius: 8px; background: #27d66b; box-shadow: 0 0 10px rgba(39,214,107,.32); }
+.bar.warn { background: #ffbf1a; box-shadow: 0 0 10px rgba(255,191,26,.32); }
+.bar.down { background: #ff4d5a; box-shadow: 0 0 10px rgba(255,77,90,.32); }
+.bar.none { background: #1b2a3c; box-shadow: none; }
+.days { margin-top: 10px; color: #aeb8c8; font-size: 16px; }
+.stats { text-align: left; font-size: 18px; color: #aeb8c8; }
+.percent { font-size: 28px; font-weight: 900; color: #27d66b; }
 .percent.warn { color: #ffbf1a; }
 .percent.down { color: #ff4d5a; }
-.status-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #27d66b; margin-right: 10px; vertical-align: middle; }
+.status-dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: #27d66b; margin-right: 10px; }
 .status-dot.warn { background: #ffbf1a; }
 .status-dot.down { background: #ff4d5a; }
-.footer { border-top: 1px solid #203247; margin-top: 12px; padding-top: 22px; display: flex; justify-content: space-between; color: #aeb8c8; font-size: 20px; }
+.footer { border-top: 1px solid #203247; margin-top: 14px; padding-top: 22px; display: flex; justify-content: space-between; color: #aeb8c8; font-size: 18px; }
 </style>
 </head>
 <body>
@@ -40,7 +66,7 @@ body { margin: 0; background: #07111f; font-family: 'Segoe UI', Arial, Helvetica
   </div>
   {{SERVICES}}
   <div class="footer">
-    <div>🛡 Systems status</div>
+    <div>🛡 30-day uptime history</div>
     <div>Uptime Monitor</div>
   </div>
 </div>
