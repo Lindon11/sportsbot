@@ -77,6 +77,8 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     Route::put('/uptime/{id}', [SportsBotController::class, 'uptimeSiteUpdate'])->name('uptime.update');
     Route::delete('/uptime/{id}', [SportsBotController::class, 'uptimeSiteDelete'])->name('uptime.delete');
     Route::get('/uptime/{id}/logs', [SportsBotController::class, 'uptimeLogs'])->name('uptime.logs');
+    Route::get('/monitor-settings', [SportsBotController::class, 'monitorSettings'])->name('monitor-settings');
+    Route::post('/monitor-settings', [SportsBotController::class, 'saveMonitorSettings'])->name('monitor-settings.save');
 
     // Update
     Route::get('/update/check', [UpdateController::class, 'check'])->name('update.check');

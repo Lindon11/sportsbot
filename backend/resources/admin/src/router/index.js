@@ -235,6 +235,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotUptimeMonitorView.vue')
         },
         {
+          path: '/sportsbot/monitor-settings',
+          name: 'sportsbot-monitor-settings',
+          component: () => import('../views/MonitorBotSettingsView.vue')
+        },
+        {
           path: '/sportsbot/update',
           name: 'sportsbot-update',
           component: () => import('../views/SportsBotUpdateView.vue')

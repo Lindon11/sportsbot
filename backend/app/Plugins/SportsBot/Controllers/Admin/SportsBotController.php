@@ -3453,4 +3453,42 @@ class SportsBotController extends Controller
 
         return response()->json(['logs' => $logs]);
     }
+
+    public function monitorSettings(): JsonResponse
+    {
+        $settings = app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class);
+
+        return response()->json([
+            'chat_id' => $settings->get('monitor_bot_chat_id', config('services.monitor_bot.telegram_chat_id', '')),
+            'message_thread_id' => $settings->get('monitor_bot_message_thread_id', config('services.monitor_bot.telegram_message_thread_id', '')),
+            'extra_targets' => $settings->get('monitor_bot_extra_targets', ''),
+            'status' => [
+                'configured' => config('services.monitor_bot.telegram_token', '') !== '' && ($settings->get('monitor_bot_chat_id', '') !== '' || config('services.monitor_bot.telegram_chat_id', '') !== ''),
+                'has_token' => config('services.monitor_bot.telegram_token', '') !== '',
+            ],
+        ]);
+    }
+
+    public function saveMonitorSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'chat_id' => ['sometimes', 'string', 'max:120'],
+            'message_thread_id' => ['sometimes', 'string', 'max:20'],
+            'extra_targets' => ['sometimes', 'string', 'max:2000'],
+        ]);
+
+        $settings = app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class);
+
+        if (isset($validated['chat_id'])) {
+            $settings->set('monitor_bot_chat_id', $validated['chat_id']);
+        }
+        if (isset($validated['message_thread_id'])) {
+            $settings->set('monitor_bot_message_thread_id', $validated['message_thread_id']);
+        }
+        if (isset($validated['extra_targets'])) {
+            $settings->set('monitor_bot_extra_targets', $validated['extra_targets']);
+        }
+
+        return $this->monitorSettings();
+    }
 }
