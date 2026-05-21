@@ -3336,11 +3336,11 @@ class SportsBotController extends Controller
 
     public function uptimeSites(): JsonResponse
     {
-        $thirtyDaysAgo = now()->subDays(30);
+        $startDate = now()->subDays(29)->startOfDay();
 
-        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(function ($s) use ($thirtyDaysAgo) {
+        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(function ($s) use ($startDate) {
             $dailyStatus = [];
-            $cursor = $thirtyDaysAgo->copy()->startOfDay();
+            $cursor = $startDate->copy();
 
             for ($day = 0; $day < 30; $day++) {
                 $dayStart = $cursor->copy();
