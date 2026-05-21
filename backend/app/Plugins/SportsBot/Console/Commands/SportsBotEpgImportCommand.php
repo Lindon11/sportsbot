@@ -4,6 +4,8 @@ namespace App\Plugins\SportsBot\Console\Commands;
 
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
+use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
+use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -22,56 +24,14 @@ class SportsBotEpgImportCommand extends Command
     public function handle(): int
     {
         $days = max(1, min(14, (int) $this->option('days')));
-
-        $urls = $this->resolveFeedUrls();
-        if ($urls === []) {
-            $this->error('No EPG feed URLs configured');
-            return Command::FAILURE;
-        }
-
-        $cutoff = now()->subDays(1);
-        SportsBotXmltvProgramme::where('created_at', '<', $cutoff)->delete();
-
-        $totalImported = 0;
-
-        foreach ($urls as $url) {
-            $this->info("Downloading EPG feed: {$url}");
-            $response = Http::timeout(120)
-                ->withHeaders(['User-Agent' => 'SportsBot/1.0'])
-                ->get($url);
-
-            if (!$response->successful()) {
-                $this->warn("Failed to download feed: HTTP {$response->status()}");
-                continue;
-            }
-
-            $xml = $this->decompress($response->body());
-            if ($xml === null) {
-                $this->warn('Failed to decompress feed');
-                continue;
-            }
-
-            $this->info('Parsing XMLTV data...');
-            $programmes = $this->parseXml($xml);
-            if ($programmes === []) {
-                $this->warn('No programmes found in feed');
-                continue;
-            }
-
-            $imported = 0;
-            foreach (array_chunk($programmes['rows'], 500) as $chunk) {
-                SportsBotXmltvProgramme::upsert($chunk, ['channel', 'title', 'start_time'], ['description', 'end_time', 'raw_data']);
-                $imported += count($chunk);
-            }
-
-            $totalImported += $imported;
-            $this->info("Imported {$imported} programmes from {$url}");
-        }
-
-        $this->info("Total imported: {$totalImported} programmes");
+        $optionUrl = trim((string) ($this->option('url') ?? ''));
+        $urls = $optionUrl !== '' ? [$optionUrl] : [];
+        $result = app(SportsBotEpgSourceImporter::class)->importAll($urls, $days);
+        $this->info("Total imported: {$result['programme_count']} programmes");
 
         if ($this->option('match')) {
-            $this->matchFixtures();
+            $match = app(SportsBotEpgMatcher::class)->matchFixtures($days, 300, true);
+            $this->info("Matched {$match['checked']} fixtures: {$match['auto_applied']} auto, {$match['needs_review']} review.");
         }
 
         return Command::SUCCESS;

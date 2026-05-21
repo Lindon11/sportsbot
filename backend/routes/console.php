@@ -101,11 +101,17 @@ if ((bool) config('plugins.SportsBot.enabled')) {
         }
 
         if ((bool) sportsbotSetting('epg_import_enabled', config('plugins.SportsBot.epg.import_enabled', false))) {
-            Schedule::command('sportsbot:epg-import --match')
-                ->dailyAt('04:00')
+            Schedule::command('sportsbot:epg-sources-import --match --export')
+                ->cron('0 */6 * * *')
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-epg-import.log'));
+
+            Schedule::command('sportsbot:epg-match-fixtures --days=3')
+                ->everyThirtyMinutes()
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->appendOutputTo(storage_path('logs/sportsbot-epg-match.log'));
         }
 
         if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {

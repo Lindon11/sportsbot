@@ -230,6 +230,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotFixtureQueueView.vue')
         },
         {
+          path: '/sportsbot/epg-provider',
+          name: 'sportsbot-epg-provider',
+          component: () => import('../views/SportsBotEpgProviderView.vue')
+        },
+        {
           path: '/sportsbot/uptime',
           name: 'sportsbot-uptime',
           component: () => import('../views/SportsBotUptimeMonitorView.vue')

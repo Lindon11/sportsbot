@@ -4,6 +4,10 @@ namespace App\Plugins\SportsBot\Controllers\Admin;
 
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
+use App\Plugins\SportsBot\Models\SportsBotEpgFixtureMatch;
+use App\Plugins\SportsBot\Models\SportsBotEpgImportRun;
+use App\Plugins\SportsBot\Models\SportsBotEpgSource;
+use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Models\SportsBotHighlightSent;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
@@ -22,6 +26,9 @@ use App\Plugins\SportsBot\Services\Content\RugbyFixturesContentModule;
 use App\Plugins\SportsBot\Services\SportsBotPublisher;
 use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
+use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
+use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
+use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\SportsBotNotifier;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
@@ -912,6 +919,136 @@ class SportsBotController extends Controller
                 ->values()
                 ->all(),
         ]);
+    }
+
+    public function epgProvider(): JsonResponse
+    {
+        if (! Schema::hasTable('sportsbot_epg_sources')) {
+            return response()->json([
+                'ready' => false,
+                'error' => 'EPG provider tables have not been migrated yet.',
+            ], 503);
+        }
+
+        $programmeCount = Schema::hasTable('sportsbot_xmltv_programmes') ? SportsBotXmltvProgramme::query()->count() : 0;
+        $channelCount = Schema::hasTable('sportsbot_xmltv_programmes')
+            ? SportsBotXmltvProgramme::query()->whereNotNull('canonical_channel_id')->distinct('canonical_channel_id')->count('canonical_channel_id')
+            : 0;
+        $futureProgrammeCount = Schema::hasTable('sportsbot_xmltv_programmes') ? SportsBotXmltvProgramme::query()->where('start_time', '>=', now())->count() : 0;
+        $reviewCount = SportsBotEpgFixtureMatch::query()->where('status', 'needs_review')->count();
+        $autoCount = SportsBotEpgFixtureMatch::query()->whereIn('status', ['auto_applied', 'accepted'])->count();
+        $fixtureWindowTotal = SportsBotFixtureQueue::query()
+            ->whereBetween('publish_date', [Carbon::today()->subDay()->toDateString(), Carbon::today()->addDays(3)->toDateString()])
+            ->count();
+
+        return response()->json([
+            'ready' => true,
+            'summary' => [
+                'source_count' => SportsBotEpgSource::query()->count(),
+                'working_sources' => SportsBotEpgSource::query()->where('status', 'working')->count(),
+                'stale_sources' => SportsBotEpgSource::query()->where('stale', true)->count(),
+                'blocked_sources' => SportsBotEpgSource::query()->where('status', 'blocked')->count(),
+                'empty_sources' => SportsBotEpgSource::query()->where('status', 'empty')->count(),
+                'programme_count' => $programmeCount,
+                'future_programme_count' => $futureProgrammeCount,
+                'canonical_channel_count' => $channelCount,
+                'auto_match_count' => $autoCount,
+                'review_match_count' => $reviewCount,
+                'fixture_window_total' => $fixtureWindowTotal,
+                'match_rate' => $fixtureWindowTotal > 0 ? round($autoCount / $fixtureWindowTotal, 2) : 0,
+            ],
+            'sources' => SportsBotEpgSource::query()
+                ->orderBy('enabled', 'desc')
+                ->orderBy('priority')
+                ->orderBy('id')
+                ->limit(100)
+                ->get(),
+            'recent_runs' => SportsBotEpgImportRun::query()
+                ->latest('id')
+                ->limit(25)
+                ->get(),
+            'review_matches' => SportsBotEpgFixtureMatch::query()
+                ->where('status', 'needs_review')
+                ->latest('id')
+                ->limit(50)
+                ->get(),
+            'export_health' => [
+                'token_configured' => trim((string) app(SportsBotSettingsService::class)->get('epg_export_token', config('plugins.SportsBot.epg.export_token', ''))) !== '',
+                'xml_path' => storage_path('app/sportsbot/epg/guide.xml'),
+                'json_path' => storage_path('app/sportsbot/epg/guide.json'),
+                'xml_exists' => is_file(storage_path('app/sportsbot/epg/guide.xml')),
+                'json_exists' => is_file(storage_path('app/sportsbot/epg/guide.json')),
+                'last_export_at' => is_file(storage_path('app/sportsbot/epg/guide.xml'))
+                    ? Carbon::createFromTimestamp(filemtime(storage_path('app/sportsbot/epg/guide.xml')))->toIso8601String()
+                    : null,
+            ],
+        ]);
+    }
+
+    public function epgProviderImport(Request $request, SportsBotEpgSourceImporter $importer, SportsBotEpgMatcher $matcher, SportsBotEpgExporter $exporter): JsonResponse
+    {
+        $validated = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:14'],
+            'match' => ['sometimes', 'boolean'],
+            'export' => ['sometimes', 'boolean'],
+        ]);
+
+        $days = (int) ($validated['days'] ?? 3);
+        $result = ['import' => $importer->importAll([], $days)];
+
+        if ((bool) ($validated['match'] ?? true)) {
+            $result['match'] = $matcher->matchFixtures($days, 300, true);
+        }
+
+        if ((bool) ($validated['export'] ?? true)) {
+            $result['export'] = $exporter->writeCachedExports();
+        }
+
+        return response()->json($result);
+    }
+
+    public function epgProviderMatch(Request $request, SportsBotEpgMatcher $matcher): JsonResponse
+    {
+        $validated = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:14'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:1000'],
+            'dry_run' => ['sometimes', 'boolean'],
+        ]);
+
+        return response()->json($matcher->matchFixtures(
+            (int) ($validated['days'] ?? 3),
+            (int) ($validated['limit'] ?? 200),
+            ! (bool) ($validated['dry_run'] ?? false),
+        ));
+    }
+
+    public function epgProviderExport(Request $request, SportsBotEpgExporter $exporter): JsonResponse
+    {
+        $validated = $request->validate([
+            'hours' => ['sometimes', 'integer', 'min:1', 'max:336'],
+        ]);
+
+        return response()->json($exporter->writeCachedExports((int) ($validated['hours'] ?? 72)));
+    }
+
+    public function epgProviderAcceptMatch(int $id, SportsBotEpgMatcher $matcher): JsonResponse
+    {
+        $match = SportsBotEpgFixtureMatch::query()->find($id);
+        if (! $match) {
+            return response()->json(['error' => "EPG match {$id} not found"], 404);
+        }
+
+        return response()->json($matcher->acceptMatch($match, auth()->id()));
+    }
+
+    public function epgProviderRejectMatch(int $id, SportsBotEpgMatcher $matcher): JsonResponse
+    {
+        $match = SportsBotEpgFixtureMatch::query()->find($id);
+        if (! $match) {
+            return response()->json(['error' => "EPG match {$id} not found"], 404);
+        }
+
+        return response()->json($matcher->rejectMatch($match, auth()->id()));
     }
 
     public function fixtureQueuePrefetch(FixtureQueueService $queue): JsonResponse

@@ -22,6 +22,7 @@ class FixtureQueueService
         private readonly TelegramRoutingService $routingService = new TelegramRoutingService(),
         private readonly SportsBotSettingsService $settings = new SportsBotSettingsService(),
         private readonly SportsBotScraperService $scrapers = new SportsBotScraperService(),
+        private readonly SportsBotEpgMatcher $epg = new SportsBotEpgMatcher(),
         private readonly SportsBotAssetCache $assets = new SportsBotAssetCache(),
         private readonly SportsBotPipelineRunRecorder $pipeline = new SportsBotPipelineRunRecorder(),
     ) {
@@ -491,11 +492,15 @@ class FixtureQueueService
             }
 
             try {
+                $epgResult = SportsBotFixtureReadiness::hasTv($this->effectiveFixtureData($item))
+                    ? ['status' => 'skipped']
+                    : $this->epg->matchFixture($item, true);
+
                 $result = $this->refreshScrapedData((int) $item->id);
                 $checked++;
 
                 $fields = (array) ($result['normalized']['fields'] ?? []);
-                if ($fields !== []) {
+                if ($fields !== [] || ($epgResult['status'] ?? null) === 'auto_applied') {
                     $found++;
                 }
                 if (($result['errors'] ?? []) !== []) {
@@ -507,6 +512,7 @@ class FixtureQueueService
                     'sport' => $item->sport_key,
                     'confidence' => (float) ($result['normalized']['confidence'] ?? 0.0),
                     'fields' => array_keys($fields),
+                    'epg' => $epgResult,
                     'errors' => $result['errors'] ?? [],
                 ];
             } catch (Throwable $error) {
@@ -1205,7 +1211,32 @@ class FixtureQueueService
             || $entry->sent_at !== null
             || $entry->telegram_message_id !== null;
 
+        $epgResult = $this->epg->matchFixture($entry, true);
+        if (($epgResult['status'] ?? null) === 'auto_applied') {
+            $result = [
+                'status' => 'found',
+                'source' => 'epg_provider',
+                'epg' => $epgResult,
+                'normalized' => [
+                    'confidence' => (float) ($epgResult['confidence'] ?? 0),
+                    'fields' => [
+                        'tv_channel' => (string) ($epgResult['channel'] ?? ''),
+                        'tv_channels' => array_values(array_filter([(string) ($epgResult['channel'] ?? '')])),
+                    ],
+                ],
+            ];
+            $result['render'] = $this->reRenderItem($id);
+            if ($wasSent) {
+                $this->restoreSentStatus($id);
+            }
+
+            $fresh = $entry->fresh();
+
+            return array_merge($result, ['item' => $fresh ? $this->itemData($fresh) : null]);
+        }
+
         $result = $this->scrapers->findTvInfo($entry);
+        $result['epg'] = $epgResult;
         if ($this->scrapeResultShouldAutoRender($result, ['tv_channel', 'tv_channels'])) {
             $result['render'] = $this->reRenderItem($id);
             if ($wasSent) {
@@ -1463,6 +1494,15 @@ class FixtureQueueService
         if ($this->hasTrustedProviderData($fixture)) {
             $accepted = (array) ($payload['accepted_scraped_data']['fields'] ?? []);
             $this->fillAcceptedFixtureFields($fixture, $accepted, $sources);
+
+            $epg = (array) ($payload['epg_match'] ?? []);
+            if (($epg['status'] ?? null) === 'auto_applied') {
+                $fields = [
+                    'tv_channel' => $epg['channel'] ?? null,
+                    'tv_channels' => array_values(array_filter([(string) ($epg['channel'] ?? '')])),
+                ];
+                $this->fillMissingFixtureFields($fixture, $fields, $sources, 'epg_provider');
+            }
 
             $normalized = (array) ($payload['scraper']['normalized'] ?? []);
             $confidence = (float) ($normalized['confidence'] ?? 0.0);

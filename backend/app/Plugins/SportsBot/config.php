@@ -866,6 +866,7 @@ return [
             env('SPORTSBOT_EPG_FEED_URL_BR', 'https://epgshare01.online/epgshare01/epg_ripper_BR1.xml.gz'),
         ],
         'import_enabled' => env('SPORTSBOT_EPG_IMPORT_ENABLED', false),
+        'export_token' => env('SPORTSBOT_EPG_EXPORT_TOKEN', ''),
     ],
 
     'publishing' => [
