@@ -759,4 +759,17 @@ class TelegramNotifier implements NotifierInterface
         } catch (Throwable) {
         }
     }
+
+    private function closeTopicInChat(string $token, string $chatId, string $threadId): void
+    {
+        try {
+            Http::asForm()
+                ->timeout(5)
+                ->post("https://api.telegram.org/bot{$token}/closeForumTopic", [
+                    'chat_id' => $chatId,
+                    'message_thread_id' => $threadId,
+                ]);
+        } catch (Throwable) {
+        }
+    }
 }

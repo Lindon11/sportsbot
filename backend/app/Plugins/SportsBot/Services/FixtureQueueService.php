@@ -259,18 +259,16 @@ class FixtureQueueService
         $items = SportsBotFixtureQueue::query()
             ->bySport($sportKey)
             ->where('publish_date', $today)
-            ->whereIn('status', [SportsBotFixtureQueue::STATUS_READY, SportsBotFixtureQueue::STATUS_DRAFT])
+            ->whereIn('status', [SportsBotFixtureQueue::STATUS_READY, SportsBotFixtureQueue::STATUS_DRAFT, SportsBotFixtureQueue::STATUS_SENT])
             ->get();
 
         $leagueHeadersSent = [];
+        $topicClosed = false;
 
         foreach ($items as $entry) {
-            if ($entry->sent_at !== null || $entry->telegram_message_id !== null) {
-                $skipped++;
-                continue;
-            }
+            $alreadySent = $entry->sent_at !== null || $entry->telegram_message_id !== null;
 
-            if ($entry->status !== SportsBotFixtureQueue::STATUS_READY) {
+            if (!$alreadySent && $entry->status !== SportsBotFixtureQueue::STATUS_READY) {
                 if ($dryRun) {
                     $wouldRender++;
                     $preflight = $this->publishPreflight($entry, $config, true);
@@ -302,6 +300,46 @@ class FixtureQueueService
             }
 
             try {
+                $fixture = $this->effectiveFixtureData($entry);
+                $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
+                $leagueKey = $league !== '' ? $league : 'Other';
+                $routeKey = $this->routeKeyForEntry($entry, $config);
+
+                if (!isset($leagueHeadersSent[$leagueKey])) {
+                    $leagueHeadersSent[$leagueKey] = true;
+
+                    $leagueInfo = [
+                        'name' => $leagueKey,
+                        'sport' => $sportKey,
+                        'badge' => $fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? '',
+                        'logo' => $fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? '',
+                        'date' => $today,
+                    ];
+
+                    $card = $this->cards->leagueCard($leagueInfo, $this->desiredCardVersion($sportKey, $config), ['route_key' => $routeKey]);
+                    $cardPath = (string) ($card['path'] ?? '');
+
+                    if ($cardPath !== '' && @is_file($cardPath)) {
+                        $this->notifier->sendPhoto($cardPath, '', [
+                            'route_key' => $routeKey,
+                            'type' => strtoupper($sportKey) . '_FIXTURES',
+                            'idempotency_key' => $this->leagueHeaderIdempotencyKey($sportKey, $today, $routeKey, $leagueKey),
+                            'payload' => [
+                                'source' => 'fixture_queue',
+                                'content_key' => strtoupper($sportKey) . '_FIXTURES',
+                                'idempotency_key' => $this->leagueHeaderIdempotencyKey($sportKey, $today, $routeKey, $leagueKey),
+                                'type' => 'LEAGUE_HEADER',
+                                'league' => $leagueKey,
+                            ],
+                        ]);
+                    }
+                }
+
+                if ($alreadySent) {
+                    $skipped++;
+                    continue;
+                }
+
                 if ($dryRun) {
                     $preflight = $this->publishPreflight($entry, $config, false);
                     if (($preflight['blocked'] ?? false) === true) {
@@ -311,12 +349,10 @@ class FixtureQueueService
                     } else {
                         $skipped++;
                     }
-
                     continue;
                 }
 
                 $verified = $this->verifyBeforePublish($entry, $config);
-
                 if (!$verified) {
                     $skipped++;
                     continue;
@@ -331,43 +367,6 @@ class FixtureQueueService
                     continue;
                 }
 
-                $fixture = $this->effectiveFixtureData($entry);
-                $league = trim((string) ($fixture['league'] ?? $fixture['strLeague'] ?? ''));
-                $leagueKey = $league !== '' ? $league : 'Other';
-
-                if (!isset($leagueHeadersSent[$leagueKey])) {
-                    $leagueHeadersSent[$leagueKey] = true;
-
-                    $leagueInfo = [
-                        'name' => $leagueKey,
-                        'sport' => $sportKey,
-                        'badge' => $fixture['league_badge'] ?? $fixture['strLeagueBadge'] ?? '',
-                        'logo' => $fixture['league_logo'] ?? $fixture['strLeagueLogo'] ?? '',
-                        'date' => $today,
-                    ];
-
-                    $cardVersion = $this->desiredCardVersion($sportKey, $config);
-                    $routeKey = $this->routeKeyForEntry($entry, $config);
-                    $card = $this->cards->leagueCard($leagueInfo, $cardVersion, ['route_key' => $routeKey]);
-                    $cardPath = (string) ($card['path'] ?? '');
-
-                    if ($cardPath !== '' && @is_file($cardPath)) {
-                        $idempotencyKey = $this->leagueHeaderIdempotencyKey($sportKey, $today, $routeKey, $leagueKey);
-                        $this->notifier->sendPhoto($cardPath, '', [
-                            'route_key' => $routeKey,
-                            'type' => strtoupper($sportKey) . '_FIXTURES',
-                            'idempotency_key' => $idempotencyKey,
-                            'payload' => [
-                                'source' => 'fixture_queue',
-                                'content_key' => strtoupper($sportKey) . '_FIXTURES',
-                                'idempotency_key' => $idempotencyKey,
-                                'type' => 'LEAGUE_HEADER',
-                                'league' => $leagueKey,
-                            ],
-                        ]);
-                    }
-                }
-
                 $results = $this->sendToTelegram($entry, $config, $options);
 
                 $entry->status = SportsBotFixtureQueue::STATUS_SENT;
@@ -379,9 +378,11 @@ class FixtureQueueService
 
                 $sent++;
             } catch (Throwable $error) {
-                $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
-                $entry->error = mb_substr($error->getMessage(), 0, 1000);
-                $entry->save();
+                if (!$alreadySent) {
+                    $entry->status = SportsBotFixtureQueue::STATUS_FAILED;
+                    $entry->error = mb_substr($error->getMessage(), 0, 1000);
+                    $entry->save();
+                }
 
                 Log::error('sportsbot.fixture_queue.publish_failed', [
                     'sport' => $sportKey,
@@ -389,6 +390,30 @@ class FixtureQueueService
                     'error' => $error->getMessage(),
                 ]);
                 $failed++;
+            }
+        }
+
+        if ($items->isNotEmpty()) {
+            $first = $items->first();
+            $routeKey = $this->routeKeyForEntry($first, $config);
+            $resolved = $this->routingService->resolveTargets($routeKey);
+            foreach ($resolved['targets'] ?? [] as $target) {
+                $chatId = (string) ($target['chat_id'] ?? '');
+                $threadId = $target['message_thread_id'] ?? null;
+                if ($chatId !== '' && $threadId !== null) {
+                    $token = trim((string) $this->settings->resolveBotToken());
+                    if ($token !== '') {
+                        try {
+                            Illuminate\Support\Facades\Http::asForm()
+                                ->timeout(5)
+                                ->post("https://api.telegram.org/bot{$token}/closeForumTopic", [
+                                    'chat_id' => $chatId,
+                                    'message_thread_id' => (string) $threadId,
+                                ]);
+                        } catch (Throwable) {
+                        }
+                    }
+                }
             }
         }
 
