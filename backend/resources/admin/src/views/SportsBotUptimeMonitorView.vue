@@ -91,7 +91,7 @@ const form = reactive({
 
 async function load() {
   try {
-    const { data } = await api.get('/sportsbot/uptime')
+    const { data } = await api.get('/admin/sportsbot/uptime')
     sites.value = data.sites || []
   } catch (error) {
     toast.error('Failed to load sites')
@@ -101,7 +101,7 @@ async function load() {
 async function addSite() {
   saving.value = true
   try {
-    await api.post('/sportsbot/uptime', form)
+    await api.post('/admin/sportsbot/uptime', form)
     toast.success('Site added')
     showAdd.value = false
     form.name = ''
@@ -117,7 +117,7 @@ async function addSite() {
 async function confirmDelete(site) {
   if (!confirm(`Delete "${site.name}"?`)) return
   try {
-    await api.delete(`/sportsbot/uptime/${site.id}`)
+    await api.delete(`/admin/sportsbot/uptime/${site.id}`)
     toast.success('Site deleted')
     await load()
   } catch (error) {
