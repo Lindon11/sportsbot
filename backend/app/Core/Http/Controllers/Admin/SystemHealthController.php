@@ -72,7 +72,7 @@ class SystemHealthController extends Controller
         } elseif (PHP_OS_FAMILY === 'Linux') {
             // Linux
             $cores = (int) shell_exec('nproc 2>/dev/null') ?: 1;
-            $stat = @file_get_contents('/proc/stat');
+            $stat = shell_exec('cat /proc/stat 2>/dev/null');
             if ($stat) {
                 $lines = explode("\n", $stat);
                 foreach ($lines as $line) {
@@ -115,7 +115,7 @@ class SystemHealthController extends Controller
             }
         } elseif (PHP_OS_FAMILY === 'Linux') {
             // Linux
-            $meminfo = @file_get_contents('/proc/meminfo');
+            $meminfo = shell_exec('cat /proc/meminfo 2>/dev/null');
             if ($meminfo) {
                 preg_match('/MemTotal:\s+(\d+)/', $meminfo, $totalMatch);
                 preg_match('/MemAvailable:\s+(\d+)/', $meminfo, $availableMatch);
