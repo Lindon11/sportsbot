@@ -47,7 +47,7 @@ const statusClass = anyDown ? 'down' : 'up';
 const kicker = isAlert ? (anyDown ? 'Downtime Alert' : 'Recovery Notice') : 'Uptime Monitor';
 const headline = data.title || (anyDown ? 'Experiencing Downtime' : 'We Are Now Back Online');
 const statusMsg = data.message || (anyDown
-  ? 'Some services are currently experiencing downtime.'
+  ? 'We are facing some issues. Please wait whilst we fix this.'
   : 'All operations are now functioning normally.');
 
 const html = template
