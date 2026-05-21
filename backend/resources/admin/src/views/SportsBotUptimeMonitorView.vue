@@ -34,6 +34,7 @@
             <p class="text-white text-xs">{{ site.last_checked_at || 'Never' }}</p>
             <p v-if="site.consecutive_failures > 0" class="text-amber-400 text-xs">{{ site.consecutive_failures }}/{{ site.failure_threshold }} fails</p>
           </div>
+          <button @click="openEdit(site)" class="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-700/50">Edit</button>
           <button @click="confirmDelete(site)" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded bg-red-400/10">Delete</button>
         </div>
       </div>
@@ -56,6 +57,25 @@
             <span><span class="inline-block w-2 h-2 rounded bg-slate-700/50 mr-1"></span>No data</span>
           </div>
           <span>Today</span>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showEdit" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showEdit = false">
+      <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-slate-700">
+        <h2 class="text-lg font-semibold text-white mb-4">Edit Site</h2>
+        <div class="space-y-3">
+          <label class="block"><span class="text-slate-400 text-xs block mb-1">Name</span><input v-model="editForm.name" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2"></label>
+          <label class="block"><span class="text-slate-400 text-xs block mb-1">URL</span><input v-model="editForm.url" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2"></label>
+          <div class="grid grid-cols-3 gap-3">
+            <label class="block"><span class="text-slate-400 text-xs block mb-1">Interval (s)</span><input v-model.number="editForm.check_interval_seconds" type="number" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2" min="60"></label>
+            <label class="block"><span class="text-slate-400 text-xs block mb-1">Timeout (s)</span><input v-model.number="editForm.timeout_seconds" type="number" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2" min="3"></label>
+            <label class="block"><span class="text-slate-400 text-xs block mb-1">Fail threshold</span><input v-model.number="editForm.failure_threshold" type="number" class="w-full rounded-xl bg-slate-950 border border-slate-700 text-white px-3 py-2" min="1"></label>
+          </div>
+        </div>
+        <div class="flex gap-2 mt-5">
+          <button @click="showEdit = false" class="flex-1 px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 font-semibold">Cancel</button>
+          <button @click="saveEdit" :disabled="saving" class="flex-1 px-4 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-60 font-semibold">{{ saving ? 'Saving...' : 'Save' }}</button>
         </div>
       </div>
     </div>
@@ -89,12 +109,29 @@ import { useToast } from '@/composables/useToast'
 const toast = useToast()
 const sites = ref([])
 const showAdd = ref(false)
+const showEdit = ref(false)
+const editingId = ref(null)
 const saving = ref(false)
 
 const form = reactive({
   name: '', url: '',
   check_interval_seconds: 300, timeout_seconds: 10, failure_threshold: 3,
 })
+
+const editForm = reactive({
+  name: '', url: '',
+  check_interval_seconds: 300, timeout_seconds: 10, failure_threshold: 3,
+})
+
+function openEdit(site) {
+  editingId.value = site.id
+  editForm.name = site.name
+  editForm.url = site.url
+  editForm.check_interval_seconds = site.check_interval_seconds
+  editForm.timeout_seconds = site.timeout_seconds
+  editForm.failure_threshold = site.failure_threshold
+  showEdit.value = true
+}
 
 async function load() {
   try {
@@ -110,6 +147,17 @@ async function addSite() {
     toast.success('Site added')
     showAdd.value = false
     form.name = ''; form.url = ''
+    await load()
+  } catch (e) { toast.error(e?.response?.data?.error || 'Failed') }
+  finally { saving.value = false }
+}
+
+async function saveEdit() {
+  saving.value = true
+  try {
+    await api.put(`/admin/sportsbot/uptime/${editingId.value}`, editForm)
+    toast.success('Site updated')
+    showEdit.value = false
     await load()
   } catch (e) { toast.error(e?.response?.data?.error || 'Failed') }
   finally { saving.value = false }
