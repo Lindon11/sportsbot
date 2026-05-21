@@ -140,11 +140,6 @@ class SportsBotUptimeCheckCommand extends Command
         }
 
         $isDown = $type === 'down';
-        $siteName = trim((string) $site->name);
-        $captionName = htmlspecialchars($siteName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $caption = $isDown
-            ? "⚠️ <b>{$captionName}</b> is experiencing downtime. Please wait for an update."
-            : "✅ <b>{$captionName}</b> is now online.";
 
         if (!$notifier->configured()) {
             Log::warning('monitor_bot.telegram.not_configured', [
@@ -157,7 +152,7 @@ class SportsBotUptimeCheckCommand extends Command
 
         try {
             $cardPath = $this->renderAlertCard($site, $type, $responseTime, $error, $statusCode);
-            $notifier->sendPhoto($cardPath, $caption);
+            $notifier->sendPhoto($cardPath, '');
         } catch (Throwable $error) {
             Log::warning('monitor_bot.uptime.card_alert_failed', [
                 'site_id' => $site->id,
@@ -166,7 +161,7 @@ class SportsBotUptimeCheckCommand extends Command
             ]);
 
             try {
-                $notifier->sendMessage($caption);
+                $notifier->sendMessage(($isDown ? '⚠️ Downtime' : '✅ Online') . ': ' . $site->name);
             } catch (Throwable $fallbackError) {
                 Log::warning('monitor_bot.uptime.text_alert_failed', [
                     'site_id' => $site->id,
