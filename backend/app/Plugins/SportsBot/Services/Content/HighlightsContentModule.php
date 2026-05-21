@@ -15,6 +15,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class HighlightsContentModule implements SportsBotContentModuleInterface
@@ -44,11 +45,7 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
     public function buildSummary(): array
     {
         $candidates = [];
-        $sentIds = SportsBotHighlightSent::query()
-            ->where('sent_at', '>', now()->subHours(36))
-            ->pluck('event_id')
-            ->flip()
-            ->all();
+        $sentIds = $this->sentHighlightIds();
         $sportKeys = array_keys(SportsBotSports::all());
         $daysBack = 1;
         $providerTotal = 0;
@@ -169,6 +166,52 @@ class HighlightsContentModule implements SportsBotContentModuleInterface
         ];
 
         return $summary;
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function sentHighlightIds(): array
+    {
+        $sentIds = [];
+
+        try {
+            if (Schema::hasTable('sportsbot_highlights_sent')) {
+                foreach (SportsBotHighlightSent::query()
+                    ->where('sent_at', '>', now()->subHours(36))
+                    ->pluck('event_id')
+                    ->all() as $eventId) {
+                    $eventId = trim((string) $eventId);
+                    if ($eventId !== '') {
+                        $sentIds[$eventId] = true;
+                    }
+                }
+            }
+        } catch (Throwable $error) {
+            Log::warning('sportsbot.highlights.sent_lookup_failed', [
+                'error' => $error->getMessage(),
+            ]);
+        }
+
+        $cached = Cache::get('sportsbot:highlights_sent', []);
+        if (is_array($cached)) {
+            foreach ($cached as $key => $value) {
+                if ($value === false) {
+                    continue;
+                }
+
+                $eventId = is_string($key) && !is_numeric($key)
+                    ? $key
+                    : (is_string($value) ? $value : '');
+                $eventId = trim($eventId);
+
+                if ($eventId !== '') {
+                    $sentIds[$eventId] = true;
+                }
+            }
+        }
+
+        return $sentIds;
     }
 
     public function format(array $summary): string

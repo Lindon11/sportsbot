@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
         <h1 class="text-2xl font-bold text-white">Highlights Queue</h1>
-        <p class="text-slate-400 text-sm mt-1">Daily results fetched from TheSportsDB — sent every 30 minutes to your highlights topic.</p>
+        <p class="text-slate-400 text-sm mt-1">Results fetched from TheSportsDB — sent when they match a published fixture.</p>
       </div>
       <div class="flex gap-2">
         <button @click="load" :disabled="loading" class="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 disabled:opacity-60">
@@ -30,7 +30,7 @@
       </div>
       <div class="rounded-2xl bg-slate-800/50 border border-slate-700/50 p-4">
         <p class="text-slate-400 text-sm">Schedule</p>
-        <p class="text-xl font-bold text-white mt-2">Daily 09:00</p>
+        <p class="text-xl font-bold text-white mt-2">Polling</p>
       </div>
     </div>
 

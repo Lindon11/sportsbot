@@ -93,11 +93,12 @@ if ((bool) config('plugins.SportsBot.enabled')) {
         }
 
         if ((bool) sportsbotSetting('fixture_queue_publish_enabled', config('plugins.SportsBot.publishing.fixture_queue.publish_enabled', true))) {
-            Schedule::command('sportsbot:fixtures-publish')
-                ->dailyAt((string) sportsbotSetting('fixture_queue_publish_time', config('plugins.SportsBot.publishing.fixture_queue.publish_time', '00:00')))
+            $publish = Schedule::command('sportsbot:fixtures-publish')
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-fixture-queue-publish.log'));
+
+            sportsbotScheduleFrequency($publish, (string) sportsbotSetting('fixture_queue_publish_frequency', config('plugins.SportsBot.publishing.fixture_queue.publish_frequency', 'everyFiveMinutes')));
         }
 
         if ((bool) sportsbotSetting('epg_import_enabled', config('plugins.SportsBot.epg.import_enabled', false))) {

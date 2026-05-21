@@ -46,7 +46,7 @@ class DiscordNotifier implements NotifierInterface
         $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
 
         $token = $this->botToken();
-        if ($token !== '') {
+        if ($token !== '' && $this->resolveBotChannel($routeKey) !== '') {
             return $this->sendViaBot($message, $options, $routeKey);
         }
 
@@ -73,7 +73,7 @@ class DiscordNotifier implements NotifierInterface
         $routeKey = TelegramRouteKeys::normalize((string) ($options['route_key'] ?? TelegramRouteKeys::DEFAULT));
 
         $token = $this->botToken();
-        if ($token !== '') {
+        if ($token !== '' && $this->resolveBotChannel($routeKey) !== '') {
             return $this->sendPhotoViaBot($photoPath, $caption, $options, $routeKey);
         }
 
@@ -305,9 +305,15 @@ class DiscordNotifier implements NotifierInterface
         $token = $this->botToken();
         if ($token !== '') {
             if ($routeKey === null) {
-                return $this->botChannels() !== [];
+                $defaultWebhook = trim((string) $this->settings->get(
+                    'discord_default_webhook_url',
+                    config('plugins.SportsBot.discord.default_webhook_url', '')
+                ));
+
+                return $this->botChannels() !== [] || $this->routeWebhooks() !== [] || $defaultWebhook !== '';
             }
-            return $this->resolveBotChannel($routeKey) !== '';
+
+            return $this->resolveBotChannel($routeKey) !== '' || $this->resolveWebhooks($routeKey) !== [];
         }
 
         return $this->resolveWebhooks($routeKey ?? TelegramRouteKeys::DEFAULT) !== [];
@@ -334,17 +340,18 @@ class DiscordNotifier implements NotifierInterface
             $botChannel = $tokenConfigured ? $this->resolveBotChannel($routeKey) : '';
             $routeWebhook = trim((string) ($webhooks[$routeKey] ?? ''));
             $hasDefaultWebhook = $defaultWebhook !== '';
+            $resolvedWebhooks = $this->resolveWebhooks($routeKey);
 
             $routeStatuses[$routeKey] = [
                 'configured' => $enabled && (
                     ($tokenConfigured && $botChannel !== '')
-                    || (!$tokenConfigured && ($routeWebhook !== '' || $hasDefaultWebhook))
+                    || $resolvedWebhooks !== []
                 ),
-                'source' => $tokenConfigured
-                    ? ($botChannel !== '' ? (isset($channels[$routeKey]) ? 'bot_channel' : 'bot_default') : 'none')
-                    : ($routeWebhook !== '' ? 'webhook_route' : ($hasDefaultWebhook ? 'webhook_default' : 'none')),
+                'source' => $botChannel !== ''
+                    ? (isset($channels[$routeKey]) ? 'bot_channel' : 'bot_default')
+                    : ($routeWebhook !== '' ? 'webhook_route' : ($resolvedWebhooks !== [] ? 'webhook_fallback' : ($hasDefaultWebhook ? 'webhook_default' : 'none'))),
                 'bot_channel_configured' => $botChannel !== '',
-                'webhook_configured' => $routeWebhook !== '' || $hasDefaultWebhook,
+                'webhook_configured' => $resolvedWebhooks !== [],
             ];
         }
 
@@ -563,15 +570,14 @@ class DiscordNotifier implements NotifierInterface
         $channels = $this->botChannels();
         $normalized = TelegramRouteKeys::normalize($routeKey);
 
-        $id = trim((string) ($channels[$normalized] ?? $channels[$routeKey] ?? ''));
-        if ($id === '') {
-            foreach ([$normalized, $routeKey, TelegramRouteKeys::DEFAULT] as $key) {
-                $id = trim((string) ($channels[$key] ?? ''));
-                if ($id !== '') break;
+        foreach ([$normalized, $routeKey, ...TelegramRouteKeys::fallbackRouteKeys($normalized), TelegramRouteKeys::DEFAULT] as $key) {
+            $id = trim((string) ($channels[$key] ?? ''));
+            if ($id !== '') {
+                return $id;
             }
         }
 
-        return $id;
+        return '';
     }
 
     /**

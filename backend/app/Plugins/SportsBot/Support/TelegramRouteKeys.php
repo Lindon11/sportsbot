@@ -54,8 +54,10 @@ class TelegramRouteKeys
             self::BASKETBALL,
             self::BASEBALL,
             self::AMERICAN_FOOTBALL,
+            self::USA_SPORTS,
             self::TENNIS,
             self::MMA,
+            self::FIGHTS,
             self::RUGBY,
             self::CRICKET,
             self::FORMULA_1,
@@ -76,8 +78,10 @@ class TelegramRouteKeys
             self::WORLDSBK,
             self::SPEEDWAY,
             self::MOTORSPORT_OTHER,
+            self::MOTORSPORT,
             self::ICE_HOCKEY,
             self::GOLF,
+            self::OTHER_SPORTS,
             self::BOXING,
             self::COMBAT_OTHER,
             self::HIGHLIGHTS,
@@ -118,7 +122,43 @@ class TelegramRouteKeys
      */
     public static function fallbackRouteKeys(string $routeKey): array
     {
-        return [];
+        return match (self::normalize($routeKey)) {
+            self::BASKETBALL,
+            self::BASEBALL,
+            self::AMERICAN_FOOTBALL,
+            self::ICE_HOCKEY => [self::USA_SPORTS],
+
+            self::TENNIS,
+            self::CRICKET,
+            self::GOLF => [self::OTHER_SPORTS],
+
+            self::FORMULA_1,
+            self::FORMULA_2,
+            self::FORMULA_3,
+            self::FORMULA_E,
+            self::MOTOGP,
+            self::MOTO2,
+            self::MOTO3,
+            self::INDYCAR,
+            self::NASCAR,
+            self::WRC,
+            self::BTCC,
+            self::WEC,
+            self::DTM,
+            self::DAKAR,
+            self::IMSA,
+            self::WORLDSBK,
+            self::SPEEDWAY => [self::MOTORSPORT_OTHER, self::MOTORSPORT],
+
+            self::MOTORSPORT_OTHER => [self::MOTORSPORT],
+
+            self::MMA,
+            self::BOXING => [self::COMBAT_OTHER, self::FIGHTS],
+
+            self::COMBAT_OTHER => [self::FIGHTS],
+
+            default => [],
+        };
     }
 
     /**
@@ -149,6 +189,13 @@ class TelegramRouteKeys
                 self::INDYCAR,
                 self::NASCAR,
                 self::WRC,
+                self::BTCC,
+                self::WEC,
+                self::DTM,
+                self::DAKAR,
+                self::IMSA,
+                self::WORLDSBK,
+                self::SPEEDWAY,
                 self::MOTORSPORT_OTHER,
             ],
             self::FIGHTS => [

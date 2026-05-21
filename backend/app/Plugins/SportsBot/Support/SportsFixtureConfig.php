@@ -160,7 +160,7 @@ class SportsFixtureConfig
             'other_sports' => [
                 'sport'                  => 'other_sports',
                 'emoji'                  => '🏟',
-                'topic_key'              => TelegramRouteKeys::DEFAULT,
+                'topic_key'              => TelegramRouteKeys::OTHER_SPORTS,
                 'provider_sport'         => '',
                 'card_template'          => self::CARD_TEMPLATE_GENERIC,
                 'caption_formatter'      => self::CAPTION_GENERIC,
