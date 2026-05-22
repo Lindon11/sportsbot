@@ -9,6 +9,7 @@ class SportsBotUptimeSite extends Model
     protected $table = 'sportsbot_uptime_sites';
 
     protected $fillable = [
+        'monitor_bot_id',
         'name',
         'url',
         'expected_keyword',
@@ -42,6 +43,11 @@ class SportsBotUptimeSite extends Model
         'last_online_at' => 'datetime',
         'last_offline_at' => 'datetime',
     ];
+
+    public function monitorBot()
+    {
+        return $this->belongsTo(SportsBotMonitorBot::class, 'monitor_bot_id');
+    }
 
     public function logs()
     {

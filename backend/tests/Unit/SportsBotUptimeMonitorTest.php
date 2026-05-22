@@ -4,8 +4,10 @@ namespace Tests\Unit;
 
 use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Console\Commands\SportsBotUptimeCheckCommand;
+use App\Plugins\SportsBot\Models\SportsBotMonitorBot;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use ReflectionMethod;
 use RuntimeException;
@@ -22,8 +24,8 @@ class SportsBotUptimeMonitorTest extends TestCase
         File::put($path, 'cached recovery card');
 
         $notifier = Mockery::mock(MonitorBotTelegramNotifier::class);
-        $notifier->shouldReceive('configured')->once()->andReturnTrue();
-        $notifier->shouldReceive('sendPhoto')->once()->with($path, '')->andThrow(new RuntimeException('photo upload failed'));
+        $notifier->shouldReceive('configured')->once()->with(null)->andReturnTrue();
+        $notifier->shouldReceive('sendPhoto')->once()->with($path, '', ['monitor_bot' => null])->andThrow(new RuntimeException('photo upload failed'));
         $notifier->shouldNotReceive('sendMessage');
 
         try {
@@ -46,6 +48,36 @@ class SportsBotUptimeMonitorTest extends TestCase
             $this->callPrivate($command, 'cachedAlertCardPath', [$site, 'down', $firstPayload]),
             $this->callPrivate($command, 'cachedAlertCardPath', [$site, 'down', $secondPayload]),
         );
+    }
+
+    public function test_monitor_bot_profile_uses_its_own_telegram_token_for_photo_alerts(): void
+    {
+        config()->set('services.monitor_bot.telegram_token', 'default-token');
+        config()->set('services.monitor_bot.telegram_chat_id', '-1000000000001');
+
+        Http::fake([
+            '*' => Http::response(['ok' => true, 'result' => ['message_id' => 91]], 200),
+        ]);
+
+        $path = storage_path('framework/testing/monitor-bot-profile-photo.png');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, 'fake alert card');
+
+        $bot = new SportsBotMonitorBot([
+            'name' => 'Customer Monitor',
+            'telegram_token' => 'profile-token',
+            'telegram_chat_id' => '-1000000000002',
+            'enabled' => true,
+        ]);
+
+        try {
+            app(MonitorBotTelegramNotifier::class)->sendPhoto($path, '', ['monitor_bot' => $bot]);
+        } finally {
+            File::delete($path);
+        }
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/botprofile-token/sendPhoto'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/botdefault-token/'));
     }
 
     private function site(): SportsBotUptimeSite

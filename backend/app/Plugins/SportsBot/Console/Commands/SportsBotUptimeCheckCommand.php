@@ -141,9 +141,12 @@ class SportsBotUptimeCheckCommand extends Command
 
         $isDown = $type === 'down';
 
-        if (!$notifier->configured()) {
+        $monitorBot = $site->monitorBot;
+
+        if (!$notifier->configured($monitorBot)) {
             Log::warning('monitor_bot.telegram.not_configured', [
                 'site_id' => $site->id,
+                'monitor_bot_id' => $monitorBot?->id,
                 'type' => $type,
             ]);
 
@@ -152,7 +155,7 @@ class SportsBotUptimeCheckCommand extends Command
 
         try {
             $cardPath = $this->renderAlertCard($site, $type, $responseTime, $error, $statusCode);
-            $notifier->sendPhoto($cardPath, '');
+            $notifier->sendPhoto($cardPath, '', ['monitor_bot' => $monitorBot]);
             $this->warmAlertCard($site, $isDown ? 'recovered' : 'down');
         } catch (Throwable $error) {
             Log::warning('monitor_bot.uptime.card_alert_failed', [

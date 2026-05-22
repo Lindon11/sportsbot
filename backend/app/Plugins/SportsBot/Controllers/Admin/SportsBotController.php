@@ -12,6 +12,7 @@ use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Models\SportsBotHighlightSent;
 use App\Plugins\SportsBot\Models\SportsBotMatchState;
+use App\Plugins\SportsBot\Models\SportsBotMonitorBot;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
 use App\Plugins\SportsBot\Models\SportsBotUptimeLog;
 use App\Plugins\SportsBot\Models\SportsBotPipelineRun;
@@ -3577,7 +3578,7 @@ class SportsBotController extends Controller
     {
         $startDate = now()->subDays(29)->startOfDay();
 
-        $sites = SportsBotUptimeSite::orderBy('name')->get()->map(function ($s) use ($startDate) {
+        $sites = SportsBotUptimeSite::query()->with('monitorBot')->orderBy('name')->get()->map(function ($s) use ($startDate) {
             $dailyStatus = [];
             $cursor = $startDate->copy();
 
@@ -3611,6 +3612,8 @@ class SportsBotController extends Controller
 
             return [
                 'id' => $s->id,
+                'monitor_bot_id' => $s->monitor_bot_id,
+                'monitor_bot_name' => $s->monitorBot?->name,
                 'name' => $s->name,
                 'url' => $s->url,
                 'status' => $s->status,
@@ -3630,12 +3633,21 @@ class SportsBotController extends Controller
             ];
         });
 
-        return response()->json(['sites' => $sites]);
+        return response()->json([
+            'sites' => $sites,
+            'monitor_bots' => SportsBotMonitorBot::query()
+                ->withCount('sites')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (SportsBotMonitorBot $bot): array => $this->monitorBotData($bot))
+                ->values(),
+        ]);
     }
 
     public function uptimeSiteCreate(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'monitor_bot_id' => ['sometimes', 'nullable', 'integer', 'exists:sportsbot_monitor_bots,id'],
             'name' => ['required', 'string', 'max:120'],
             'url' => ['required', 'url', 'max:500'],
             'check_interval_seconds' => ['sometimes', 'integer', 'min:60', 'max:86400'],
@@ -3655,6 +3667,7 @@ class SportsBotController extends Controller
         $site = SportsBotUptimeSite::findOrFail($id);
 
         $validated = $request->validate([
+            'monitor_bot_id' => ['sometimes', 'nullable', 'integer', 'exists:sportsbot_monitor_bots,id'],
             'name' => ['sometimes', 'string', 'max:120'],
             'url' => ['sometimes', 'url', 'max:500'],
             'check_interval_seconds' => ['sometimes', 'integer', 'min:60', 'max:86400'],
@@ -3691,6 +3704,68 @@ class SportsBotController extends Controller
             ]);
 
         return response()->json(['logs' => $logs]);
+    }
+
+    public function uptimeMonitorBotCreate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'owner_label' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'telegram_token' => ['required', 'string', 'max:255'],
+            'telegram_chat_id' => ['required', 'string', 'max:120'],
+            'telegram_message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'telegram_extra_targets' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'enabled' => ['sometimes', 'boolean'],
+        ]);
+
+        $bot = SportsBotMonitorBot::query()->create($validated);
+
+        return response()->json(['monitor_bot' => $this->monitorBotData($bot->loadCount('sites'))], 201);
+    }
+
+    public function uptimeMonitorBotUpdate(Request $request, int $id): JsonResponse
+    {
+        $bot = SportsBotMonitorBot::query()->findOrFail($id);
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:120'],
+            'owner_label' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'telegram_token' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'telegram_chat_id' => ['sometimes', 'string', 'max:120'],
+            'telegram_message_thread_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'telegram_extra_targets' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'enabled' => ['sometimes', 'boolean'],
+        ]);
+
+        if (array_key_exists('telegram_token', $validated) && trim((string) $validated['telegram_token']) === '') {
+            unset($validated['telegram_token']);
+        }
+
+        $bot->fill($validated)->save();
+
+        return response()->json(['monitor_bot' => $this->monitorBotData($bot->fresh()->loadCount('sites'))]);
+    }
+
+    public function uptimeMonitorBotDelete(int $id): JsonResponse
+    {
+        SportsBotMonitorBot::query()->findOrFail($id)->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
+    private function monitorBotData(SportsBotMonitorBot $bot): array
+    {
+        return [
+            'id' => $bot->id,
+            'name' => $bot->name,
+            'owner_label' => $bot->owner_label,
+            'telegram_chat_id' => $bot->telegram_chat_id,
+            'telegram_message_thread_id' => $bot->telegram_message_thread_id,
+            'telegram_extra_targets' => $bot->telegram_extra_targets,
+            'enabled' => $bot->enabled,
+            'token_configured' => $bot->tokenConfigured(),
+            'sites_count' => (int) ($bot->sites_count ?? $bot->sites()->count()),
+            'updated_at' => $bot->updated_at?->toIso8601String(),
+        ];
     }
 
     public function monitorSettings(): JsonResponse

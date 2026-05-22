@@ -2,6 +2,7 @@
 
 namespace App\Core\Services;
 
+use App\Plugins\SportsBot\Models\SportsBotMonitorBot;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -9,9 +10,9 @@ use Throwable;
 
 class MonitorBotTelegramNotifier
 {
-    public function configured(): bool
+    public function configured(?SportsBotMonitorBot $bot = null): bool
     {
-        return $this->token() !== '' && $this->targets() !== [];
+        return $this->token($bot) !== '' && $this->targets($bot) !== [];
     }
 
     /**
@@ -19,14 +20,16 @@ class MonitorBotTelegramNotifier
      */
     public function sendMessage(string $message, array $options = []): array
     {
-        if (!$this->configured()) {
+        $bot = $this->botOption($options);
+        if (!$this->configured($bot)) {
             throw new RuntimeException('Monitor bot Telegram token or target is not configured.');
         }
 
+        $token = $this->token($bot);
         $results = [];
         $failures = [];
 
-        foreach ($this->targets() as $target) {
+        foreach ($this->targets($bot) as $target) {
             $payload = [
                 'chat_id' => $target['chat_id'],
                 'text' => $message,
@@ -35,7 +38,7 @@ class MonitorBotTelegramNotifier
 
             if ($target['message_thread_id'] !== null) {
                 $payload['message_thread_id'] = (string) $target['message_thread_id'];
-                $this->reopenTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
+                $this->reopenTopic($token, (string) $target['chat_id'], (int) $target['message_thread_id']);
             }
 
             $parseMode = trim((string) config('services.monitor_bot.telegram_parse_mode', 'HTML'));
@@ -46,7 +49,7 @@ class MonitorBotTelegramNotifier
             try {
                 $response = Http::asForm()
                     ->timeout(15)
-                    ->post($this->apiUrl('sendMessage'), $payload);
+                    ->post($this->apiUrl($token, 'sendMessage'), $payload);
 
                 $ok = $response->successful() && (bool) ($response->json('ok') ?? false);
                 if (!$ok) {
@@ -55,7 +58,7 @@ class MonitorBotTelegramNotifier
                 }
 
                 if ($target['message_thread_id'] !== null) {
-                    $this->closeTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
+                    $this->closeTopic($token, (string) $target['chat_id'], (int) $target['message_thread_id']);
                 }
 
                 $results[] = [
@@ -81,7 +84,8 @@ class MonitorBotTelegramNotifier
      */
     public function sendPhoto(string $photoPath, string $caption, array $options = []): array
     {
-        if (!$this->configured()) {
+        $bot = $this->botOption($options);
+        if (!$this->configured($bot)) {
             throw new RuntimeException('Monitor bot Telegram token or target is not configured.');
         }
 
@@ -89,10 +93,11 @@ class MonitorBotTelegramNotifier
             throw new RuntimeException('Monitor bot alert card does not exist: ' . $photoPath);
         }
 
+        $token = $this->token($bot);
         $results = [];
         $failures = [];
 
-        foreach ($this->targets() as $target) {
+        foreach ($this->targets($bot) as $target) {
             $payload = [
                 'chat_id' => $target['chat_id'],
                 'caption' => $caption,
@@ -101,7 +106,7 @@ class MonitorBotTelegramNotifier
 
             if ($target['message_thread_id'] !== null) {
                 $payload['message_thread_id'] = (string) $target['message_thread_id'];
-                $this->reopenTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
+                $this->reopenTopic($token, (string) $target['chat_id'], (int) $target['message_thread_id']);
             }
 
             $parseMode = trim((string) config('services.monitor_bot.telegram_parse_mode', 'HTML'));
@@ -113,7 +118,7 @@ class MonitorBotTelegramNotifier
                 $response = Http::asMultipart()
                     ->attach('photo', file_get_contents($photoPath), basename($photoPath))
                     ->timeout(20)
-                    ->post($this->apiUrl('sendPhoto'), $payload);
+                    ->post($this->apiUrl($token, 'sendPhoto'), $payload);
 
                 $ok = $response->successful() && (bool) ($response->json('ok') ?? false);
                 if (!$ok) {
@@ -122,7 +127,7 @@ class MonitorBotTelegramNotifier
                 }
 
                 if ($target['message_thread_id'] !== null) {
-                    $this->closeTopic((string) $target['chat_id'], (int) $target['message_thread_id']);
+                    $this->closeTopic($token, (string) $target['chat_id'], (int) $target['message_thread_id']);
                 }
 
                 $results[] = [
@@ -144,14 +149,25 @@ class MonitorBotTelegramNotifier
         return $results;
     }
 
-    private function token(): string
+    private function botOption(array $options): ?SportsBotMonitorBot
     {
+        $bot = $options['monitor_bot'] ?? null;
+
+        return $bot instanceof SportsBotMonitorBot ? $bot : null;
+    }
+
+    private function token(?SportsBotMonitorBot $bot = null): string
+    {
+        if ($bot instanceof SportsBotMonitorBot) {
+            return $bot->enabled ? trim((string) $bot->telegram_token) : '';
+        }
+
         return trim((string) config('services.monitor_bot.telegram_token', ''));
     }
 
-    private function apiUrl(string $method): string
+    private function apiUrl(string $token, string $method): string
     {
-        return 'https://api.telegram.org/bot' . $this->token() . '/' . $method;
+        return 'https://api.telegram.org/bot' . $token . '/' . $method;
     }
 
     private function disableNotification(): bool
@@ -162,8 +178,22 @@ class MonitorBotTelegramNotifier
     /**
      * @return array<int, array{chat_id:string,message_thread_id:int|null}>
      */
-    private function targets(): array
+    private function targets(?SportsBotMonitorBot $bot = null): array
     {
+        if ($bot instanceof SportsBotMonitorBot) {
+            if (!$bot->enabled) {
+                return [];
+            }
+
+            return $this->uniqueTargets([
+                [
+                    'chat_id' => (string) $bot->telegram_chat_id,
+                    'message_thread_id' => $this->nullableInt($bot->telegram_message_thread_id),
+                ],
+                ...$this->parseExtraTargets($bot->telegram_extra_targets),
+            ]);
+        }
+
         $targets = [];
 
         $settings = app(\App\Plugins\SportsBot\Services\SportsBotSettingsService::class);
@@ -181,16 +211,22 @@ class MonitorBotTelegramNotifier
 
         $extra = $savedExtra ?: trim((string) config('services.monitor_bot.telegram_extra_targets', ''));
         foreach ($this->parseExtraTargets($extra) as $target) {
-            $targets[] = [
-                'chat_id' => $primaryChatId,
-                'message_thread_id' => $this->nullableInt(config('services.monitor_bot.telegram_message_thread_id')),
-            ];
+            $targets[] = $target;
         }
 
         foreach ($this->parseExtraTargets(config('services.monitor_bot.telegram_extra_targets', '')) as $target) {
             $targets[] = $target;
         }
 
+        return $this->uniqueTargets($targets);
+    }
+
+    /**
+     * @param array<int, array{chat_id:string,message_thread_id:int|null}> $targets
+     * @return array<int, array{chat_id:string,message_thread_id:int|null}>
+     */
+    private function uniqueTargets(array $targets): array
+    {
         $unique = [];
         foreach ($targets as $target) {
             $chatId = trim((string) $target['chat_id']);
@@ -249,12 +285,12 @@ class MonitorBotTelegramNotifier
         return $value !== '' ? (int) $value : null;
     }
 
-    private function reopenTopic(string $chatId, int $messageThreadId): void
+    private function reopenTopic(string $token, string $chatId, int $messageThreadId): void
     {
         try {
             Http::asForm()
                 ->timeout(5)
-                ->post($this->apiUrl('reopenForumTopic'), [
+                ->post($this->apiUrl($token, 'reopenForumTopic'), [
                     'chat_id' => $chatId,
                     'message_thread_id' => $messageThreadId,
                 ]);
@@ -267,12 +303,12 @@ class MonitorBotTelegramNotifier
         }
     }
 
-    private function closeTopic(string $chatId, int $messageThreadId): void
+    private function closeTopic(string $token, string $chatId, int $messageThreadId): void
     {
         try {
             Http::asForm()
                 ->timeout(5)
-                ->post($this->apiUrl('closeForumTopic'), [
+                ->post($this->apiUrl($token, 'closeForumTopic'), [
                     'chat_id' => $chatId,
                     'message_thread_id' => $messageThreadId,
                 ]);
