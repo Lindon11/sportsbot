@@ -113,7 +113,7 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-epg-match.log'));
 
-            Schedule::command('sportsbot:epg-health --notify')
+            Schedule::command('sportsbot:epg-health')
                 ->hourlyAt(20)
                 ->withoutOverlapping()
                 ->onOneServer()
