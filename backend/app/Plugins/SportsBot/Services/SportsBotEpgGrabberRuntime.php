@@ -441,10 +441,14 @@ class SportsBotEpgGrabberRuntime
     {
         $found = [];
         foreach (explode(PATH_SEPARATOR, (string) getenv('PATH')) as $dir) {
-            if ($dir === '' || ! is_dir($dir)) {
+            if ($dir === '' || ! @is_dir($dir)) {
                 continue;
             }
-            foreach (scandir($dir) ?: [] as $file) {
+            $entries = @scandir($dir);
+            if (! is_array($entries)) {
+                continue;
+            }
+            foreach ($entries as $file) {
                 if (preg_match($pattern, $file) === 1) {
                     $path = $dir . DIRECTORY_SEPARATOR . $file;
                     if (is_executable($path)) {
