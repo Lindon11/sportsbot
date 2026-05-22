@@ -3648,6 +3648,12 @@ class SportsBotController extends Controller
 
     public function uptimeSiteCreate(Request $request): JsonResponse
     {
+        $input = $request->input();
+        if (empty($input['monitor_bot_id']) || $input['monitor_bot_id'] === '') {
+            $input['monitor_bot_id'] = null;
+            $request->merge($input);
+        }
+
         $validated = $request->validate([
             'monitor_bot_id' => ['sometimes', 'nullable', 'integer', 'exists:sportsbot_monitor_bots,id'],
             'name' => ['required', 'string', 'max:120'],
