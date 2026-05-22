@@ -162,6 +162,23 @@
     </div>
 
     <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-semibold text-white">Provider Alerts</h2>
+        <span class="rounded px-2 py-1 text-xs font-medium" :class="health.alerts?.length ? 'bg-amber-500/15 text-amber-200' : 'bg-emerald-500/15 text-emerald-200'">{{ health.alerts?.length ? `${health.alerts.length} need attention` : 'Healthy' }}</span>
+      </div>
+      <div v-if="!health.alerts?.length" class="text-sm text-emerald-200">Sources, grabbers, coverage, and cached export freshness have no active health alerts.</div>
+      <div v-else class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div v-for="alert in health.alerts" :key="alert.key" class="rounded-lg border border-slate-700 bg-slate-900 p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="rounded px-2 py-1 text-xs font-medium" :class="alert.severity === 'critical' ? 'bg-red-500/15 text-red-200' : 'bg-amber-500/15 text-amber-200'">{{ alert.severity }}</span>
+            <span class="truncate text-xs text-slate-500">{{ alert.key }}</span>
+          </div>
+          <p class="mt-2 text-sm text-slate-100">{{ alert.message }}</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-lg border border-slate-700/60 bg-slate-800/50 p-5">
       <h2 class="mb-4 text-lg font-semibold text-white">Missing UK Sports Channels</h2>
       <div v-if="missingChannels.length === 0" class="text-sm text-emerald-200">Expected UK sports channel guide coverage is present.</div>
       <div v-else class="flex flex-wrap gap-2">
@@ -256,6 +273,7 @@ const reviewMatches = ref([])
 const exportHealth = ref({})
 const performance = ref({})
 const missingChannels = ref([])
+const health = ref({})
 
 const tiles = computed(() => [
   { label: 'Sources', value: summary.value.source_count || 0, tone: 'text-white' },
@@ -282,6 +300,7 @@ async function load() {
     exportHealth.value = data.export_health || {}
     performance.value = data.performance_health || {}
     missingChannels.value = data.missing_channels || []
+    health.value = data.health || {}
   } catch (err) {
     error.value = err.response?.data?.error || err.message || 'Failed to load EPG provider state'
   } finally {

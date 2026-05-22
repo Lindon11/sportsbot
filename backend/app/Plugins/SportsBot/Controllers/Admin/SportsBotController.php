@@ -30,6 +30,7 @@ use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
 use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
+use App\Plugins\SportsBot\Services\SportsBotEpgHealthService;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
 use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
 use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
@@ -925,7 +926,7 @@ class SportsBotController extends Controller
         ]);
     }
 
-    public function epgProvider(SportsBotEpgGrabberRuntime $grabbers, SportsBotEpgRuntimeLock $lock): JsonResponse
+    public function epgProvider(SportsBotEpgGrabberRuntime $grabbers, SportsBotEpgHealthService $health, SportsBotEpgRuntimeLock $lock): JsonResponse
     {
         if (! Schema::hasTable('sportsbot_epg_sources')) {
             return response()->json([
@@ -993,6 +994,7 @@ class SportsBotController extends Controller
                 'max_programmes' => (int) config('plugins.SportsBot.epg.max_programmes', 80000),
                 'source_policy' => (string) config('plugins.SportsBot.epg.source_policy', 'uk_sports_first'),
             ],
+            'health' => $health->snapshot(),
             'missing_channels' => $grabbers->missingUkSportsChannels(),
             'export_health' => [
                 'token_configured' => trim((string) app(SportsBotSettingsService::class)->get('epg_export_token', config('plugins.SportsBot.epg.export_token', ''))) !== '',

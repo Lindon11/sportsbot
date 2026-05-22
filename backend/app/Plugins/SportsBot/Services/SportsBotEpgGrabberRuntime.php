@@ -311,7 +311,7 @@ class SportsBotEpgGrabberRuntime
                 'type' => 'grabber_output',
                 'region' => $grabber->region,
                 'priority' => 5,
-                'enabled' => true,
+                'enabled' => false,
                 'status' => 'unchecked',
             ]
         );

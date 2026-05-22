@@ -21,8 +21,14 @@ class SportsBotEpgMatcher
      */
     private array $sourceCache = [];
 
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private array $verificationCache = [];
+
     public function __construct(
         private readonly SportsBotEpgChannelNormalizer $channels = new SportsBotEpgChannelNormalizer(),
+        private readonly SportsBotEpgScheduleVerifier $scheduleVerifier = new SportsBotEpgScheduleVerifier(),
     ) {
     }
 
@@ -331,6 +337,11 @@ class SportsBotEpgMatcher
         $score = $this->textScore($fixture, (string) $programme->title, (string) ($programme->description ?? ''), $parts);
         $score += $this->timeScore($kickoff, $programme, $parts);
         $score += $this->sourceScore($programme, $parts);
+        $verification = $this->scheduleVerification($entry, $canonical, $channel);
+        if (($verification['verified'] ?? false) === true) {
+            $score += (float) ($verification['boost'] ?? 0.0);
+            $parts['public_schedule_verifier'] = (float) ($verification['boost'] ?? 0.0);
+        }
 
         $agreement = $sourceAgreement[$canonical] ?? 0;
         if ($agreement >= 2) {
@@ -357,7 +368,10 @@ class SportsBotEpgMatcher
             'channel' => $channel,
             'canonical_channel_id' => $canonical,
             'confidence' => round($score, 2),
-            'source_urls' => array_values(array_filter([(string) ($programme->source_url ?? '')])),
+            'source_urls' => array_values(array_unique(array_filter([
+                (string) ($programme->source_url ?? ''),
+                ...((array) ($verification['source_urls'] ?? [])),
+            ]))),
             'evidence' => [
                 'programme_title' => (string) $programme->title,
                 'programme_description' => (string) ($programme->description ?? ''),
@@ -367,8 +381,19 @@ class SportsBotEpgMatcher
                 'kickoff_delta_minutes' => $deltaMinutes,
                 'score_parts' => $parts,
                 'source_agreement' => $agreement,
+                'schedule_verifier' => $verification,
             ],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function scheduleVerification(SportsBotFixtureQueue $entry, string $canonicalChannelId, string $channel): array
+    {
+        $key = $entry->id . ':' . ($canonicalChannelId !== '' ? $canonicalChannelId : $channel);
+
+        return $this->verificationCache[$key] ??= $this->scheduleVerifier->evidenceForChannel($entry, $canonicalChannelId, $channel);
     }
 
     /**

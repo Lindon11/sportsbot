@@ -292,6 +292,11 @@ class SportsBotEpgSourceImporter
      */
     private function downloadToXmlFile(SportsBotEpgSource $source, bool $skipUnchanged): array
     {
+        $isLocalFile = str_starts_with((string) $source->url, 'file://');
+        if (! $isLocalFile) {
+            $this->assertAllowedRemoteUrl((string) $source->url);
+        }
+
         File::ensureDirectoryExists($this->tmpDir());
         $downloadPath = tempnam($this->tmpDir(), 'epg-download-');
         $xmlPath = tempnam($this->tmpDir(), 'epg-xml-');
@@ -300,7 +305,7 @@ class SportsBotEpgSourceImporter
             throw new \RuntimeException('Unable to create EPG temp files');
         }
 
-        if (str_starts_with((string) $source->url, 'file://')) {
+        if ($isLocalFile) {
             $path = substr((string) $source->url, 7);
             if (! is_file($path)) {
                 throw new \RuntimeException('Local EPG output file does not exist');
@@ -627,6 +632,34 @@ class SportsBotEpgSourceImporter
         }
 
         return (string) config('plugins.SportsBot.epg.default_region', 'UK') ?: null;
+    }
+
+    private function assertAllowedRemoteUrl(string $url): void
+    {
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower(trim((string) ($parts['host'] ?? '')));
+
+        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+            throw new \RuntimeException('EPG feed URL must use public HTTP or HTTPS');
+        }
+
+        if ((bool) config('plugins.SportsBot.epg.allow_private_feed_urls', false)) {
+            return;
+        }
+
+        if (in_array($host, ['localhost', 'localhost.localdomain'], true)
+            || str_ends_with($host, '.local')
+            || str_ends_with($host, '.internal')) {
+            throw new \RuntimeException('Private EPG feed host is not allowed');
+        }
+
+        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+        foreach ($ips as $ip) {
+            if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                throw new \RuntimeException('Private EPG feed address is not allowed');
+            }
+        }
     }
 
     private function tmpDir(): string

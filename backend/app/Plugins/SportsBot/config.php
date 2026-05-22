@@ -872,12 +872,26 @@ return [
         'import_chunk_size' => (int) env('SPORTSBOT_EPG_IMPORT_CHUNK_SIZE', 2000),
         'max_programmes' => (int) env('SPORTSBOT_EPG_MAX_PROGRAMMES', 80000),
         'skip_unchanged' => env('SPORTSBOT_EPG_SKIP_UNCHANGED', true),
+        'allow_private_feed_urls' => env('SPORTSBOT_EPG_ALLOW_PRIVATE_FEED_URLS', false),
+        'schedule_verifier_min_confidence' => (float) env('SPORTSBOT_EPG_SCHEDULE_VERIFIER_MIN_CONFIDENCE', 0.8),
+        'schedule_verifier_boost' => (float) env('SPORTSBOT_EPG_SCHEDULE_VERIFIER_BOOST', 0.08),
         'grabbers' => [
             'tools_path' => env('SPORTSBOT_EPG_GRABBER_TOOLS_PATH', storage_path('app/sportsbot/epg/tools')),
             'output_path' => env('SPORTSBOT_EPG_GRABBER_OUTPUT_PATH', storage_path('app/sportsbot/epg/grabber-output')),
             'iptv_org_path' => env('SPORTSBOT_EPG_IPTV_ORG_PATH', storage_path('app/sportsbot/epg/tools/iptv-org-epg')),
             'iptv_org_sites' => env('SPORTSBOT_EPG_IPTV_ORG_SITES', 'sky.com,bbc.co.uk,itv.com,channel4.com'),
             'external_timeout' => (int) env('SPORTSBOT_EPG_GRABBER_TIMEOUT', 900),
+        ],
+        'retention' => [
+            'output_days' => (int) env('SPORTSBOT_EPG_OUTPUT_RETENTION_DAYS', 3),
+            'history_days' => (int) env('SPORTSBOT_EPG_HISTORY_RETENTION_DAYS', 21),
+            'programme_past_days' => (int) env('SPORTSBOT_EPG_PROGRAMME_PAST_RETENTION_DAYS', 2),
+        ],
+        'health' => [
+            'export_max_age_hours' => (int) env('SPORTSBOT_EPG_EXPORT_MAX_AGE_HOURS', 8),
+            'notify_cooldown_minutes' => (int) env('SPORTSBOT_EPG_HEALTH_NOTIFY_COOLDOWN_MINUTES', 360),
+            'grabber_failure_runs' => (int) env('SPORTSBOT_EPG_GRABBER_FAILURE_ALERT_RUNS', 3),
+            'programme_drop_ratio' => (float) env('SPORTSBOT_EPG_PROGRAMME_DROP_RATIO', 0.25),
         ],
     ],
 

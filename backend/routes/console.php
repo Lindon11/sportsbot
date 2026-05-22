@@ -112,6 +112,18 @@ if ((bool) config('plugins.SportsBot.enabled')) {
                 ->withoutOverlapping()
                 ->onOneServer()
                 ->appendOutputTo(storage_path('logs/sportsbot-epg-match.log'));
+
+            Schedule::command('sportsbot:epg-health --notify')
+                ->hourlyAt(20)
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->appendOutputTo(storage_path('logs/sportsbot-epg-health.log'));
+
+            Schedule::command('sportsbot:epg-cleanup')
+                ->dailyAt('04:40')
+                ->withoutOverlapping()
+                ->onOneServer()
+                ->appendOutputTo(storage_path('logs/sportsbot-epg-cleanup.log'));
         }
 
         if ((bool) sportsbotSetting('highlights_schedule_enabled', config('plugins.SportsBot.publishing.highlights.enabled', true))) {

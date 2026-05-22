@@ -4,12 +4,14 @@ namespace Tests\Unit;
 
 use App\Plugins\SportsBot\Models\SportsBotEpgCorrection;
 use App\Plugins\SportsBot\Models\SportsBotEpgGrabber;
+use App\Plugins\SportsBot\Models\SportsBotEpgGrabberOutput;
 use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Services\SportsBotEpgChannelNormalizer;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
 use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
+use App\Plugins\SportsBot\Services\SportsBotEpgMaintenance;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
 use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
 use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
@@ -138,6 +140,24 @@ class SportsBotEpgProviderTest extends TestCase
         $this->assertSame('sky_sports_main_event', $json['programmes'][0]['channel_id']);
     }
 
+    public function test_exports_dedupe_equivalent_programmes_and_prefer_primary_source(): void
+    {
+        $mirror = $this->source('https://mirror.test/uk.xml.gz', 90);
+        $primary = $this->source('https://primary.test/uk.xml.gz', 10);
+        $this->programme($mirror, 'SkySpMainEvent.uk', 'Arsenal v Chelsea Coverage', 'Mirror description', '19:45');
+        $this->programme($primary, 'Sky Sports Main Event', 'Arsenal vs Chelsea Live', 'Primary description', '19:45');
+
+        $exporter = new SportsBotEpgExporter();
+        $json = $exporter->exportJson();
+        $xml = $exporter->exportXmltv();
+
+        $this->assertCount(1, $json['programmes']);
+        $this->assertSame($primary->url, $json['programmes'][0]['source_url']);
+        $this->assertSame(2, $json['programmes'][0]['source_count']);
+        $this->assertSame(1, $json['stats']['duplicates_removed']);
+        $this->assertSame(1, substr_count($xml, '<programme '));
+    }
+
     public function test_uk_sports_policy_disables_non_uk_epgshare_sources(): void
     {
         $uk = $this->source('https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz', 50);
@@ -181,6 +201,16 @@ class SportsBotEpgProviderTest extends TestCase
         } finally {
             File::delete($path);
         }
+    }
+
+    public function test_remote_import_blocks_private_feed_addresses_by_default(): void
+    {
+        $source = $this->source('http://127.0.0.1/internal-guide.xml', 10);
+
+        $result = (new SportsBotEpgSourceImporter())->importSource($source, 3);
+
+        $this->assertSame('failed', $result['status']);
+        $this->assertStringContainsString('Private EPG feed address', (string) $result['error']);
     }
 
     public function test_grabber_discovery_registers_enabled_public_feed_sources(): void
@@ -229,6 +259,37 @@ class SportsBotEpgProviderTest extends TestCase
         $this->assertContains($covered->id, array_column($forced['rows'], 'fixture_queue_id'));
     }
 
+    public function test_schedule_verifier_adds_public_scraper_evidence_to_match(): void
+    {
+        $fixture = $this->fixture([
+            'event_name' => 'Arsenal vs Chelsea',
+            'home_team' => 'Arsenal',
+            'away_team' => 'Chelsea',
+            'league' => 'Premier League',
+            'dateEvent' => now()->toDateString(),
+            'time' => '20:00',
+        ]);
+        $fixture->payload = [
+            'accepted_scraped_data' => [
+                'fields' => [
+                    'tv_channel' => 'Sky Sports Main Event HD',
+                ],
+                'confidence' => 0.94,
+                'source_urls' => ['https://official.example.test/schedule'],
+            ],
+        ];
+        $fixture->save();
+
+        $source = $this->source('https://example.test/uk.xml.gz', 10);
+        $this->programme($source, 'Sky Sports Main Event', 'Arsenal Live', 'Premier League coverage', '20:00');
+
+        $result = (new SportsBotEpgMatcher())->matchFixture($fixture, true);
+
+        $this->assertTrue($result['evidence']['schedule_verifier']['verified']);
+        $this->assertArrayHasKey('public_schedule_verifier', $result['evidence']['score_parts']);
+        $this->assertContains('https://official.example.test/schedule', $result['evidence']['schedule_verifier']['source_urls']);
+    }
+
     public function test_runtime_lock_blocks_nested_epg_jobs(): void
     {
         $lock = new SportsBotEpgRuntimeLock();
@@ -243,6 +304,59 @@ class SportsBotEpgProviderTest extends TestCase
         $this->assertTrue($result['status']['locked']);
         $this->assertTrue($result['inner']['locked']);
         $this->assertFalse($lock->status()['locked']);
+    }
+
+    public function test_cleanup_prunes_old_grabber_outputs_and_local_import_sources(): void
+    {
+        $root = storage_path('app/sportsbot/epg/grabber-cleanup-' . uniqid());
+        $oldPath = $root . '/old.xml';
+        $freshPath = $root . '/fresh.xml';
+        File::ensureDirectoryExists($root);
+        File::put($oldPath, $this->xmltvFixture());
+        File::put($freshPath, $this->xmltvFixture());
+        config()->set('plugins.SportsBot.epg.grabbers.output_path', $root);
+
+        try {
+            $grabber = SportsBotEpgGrabber::query()->create([
+                'name' => 'cleanup-test',
+                'type' => 'xmltv_command',
+                'region' => 'UK',
+                'enabled' => true,
+                'installed' => true,
+                'status' => 'available',
+            ]);
+            $source = $this->source('file://' . $oldPath, 5);
+            $source->fill(['type' => 'grabber_output', 'enabled' => false])->save();
+            $this->programme($source, 'Sky Sports Main Event', 'Old generated output', 'Old local source', '19:45');
+
+            $old = SportsBotEpgGrabberOutput::query()->create([
+                'grabber_id' => $grabber->id,
+                'region' => 'UK',
+                'path' => $oldPath,
+                'source_url' => 'file://' . $oldPath,
+                'bytes' => filesize($oldPath),
+                'generated_at' => now()->subDays(7),
+            ]);
+            SportsBotEpgGrabberOutput::query()->create([
+                'grabber_id' => $grabber->id,
+                'region' => 'UK',
+                'path' => $freshPath,
+                'source_url' => 'file://' . $freshPath,
+                'bytes' => filesize($freshPath),
+                'generated_at' => now(),
+            ]);
+
+            $result = (new SportsBotEpgMaintenance())->cleanup(3, 21, 2);
+
+            $this->assertSame(1, $result['grabber_outputs_deleted']);
+            $this->assertSame(1, $result['grabber_output_files_deleted']);
+            $this->assertFalse(is_file($oldPath));
+            $this->assertNull($old->fresh());
+            $this->assertNull($source->fresh());
+            $this->assertTrue(is_file($freshPath));
+        } finally {
+            File::deleteDirectory($root);
+        }
     }
 
     private function fixture(array $fixtureData): SportsBotFixtureQueue
