@@ -5,11 +5,11 @@ namespace App\Plugins\SportsBot\Console\Commands;
 use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Models\SportsBotUptimeLog;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
+use App\Plugins\SportsBot\Services\SportsBotUptimeAlertCardService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 use Throwable;
 
 class SportsBotUptimeCheckCommand extends Command
@@ -168,40 +168,7 @@ class SportsBotUptimeCheckCommand extends Command
 
     private function renderAlertCard(SportsBotUptimeSite $site, string $type, int $responseTime, ?string $error, ?int $statusCode): string
     {
-        $payload = $this->alertPayload($site, $type, $responseTime, $error, $statusCode);
-        $outputPath = $this->cachedAlertCardPath($site, $type, $payload);
-        if (is_file($outputPath)) {
-            return $outputPath;
-        }
-
-        $dir = storage_path('app/monitor-bot/cards');
-        @mkdir($dir, 0755, true);
-
-        $stamp = now()->format('YmdHis');
-        $inputPath = $dir . '/uptime-alert-input-' . $site->id . '-' . $stamp . '.json';
-
-        file_put_contents($inputPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-        $script = base_path('sportsbot-render-status.cjs');
-        if (!is_file($script)) {
-            @unlink($inputPath);
-            throw new RuntimeException('Render script not found');
-        }
-
-        $command = sprintf(
-            'node %s %s %s 2>&1',
-            escapeshellarg($script),
-            escapeshellarg($inputPath),
-            escapeshellarg($outputPath)
-        );
-        exec($command, $output, $exitCode);
-        @unlink($inputPath);
-
-        if ($exitCode !== 0 || !is_file($outputPath)) {
-            throw new RuntimeException('Render failed: ' . implode("\n", $output));
-        }
-
-        return $outputPath;
+        return app(SportsBotUptimeAlertCardService::class)->renderAlertCard($site, $type, $responseTime, $error, $statusCode);
     }
 
     /**
@@ -209,25 +176,7 @@ class SportsBotUptimeCheckCommand extends Command
      */
     private function alertPayload(SportsBotUptimeSite $site, string $type, int $responseTime, ?string $error, ?int $statusCode): array
     {
-        $status = $type === 'down' ? 'offline' : 'online';
-
-        return [
-            'mode' => 'alert',
-            'type' => $type,
-            'checked_at' => now()->toIso8601String(),
-            'title' => $type === 'down' ? 'Server Experiencing Downtime' : 'Server Is Now Online',
-            'message' => $type === 'down'
-                ? "{$site->name} is currently experiencing downtime. Please wait for an update."
-                : "{$site->name} is now back online and operating normally.",
-            'sites' => [[
-                'name' => $site->name,
-                'url' => $site->url,
-                'status' => $status,
-                'status_code' => $statusCode,
-                'response_time_ms' => $responseTime,
-                'error' => $error,
-            ]],
-        ];
+        return app(SportsBotUptimeAlertCardService::class)->alertPayload($site, $type, $responseTime, $error, $statusCode);
     }
 
     /**
@@ -235,24 +184,7 @@ class SportsBotUptimeCheckCommand extends Command
      */
     private function cachedAlertCardPath(SportsBotUptimeSite $site, string $type, array $payload): string
     {
-        $templatePath = resource_path('cards/templates/uptime-card.html');
-        $templateFingerprint = is_file($templatePath)
-            ? hash_file('sha256', $templatePath)
-            : 'missing-template';
-
-        $fingerprint = hash('sha256', json_encode([
-            'template' => $templateFingerprint,
-            'site_id' => $site->id,
-            'type' => $type,
-            'title' => $payload['title'] ?? '',
-            'message' => $payload['message'] ?? '',
-            'site' => [
-                'name' => $site->name,
-                'url' => $site->url,
-            ],
-        ], JSON_UNESCAPED_SLASHES));
-
-        return storage_path('app/monitor-bot/cards/uptime-alert-' . $site->id . '-' . $type . '-' . substr($fingerprint, 0, 16) . '.png');
+        return app(SportsBotUptimeAlertCardService::class)->cachedAlertCardPath($site, $type, $payload);
     }
 
     private function warmAlertCard(SportsBotUptimeSite $site, string $type): void

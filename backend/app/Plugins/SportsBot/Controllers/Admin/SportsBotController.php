@@ -2,6 +2,7 @@
 
 namespace App\Plugins\SportsBot\Controllers\Admin;
 
+use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotDelivery;
 use App\Plugins\SportsBot\Models\SportsBotEpgFixtureMatch;
@@ -38,6 +39,7 @@ use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
 use App\Plugins\SportsBot\Services\SportsBotEpgSourceImporter;
 use App\Plugins\SportsBot\Services\SportsBotCardRenderer;
 use App\Plugins\SportsBot\Services\SportsBotNotifier;
+use App\Plugins\SportsBot\Services\SportsBotUptimeAlertCardService;
 use App\Plugins\SportsBot\Services\FixtureQueueService;
 use App\Plugins\SportsBot\Services\SportsFixturePublisher;
 use App\Plugins\SportsBot\Services\DiscordNotifier;
@@ -3750,6 +3752,40 @@ class SportsBotController extends Controller
         SportsBotMonitorBot::query()->findOrFail($id)->delete();
 
         return response()->json(['deleted' => true]);
+    }
+
+    public function uptimeMonitorBotTest(
+        int $id,
+        MonitorBotTelegramNotifier $notifier,
+        SportsBotUptimeAlertCardService $cards
+    ): JsonResponse {
+        $bot = SportsBotMonitorBot::query()->findOrFail($id);
+
+        if (!$notifier->configured($bot)) {
+            return response()->json([
+                'message' => 'This Monitor Bot needs an enabled token and Telegram target before it can send a test alert.',
+            ], 422);
+        }
+
+        try {
+            $cardPath = $cards->renderTestAlertCard($bot);
+            $results = $notifier->sendPhoto($cardPath, '', ['monitor_bot' => $bot]);
+
+            return response()->json([
+                'sent' => count($results),
+                'results' => $results,
+            ]);
+        } catch (Throwable $error) {
+            Log::warning('monitor_bot.telegram.test_alert_failed', [
+                'monitor_bot_id' => $bot->id,
+                'error' => $error->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Monitor Bot test alert failed.',
+                'error' => $error->getMessage(),
+            ], 422);
+        }
     }
 
     private function monitorBotData(SportsBotMonitorBot $bot): array

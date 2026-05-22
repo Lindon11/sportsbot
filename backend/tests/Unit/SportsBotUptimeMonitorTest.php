@@ -6,6 +6,7 @@ use App\Core\Services\MonitorBotTelegramNotifier;
 use App\Plugins\SportsBot\Console\Commands\SportsBotUptimeCheckCommand;
 use App\Plugins\SportsBot\Models\SportsBotMonitorBot;
 use App\Plugins\SportsBot\Models\SportsBotUptimeSite;
+use App\Plugins\SportsBot\Services\SportsBotUptimeAlertCardService;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -67,17 +68,31 @@ class SportsBotUptimeMonitorTest extends TestCase
             'name' => 'Customer Monitor',
             'telegram_token' => 'profile-token',
             'telegram_chat_id' => '-1000000000002',
+            'telegram_extra_targets' => "-1000000000003\n-1000000000004",
             'enabled' => true,
         ]);
 
         try {
-            app(MonitorBotTelegramNotifier::class)->sendPhoto($path, '', ['monitor_bot' => $bot]);
+            $results = app(MonitorBotTelegramNotifier::class)->sendPhoto($path, '', ['monitor_bot' => $bot]);
         } finally {
             File::delete($path);
         }
 
+        $this->assertCount(3, $results);
         Http::assertSent(fn ($request) => str_contains($request->url(), '/botprofile-token/sendPhoto'));
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/botdefault-token/'));
+    }
+
+    public function test_monitor_bot_test_card_payload_is_clearly_marked_as_a_test(): void
+    {
+        $payload = app(SportsBotUptimeAlertCardService::class)->testPayload(new SportsBotMonitorBot([
+            'name' => 'Owner Alerts',
+        ]));
+
+        $this->assertSame('test', $payload['type']);
+        $this->assertSame('Monitor Bot Test', $payload['kicker']);
+        $this->assertSame('Test Alert Delivered', $payload['title']);
+        $this->assertSame('Owner Alerts', $payload['sites'][0]['name']);
     }
 
     private function site(): SportsBotUptimeSite

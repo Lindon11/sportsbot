@@ -44,7 +44,7 @@ for (const site of data.sites || []) {
 const firstSite = (data.sites || [])[0] || {};
 const isAlert = data.mode === 'alert';
 const statusClass = anyDown ? 'down' : 'up';
-const kicker = isAlert ? (anyDown ? 'Downtime Alert' : 'Recovery Notice') : 'Uptime Monitor';
+const kicker = data.kicker || (isAlert ? (anyDown ? 'Downtime Alert' : 'Recovery Notice') : 'Uptime Monitor');
 const headline = data.title || (anyDown ? 'Experiencing Downtime' : 'We Are Now Back Online');
 const statusMsg = data.message || (anyDown
   ? 'We are facing some issues. Please wait whilst we fix this.'

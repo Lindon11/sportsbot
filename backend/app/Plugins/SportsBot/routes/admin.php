@@ -84,6 +84,7 @@ Route::prefix('sportsbot')->name('sportsbot.')->group(function () {
     // Uptime Monitor
     Route::get('/uptime', [SportsBotController::class, 'uptimeSites'])->name('uptime');
     Route::post('/uptime/bots', [SportsBotController::class, 'uptimeMonitorBotCreate'])->name('uptime.bots.create');
+    Route::post('/uptime/bots/{id}/test', [SportsBotController::class, 'uptimeMonitorBotTest'])->name('uptime.bots.test');
     Route::put('/uptime/bots/{id}', [SportsBotController::class, 'uptimeMonitorBotUpdate'])->name('uptime.bots.update');
     Route::delete('/uptime/bots/{id}', [SportsBotController::class, 'uptimeMonitorBotDelete'])->name('uptime.bots.delete');
     Route::post('/uptime', [SportsBotController::class, 'uptimeSiteCreate'])->name('uptime.create');

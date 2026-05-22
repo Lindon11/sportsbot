@@ -253,7 +253,7 @@ class MonitorBotTelegramNotifier
         if (is_array($value)) {
             $items = $value;
         } else {
-            $items = array_filter(array_map('trim', explode(',', (string) $value)));
+            $items = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $value) ?: []));
         }
 
         $targets = [];

@@ -30,6 +30,7 @@
               <p class="mt-1 truncate text-xs text-slate-400">{{ bot.owner_label || 'Owner not labelled' }}</p>
             </div>
             <div class="flex gap-2">
+              <button @click="testBot(bot)" :disabled="testingBotId === bot.id || !bot.enabled || !bot.token_configured" class="rounded bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">{{ testingBotId === bot.id ? 'Sending...' : 'Test Alert' }}</button>
               <button @click="openBotEdit(bot)" class="rounded bg-slate-700/60 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600">Edit</button>
               <button @click="deleteBot(bot)" class="rounded bg-red-500/10 px-2 py-1 text-xs text-red-300 hover:bg-red-500/20">Delete</button>
             </div>
@@ -48,6 +49,7 @@
               <p class="text-slate-100">{{ bot.sites_count || 0 }}</p>
             </div>
           </div>
+          <p class="mt-3 text-xs" :class="bot.token_configured ? 'text-emerald-300' : 'text-amber-300'">{{ bot.token_configured ? 'Telegram token stored' : 'Telegram token missing' }}</p>
         </div>
       </div>
     </section>
@@ -191,6 +193,7 @@ const editingId = ref(null)
 const editingBotId = ref(null)
 const saving = ref(false)
 const savingBot = ref(false)
+const testingBotId = ref(null)
 
 const form = reactive({
   name: '', url: '',
@@ -293,6 +296,19 @@ async function deleteBot(bot) {
     toast.success('Monitor bot deleted')
     await load()
   } catch { toast.error('Failed to delete monitor bot') }
+}
+
+async function testBot(bot) {
+  testingBotId.value = bot.id
+  try {
+    const { data } = await api.post(`/admin/sportsbot/uptime/bots/${bot.id}/test`)
+    const count = Number(data.sent || 0)
+    toast.success(count === 1 ? 'Test alert sent' : `Test alert sent to ${count} targets`)
+  } catch (e) {
+    toast.error(e?.response?.data?.error || e?.response?.data?.message || 'Failed to send test alert')
+  } finally {
+    testingBotId.value = null
+  }
 }
 
 async function saveEdit() {
