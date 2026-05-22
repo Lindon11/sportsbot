@@ -30,6 +30,7 @@ use App\Plugins\SportsBot\Services\SportsBotRunner;
 use App\Plugins\SportsBot\Services\SportsBotSettingsService;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
 use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
+use App\Plugins\SportsBot\Services\SportsBotEpgGuideService;
 use App\Plugins\SportsBot\Services\SportsBotEpgHealthService;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
 use App\Plugins\SportsBot\Services\SportsBotEpgRuntimeLock;
@@ -1007,6 +1008,34 @@ class SportsBotController extends Controller
                     : null,
             ],
         ]);
+    }
+
+    public function epgProviderGuide(Request $request, SportsBotEpgGuideService $guide): JsonResponse
+    {
+        if (! Schema::hasTable('sportsbot_xmltv_programmes')) {
+            return response()->json([
+                'ready' => false,
+                'error' => 'EPG programme tables have not been migrated yet.',
+            ], 503);
+        }
+
+        $validated = $request->validate([
+            'date' => ['sometimes', 'date_format:Y-m-d'],
+            'region' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'uk_sports' => ['sometimes', 'boolean'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'channel_limit' => ['sometimes', 'integer', 'min:25', 'max:1000'],
+        ]);
+
+        return response()->json($guide->day(
+            (string) ($validated['date'] ?? Carbon::today()->toDateString()),
+            [
+                'region' => (string) ($validated['region'] ?? config('plugins.SportsBot.epg.default_region', 'UK')),
+                'uk_sports' => (bool) ($validated['uk_sports'] ?? false),
+                'search' => (string) ($validated['search'] ?? ''),
+                'channel_limit' => (int) ($validated['channel_limit'] ?? 400),
+            ],
+        ));
     }
 
     public function epgProviderImport(Request $request, SportsBotEpgSourceImporter $importer, SportsBotEpgMatcher $matcher, SportsBotEpgExporter $exporter, SportsBotEpgRuntimeLock $lock): JsonResponse

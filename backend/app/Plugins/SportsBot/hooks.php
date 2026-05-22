@@ -58,6 +58,7 @@ GameHooks::listen('admin.sidebar', function (array $sections): array {
             ['route' => '/sportsbot/coverage', 'label' => 'Coverage Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/fixture-queue', 'label' => 'Fixture Queue', 'icon' => 'QueueListIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/epg-provider', 'label' => 'EPG Provider', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
+            ['route' => '/sportsbot/epg-guide', 'label' => 'TV Guide', 'icon' => 'TvIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/scraper-settings', 'label' => 'Scraper Settings', 'icon' => 'MagnifyingGlassIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/telegram-settings', 'label' => 'Telegram Settings', 'icon' => 'Cog6ToothIcon', 'plugin' => 'sportsbot'],
             ['route' => '/sportsbot/webhook-diagnostics', 'label' => 'Webhook Diagnostics', 'icon' => 'CommandLineIcon', 'plugin' => 'sportsbot'],

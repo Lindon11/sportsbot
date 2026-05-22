@@ -13,6 +13,7 @@ class SportsBotEpgChannelAlias extends Model
         'alias',
         'normalized_alias',
         'display_name',
+        'logo_url',
         'region',
         'source',
         'confidence',

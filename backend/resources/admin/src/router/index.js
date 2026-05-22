@@ -235,6 +235,11 @@ const router = createRouter({
           component: () => import('../views/SportsBotEpgProviderView.vue')
         },
         {
+          path: '/sportsbot/epg-guide',
+          name: 'sportsbot-epg-guide',
+          component: () => import('../views/SportsBotEpgGuideView.vue')
+        },
+        {
           path: '/sportsbot/uptime',
           name: 'sportsbot-uptime',
           component: () => import('../views/SportsBotUptimeMonitorView.vue')

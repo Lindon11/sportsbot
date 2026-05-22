@@ -24,6 +24,9 @@ class SportsBotEpgGrabberRuntime
     {
         $region = $region !== null && $region !== '' ? strtoupper($region) : null;
         $this->importer->seedConfiguredSources();
+        if ((string) config('plugins.SportsBot.epg.source_policy', 'uk_sports_first') === 'uk_sports_first') {
+            $this->importer->applyUkSportsPolicy();
+        }
         $feedGrabbers = $this->discoverPublicXmltvFeeds($region);
         $xmltvGrabbers = $this->discoverXmltvCommands($region);
         $iptvOrg = $this->discoverIptvOrg($region);
@@ -114,7 +117,10 @@ class SportsBotEpgGrabberRuntime
 
     public function applyUkSportsPolicy(): array
     {
-        return $this->importer->applyUkSportsPolicy();
+        $result = $this->importer->applyUkSportsPolicy();
+        $result['disabled_public_feed_grabbers'] = $this->disablePublicFeedGrabbersForDisabledSources();
+
+        return $result;
     }
 
     /**
@@ -260,6 +266,15 @@ class SportsBotEpgGrabberRuntime
             ]
         );
 
+        if (! $source->enabled) {
+            return [
+                'status' => 'skipped_disabled_source',
+                'output_path' => null,
+                'output_bytes' => 0,
+                'import' => null,
+            ];
+        }
+
         $importResult = $import ? $this->importer->importSource($source, 3, $importOptions) : null;
 
         return [
@@ -350,6 +365,7 @@ class SportsBotEpgGrabberRuntime
     private function discoverPublicXmltvFeeds(?string $region): array
     {
         $created = 0;
+        $disabled = $this->disablePublicFeedGrabbersForDisabledSources();
         $sources = SportsBotEpgSource::query()
             ->where('enabled', true)
             ->when($region !== null, fn ($query) => $query->where(function ($query) use ($region): void {
@@ -373,7 +389,30 @@ class SportsBotEpgGrabberRuntime
             }
         }
 
-        return ['found' => $sources->count(), 'created' => $created];
+        return ['found' => $sources->count(), 'created' => $created, 'disabled' => $disabled];
+    }
+
+    private function disablePublicFeedGrabbersForDisabledSources(): int
+    {
+        $urls = SportsBotEpgSource::query()
+            ->where('enabled', false)
+            ->whereNotNull('url')
+            ->pluck('url')
+            ->filter(fn (mixed $url): bool => trim((string) $url) !== '')
+            ->values()
+            ->all();
+
+        if ($urls === []) {
+            return 0;
+        }
+
+        return SportsBotEpgGrabber::query()
+            ->where('type', 'public_xmltv_feed')
+            ->whereIn('command', $urls)
+            ->update([
+                'enabled' => false,
+                'status' => 'disabled_source',
+            ]);
     }
 
     private function discoverXmltvCommands(?string $region): array

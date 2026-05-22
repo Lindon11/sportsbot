@@ -476,8 +476,12 @@ class SportsBotEpgSourceImporter
                 if ($channel instanceof SimpleXMLElement) {
                     $id = trim((string) $channel['id']);
                     $name = trim((string) $channel->{'display-name'});
+                    $logoUrl = trim((string) ($channel->icon['src'] ?? ''));
                     if ($id !== '') {
-                        $channelMap[$id] = $name ?: $id;
+                        $channelMap[$id] = [
+                            'name' => $name ?: $id,
+                            'logo_url' => $logoUrl,
+                        ];
                     }
                 }
                 continue;
@@ -546,13 +550,14 @@ class SportsBotEpgSourceImporter
     }
 
     /**
-     * @param array<string, string> $channelMap
+     * @param array<string, array{name: string, logo_url: string}> $channelMap
      * @return array<string, mixed>|null
      */
     private function programmeRow(SimpleXMLElement $prog, array $channelMap, SportsBotEpgSource $source, int $days, Carbon $now): ?array
     {
         $channelId = trim((string) $prog['channel']);
-        $channel = $channelMap[$channelId] ?? $channelId;
+        $channelData = $channelMap[$channelId] ?? ['name' => $channelId, 'logo_url' => ''];
+        $channel = (string) ($channelData['name'] ?? $channelId);
         $startTime = $this->parseXmltvTime(trim((string) $prog['start']));
         $endTime = $this->parseXmltvTime(trim((string) $prog['stop']));
         $startCutoff = now()->subHours(6);
@@ -568,7 +573,7 @@ class SportsBotEpgSourceImporter
         }
 
         $canonical = $this->channels->canonicalIdFor($channel, $source->region);
-        $this->channels->rememberAlias($channel, $canonical, $source->region, 'import', $channel, 0.85);
+        $this->channels->rememberAlias($channel, $canonical, $source->region, 'import', $channel, 0.85, (string) ($channelData['logo_url'] ?? ''));
 
         return [
             'source_id' => $source->id,

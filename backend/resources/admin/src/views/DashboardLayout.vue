@@ -444,6 +444,7 @@ const pageTitle = computed(() => {
     '/sportsbot/webhook-diagnostics': 'SportsBot Webhook Diagnostics',
     '/sportsbot/fixture-queue': 'SportsBot Fixture Queue',
     '/sportsbot/epg-provider': 'SportsBot EPG Provider',
+    '/sportsbot/epg-guide': 'SportsBot TV Guide',
     '/sportsbot/uptime': 'SportsBot Uptime Monitor',
     '/sportsbot/monitor-settings': 'Monitor Bot Settings',
     '/sportsbot/update': 'SportsBot Update',

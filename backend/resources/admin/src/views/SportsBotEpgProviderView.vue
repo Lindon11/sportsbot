@@ -6,6 +6,9 @@
         <p class="mt-1 text-sm text-slate-400">Source confidence, fixture matches, and guide exports.</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <RouterLink to="/sportsbot/epg-guide" class="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20">
+          TV Guide
+        </RouterLink>
         <button @click="runImport" :disabled="busy === 'import'" class="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-100 hover:bg-sky-500/20 disabled:opacity-60">
           {{ busy === 'import' ? 'Importing...' : 'Import Sources' }}
         </button>

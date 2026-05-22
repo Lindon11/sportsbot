@@ -870,6 +870,7 @@ return [
         'import_enabled' => env('SPORTSBOT_EPG_IMPORT_ENABLED', false),
         'export_token' => env('SPORTSBOT_EPG_EXPORT_TOKEN', ''),
         'import_chunk_size' => (int) env('SPORTSBOT_EPG_IMPORT_CHUNK_SIZE', 2000),
+        'export_chunk_size' => (int) env('SPORTSBOT_EPG_EXPORT_CHUNK_SIZE', 2000),
         'max_programmes' => (int) env('SPORTSBOT_EPG_MAX_PROGRAMMES', 80000),
         'skip_unchanged' => env('SPORTSBOT_EPG_SKIP_UNCHANGED', true),
         'allow_private_feed_urls' => env('SPORTSBOT_EPG_ALLOW_PRIVATE_FEED_URLS', false),

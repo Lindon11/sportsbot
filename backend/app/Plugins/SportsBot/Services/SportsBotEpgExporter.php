@@ -4,7 +4,8 @@ namespace App\Plugins\SportsBot\Services;
 
 use App\Plugins\SportsBot\Models\SportsBotEpgSource;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
-use Illuminate\Support\Facades\Storage;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\File;
 
 class SportsBotEpgExporter
 {
@@ -40,18 +41,19 @@ class SportsBotEpgExporter
     public function writeCachedExports(int $hours = 72): array
     {
         $guide = $this->guide($hours);
-        $xml = $this->xmlFromGuide($guide);
-        $json = json_encode($this->jsonFromGuide($guide), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $xmlPath = storage_path('app/sportsbot/epg/guide.xml');
+        $jsonPath = storage_path('app/sportsbot/epg/guide.json');
 
-        Storage::disk('local')->put('sportsbot/epg/guide.xml', $xml);
-        Storage::disk('local')->put('sportsbot/epg/guide.json', $json !== false ? $json : '{}');
+        File::ensureDirectoryExists(dirname($xmlPath));
+        $xmlBytes = $this->writeXmlFile($xmlPath, $guide);
+        $jsonBytes = $this->writeJsonFile($jsonPath, $guide);
 
         return [
             'written' => true,
-            'xml_path' => storage_path('app/sportsbot/epg/guide.xml'),
-            'json_path' => storage_path('app/sportsbot/epg/guide.json'),
-            'xml_bytes' => strlen($xml),
-            'json_bytes' => strlen($json !== false ? $json : '{}'),
+            'xml_path' => $xmlPath,
+            'json_path' => $jsonPath,
+            'xml_bytes' => $xmlBytes,
+            'json_bytes' => $jsonBytes,
             'stats' => $guide['stats'],
         ];
     }
@@ -61,72 +63,28 @@ class SportsBotEpgExporter
      */
     private function xmlFromGuide(array $guide): string
     {
-        $lines = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<tv generator-info-name="SportsBot EPG Provider">',
-        ];
-
-        foreach ((array) ($guide['channels'] ?? []) as $channel) {
-            $id = (string) ($channel['id'] ?? '');
-            $name = (string) ($channel['name'] ?? $id);
-            if ($id === '') {
-                continue;
-            }
-            $lines[] = '  <channel id="' . $this->xml($id) . '">';
-            $lines[] = '    <display-name>' . $this->xml($name) . '</display-name>';
-            $lines[] = '  </channel>';
-        }
-
+        $lines = [];
+        $this->appendXmlHeader($lines, (array) ($guide['channels'] ?? []));
         foreach ((array) ($guide['programmes'] ?? []) as $programme) {
-            $canonical = (string) ($programme['channel_id'] ?? '');
-            $start = $programme['start_time'] ?? null;
-            if ($canonical === '' || ! $start) {
-                continue;
-            }
-
-            $attrs = [
-                'start="' . $this->xml($start->format('YmdHis O')) . '"',
-                'channel="' . $this->xml($canonical) . '"',
-            ];
-            if ($programme['end_time'] ?? null) {
-                $attrs[] = 'stop="' . $this->xml($programme['end_time']->format('YmdHis O')) . '"';
-            }
-
-            $lines[] = '  <programme ' . implode(' ', $attrs) . '>';
-            $lines[] = '    <title>' . $this->xml((string) ($programme['title'] ?? '')) . '</title>';
-            if ((string) ($programme['description'] ?? '') !== '') {
-                $lines[] = '    <desc>' . $this->xml((string) $programme['description']) . '</desc>';
-            }
-            $lines[] = '  </programme>';
+            $lines = array_merge($lines, $this->xmlProgrammeLines($programme));
         }
-
         $lines[] = '</tv>';
 
         return implode("\n", $lines) . "\n";
     }
 
+    /**
+     * @param array<string, mixed> $guide
+     */
     private function jsonFromGuide(array $guide): array
     {
         $rows = [];
         foreach ((array) ($guide['programmes'] ?? []) as $programme) {
-            $rows[] = [
-                'id' => $programme['id'],
-                'channel_id' => $programme['channel_id'],
-                'channel' => $programme['channel'],
-                'title' => $programme['title'],
-                'description' => $programme['description'],
-                'start_time' => $programme['start_time']?->toIso8601String(),
-                'end_time' => $programme['end_time']?->toIso8601String(),
-                'fixture_id' => $programme['fixture_id'],
-                'confidence' => $programme['confidence'],
-                'source_url' => $programme['source_url'],
-                'source_urls' => $programme['source_urls'],
-                'source_count' => $programme['source_count'],
-            ];
+            $rows[] = $this->jsonProgramme($programme);
         }
 
         return [
-            'generated_at' => now()->toIso8601String(),
+            'generated_at' => $guide['generated_at'],
             'hours' => $guide['hours'],
             'channels' => $guide['channels'],
             'programmes' => $rows,
@@ -140,112 +98,124 @@ class SportsBotEpgExporter
     private function guide(int $hours): array
     {
         $hours = max(1, min(336, $hours));
-        $rawProgrammes = $this->programmes($hours);
-        $sourceMap = SportsBotEpgSource::query()
-            ->whereIn('id', $rawProgrammes->pluck('source_id')->filter()->unique()->values())
-            ->get()
-            ->keyBy('id');
-        $groups = [];
+        $sourceMap = SportsBotEpgSource::query()->get()->keyBy('id');
         $channels = [];
+        $groups = [];
+        $rawProgrammeCount = 0;
 
-        foreach ($rawProgrammes as $programme) {
-            $canonical = (string) ($programme->canonical_channel_id ?: $this->channels->canonicalIdFor((string) $programme->channel));
-            if ($canonical === '' || ! $programme->start_time) {
-                continue;
-            }
+        $this->programmeQuery($hours)->chunkById(
+            max(250, (int) config('plugins.SportsBot.epg.export_chunk_size', 2000)),
+            function ($programmes) use (&$channels, &$groups, &$rawProgrammeCount, $sourceMap): void {
+                foreach ($programmes as $programme) {
+                    $rawProgrammeCount++;
+                    $canonical = trim((string) ($programme->canonical_channel_id ?: $this->channels->canonicalIdFor((string) $programme->channel)));
+                    $start = $this->dateString($programme->start_time ?? null);
+                    if ($canonical === '' || $start === null) {
+                        continue;
+                    }
 
-            $channels[$canonical] ??= [
-                'id' => $canonical,
-                'name' => $this->channels->displayNameForCanonical($canonical, (string) $programme->channel),
-            ];
+                    $channels[$canonical] ??= [
+                        'id' => $canonical,
+                        'name' => $this->channels->displayNameForCanonical($canonical, (string) $programme->channel),
+                    ];
 
-            $row = $this->guideRow($programme, $canonical);
-            $key = $this->dedupeKey($row);
-            $score = $this->representativeScore($programme, $sourceMap->get($programme->source_id));
-            if (! isset($groups[$key])) {
-                $groups[$key] = [
-                    'row' => $row,
-                    'score' => $score,
-                    'source_urls' => [],
-                    'source_keys' => [],
-                    'raw_count' => 0,
-                ];
-            }
+                    $row = $this->guideRow($programme, $canonical, $start);
+                    $key = $this->dedupeKey($row);
+                    $score = $this->representativeScore($programme, $sourceMap->get((int) ($programme->source_id ?? 0)));
+                    $sourceKey = $programme->source_id
+                        ? 'source:' . $programme->source_id
+                        : 'url:' . (string) ($programme->source_url ?: $programme->id);
+                    $sourceUrl = trim((string) ($programme->source_url ?? ''));
 
-            $sourceKey = $programme->source_id
-                ? 'source:' . $programme->source_id
-                : 'url:' . (string) ($programme->source_url ?: $programme->id);
-            $groups[$key]['source_keys'][$sourceKey] = true;
-            if ((string) ($programme->source_url ?? '') !== '') {
-                $groups[$key]['source_urls'][(string) $programme->source_url] = (string) $programme->source_url;
-            }
-            $groups[$key]['raw_count']++;
+                    if (! isset($groups[$key])) {
+                        $groups[$key] = [
+                            'row' => $row,
+                            'score' => $score,
+                            'source_key' => $sourceKey,
+                            'source_url' => $sourceUrl,
+                            'source_count' => 1,
+                            'raw_count' => 1,
+                        ];
+                        continue;
+                    }
 
-            if ($score > $groups[$key]['score']) {
-                $groups[$key]['row'] = $row;
-                $groups[$key]['score'] = $score;
-            } elseif ((string) ($groups[$key]['row']['description'] ?? '') === '' && (string) ($row['description'] ?? '') !== '') {
-                $groups[$key]['row']['description'] = $row['description'];
-            }
-        }
+                    $groups[$key]['raw_count']++;
+                    $this->rememberGroupSource($groups[$key], $sourceKey, $sourceUrl);
+
+                    if ($score > $groups[$key]['score']) {
+                        $groups[$key]['row'] = $row;
+                        $groups[$key]['score'] = $score;
+                    } elseif ((string) ($groups[$key]['row']['description'] ?? '') === '' && (string) ($row['description'] ?? '') !== '') {
+                        $groups[$key]['row']['description'] = $row['description'];
+                    }
+                }
+            },
+            'id',
+        );
 
         $programmes = [];
         foreach ($groups as $group) {
             $row = $group['row'];
-            $row['source_urls'] = array_values($group['source_urls']);
-            $row['source_count'] = count($group['source_keys']);
-            $row['raw_count'] = (int) $group['raw_count'];
+            $row['source_urls'] = $this->groupSourceUrls($group);
+            $row['source_count'] = (int) ($group['source_count'] ?? 1);
+            $row['raw_count'] = (int) ($group['raw_count'] ?? 1);
             $programmes[] = $row;
         }
 
-        usort($programmes, fn (array $left, array $right): int => [
-            $left['start_time']?->getTimestamp() ?? 0,
-            $left['channel_id'],
-            $left['title'],
-        ] <=> [
-            $right['start_time']?->getTimestamp() ?? 0,
-            $right['channel_id'],
-            $right['title'],
-        ]);
         uasort($channels, fn (array $left, array $right): int => [$left['name'], $left['id']] <=> [$right['name'], $right['id']]);
 
         return [
+            'generated_at' => now()->toIso8601String(),
             'hours' => $hours,
             'channels' => array_values($channels),
             'programmes' => $programmes,
             'stats' => [
-                'raw_programme_count' => $rawProgrammes->count(),
+                'raw_programme_count' => $rawProgrammeCount,
                 'canonical_programme_count' => count($programmes),
-                'duplicates_removed' => max(0, $rawProgrammes->count() - count($programmes)),
+                'duplicates_removed' => max(0, $rawProgrammeCount - count($programmes)),
                 'canonical_channel_count' => count($channels),
+                'export_chunk_size' => max(250, (int) config('plugins.SportsBot.epg.export_chunk_size', 2000)),
             ],
         ];
     }
 
-    private function programmes(int $hours)
+    private function programmeQuery(int $hours)
     {
         return SportsBotXmltvProgramme::query()
+            ->toBase()
+            ->select([
+                'id',
+                'source_id',
+                'source_url',
+                'channel',
+                'canonical_channel_id',
+                'title',
+                'description',
+                'start_time',
+                'end_time',
+                'fixture_id',
+                'confidence',
+            ])
             ->where('start_time', '>=', now()->subHours(6))
-            ->where('start_time', '<=', now()->addHours(max(1, min(336, $hours))))
-            ->orderBy('start_time')
-            ->get();
+            ->where('start_time', '<=', now()->addHours($hours))
+            ->orderBy('id');
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function guideRow(SportsBotXmltvProgramme $programme, string $canonical): array
+    private function guideRow(object $programme, string $canonical, string $start): array
     {
         return [
-            'id' => $programme->id,
+            'id' => (int) $programme->id,
             'channel_id' => $canonical,
             'channel' => (string) $programme->channel,
             'title' => (string) $programme->title,
             'description' => (string) ($programme->description ?? ''),
-            'start_time' => $programme->start_time,
-            'end_time' => $programme->end_time,
-            'fixture_id' => $programme->fixture_id,
-            'confidence' => (float) $programme->confidence,
+            'start_time' => $start,
+            'end_time' => $this->dateString($programme->end_time ?? null),
+            'fixture_id' => $programme->fixture_id !== null ? (int) $programme->fixture_id : null,
+            'confidence' => (float) ($programme->confidence ?? 0),
             'source_url' => (string) ($programme->source_url ?? ''),
         ];
     }
@@ -259,9 +229,35 @@ class SportsBotEpgExporter
 
         return implode('|', [
             (string) ($programme['channel_id'] ?? ''),
-            $programme['start_time']?->format('YmdHi') ?? '',
+            substr((string) ($programme['start_time'] ?? ''), 0, 16),
             $title,
         ]);
+    }
+
+    private function rememberGroupSource(array &$group, string $sourceKey, string $sourceUrl): void
+    {
+        if ($sourceKey !== (string) ($group['source_key'] ?? '')
+            && ! in_array($sourceKey, (array) ($group['extra_source_keys'] ?? []), true)) {
+            $group['extra_source_keys'][] = $sourceKey;
+            $group['source_count'] = (int) ($group['source_count'] ?? 1) + 1;
+        }
+
+        if ($sourceUrl !== ''
+            && $sourceUrl !== (string) ($group['source_url'] ?? '')
+            && ! in_array($sourceUrl, (array) ($group['extra_source_urls'] ?? []), true)) {
+            $group['extra_source_urls'][] = $sourceUrl;
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function groupSourceUrls(array $group): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) ($group['source_url'] ?? ''),
+            ...array_map(fn (mixed $url): string => (string) $url, (array) ($group['extra_source_urls'] ?? [])),
+        ])));
     }
 
     private function programmeSignature(string $value): string
@@ -275,9 +271,9 @@ class SportsBotEpgExporter
         return trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
     }
 
-    private function representativeScore(SportsBotXmltvProgramme $programme, ?SportsBotEpgSource $source): int
+    private function representativeScore(object $programme, ?SportsBotEpgSource $source): int
     {
-        $score = (int) round(((float) $programme->confidence) * 100);
+        $score = (int) round(((float) ($programme->confidence ?? 0)) * 100);
         $score += $programme->fixture_id ? 120 : 0;
         $score += trim((string) ($programme->description ?? '')) !== '' ? min(30, (int) floor(mb_strlen((string) $programme->description) / 20)) : 0;
 
@@ -288,6 +284,164 @@ class SportsBotEpgExporter
         }
 
         return $score;
+    }
+
+    private function writeXmlFile(string $path, array $guide): int
+    {
+        $handle = $this->openWriteHandle($path);
+        try {
+            $lines = [];
+            $this->appendXmlHeader($lines, (array) ($guide['channels'] ?? []));
+            foreach ($lines as $line) {
+                fwrite($handle, $line . "\n");
+            }
+            foreach ((array) ($guide['programmes'] ?? []) as $programme) {
+                foreach ($this->xmlProgrammeLines($programme) as $line) {
+                    fwrite($handle, $line . "\n");
+                }
+            }
+            fwrite($handle, "</tv>\n");
+        } finally {
+            fclose($handle);
+        }
+
+        return (int) @filesize($path);
+    }
+
+    private function writeJsonFile(string $path, array $guide): int
+    {
+        $handle = $this->openWriteHandle($path);
+        try {
+            fwrite($handle, "{\n");
+            fwrite($handle, '  "generated_at": ' . $this->json((string) ($guide['generated_at'] ?? now()->toIso8601String())) . ",\n");
+            fwrite($handle, '  "hours": ' . (int) ($guide['hours'] ?? 72) . ",\n");
+            fwrite($handle, '  "channels": ' . $this->json((array) ($guide['channels'] ?? [])) . ",\n");
+            fwrite($handle, "  \"programmes\": [\n");
+
+            $first = true;
+            foreach ((array) ($guide['programmes'] ?? []) as $programme) {
+                if (! $first) {
+                    fwrite($handle, ",\n");
+                }
+                fwrite($handle, '    ' . $this->json($this->jsonProgramme($programme)));
+                $first = false;
+            }
+
+            fwrite($handle, "\n  ],\n");
+            fwrite($handle, '  "stats": ' . $this->json((array) ($guide['stats'] ?? [])) . "\n");
+            fwrite($handle, "}\n");
+        } finally {
+            fclose($handle);
+        }
+
+        return (int) @filesize($path);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $channels
+     * @param array<int, string> $lines
+     */
+    private function appendXmlHeader(array &$lines, array $channels): void
+    {
+        $lines[] = '<?xml version="1.0" encoding="UTF-8"?>';
+        $lines[] = '<tv generator-info-name="SportsBot EPG Provider">';
+
+        foreach ($channels as $channel) {
+            $id = (string) ($channel['id'] ?? '');
+            $name = (string) ($channel['name'] ?? $id);
+            if ($id === '') {
+                continue;
+            }
+            $lines[] = '  <channel id="' . $this->xml($id) . '">';
+            $lines[] = '    <display-name>' . $this->xml($name) . '</display-name>';
+            $lines[] = '  </channel>';
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function xmlProgrammeLines(array $programme): array
+    {
+        $canonical = (string) ($programme['channel_id'] ?? '');
+        $start = $this->date((string) ($programme['start_time'] ?? ''));
+        if ($canonical === '' || ! $start) {
+            return [];
+        }
+
+        $attrs = [
+            'start="' . $this->xml($start->format('YmdHis O')) . '"',
+            'channel="' . $this->xml($canonical) . '"',
+        ];
+        $end = $this->date((string) ($programme['end_time'] ?? ''));
+        if ($end) {
+            $attrs[] = 'stop="' . $this->xml($end->format('YmdHis O')) . '"';
+        }
+
+        $lines = [
+            '  <programme ' . implode(' ', $attrs) . '>',
+            '    <title>' . $this->xml((string) ($programme['title'] ?? '')) . '</title>',
+        ];
+        if ((string) ($programme['description'] ?? '') !== '') {
+            $lines[] = '    <desc>' . $this->xml((string) $programme['description']) . '</desc>';
+        }
+        $lines[] = '  </programme>';
+
+        return $lines;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function jsonProgramme(array $programme): array
+    {
+        return [
+            'id' => (int) ($programme['id'] ?? 0),
+            'channel_id' => (string) ($programme['channel_id'] ?? ''),
+            'channel' => (string) ($programme['channel'] ?? ''),
+            'title' => (string) ($programme['title'] ?? ''),
+            'description' => (string) ($programme['description'] ?? ''),
+            'start_time' => $this->date((string) ($programme['start_time'] ?? ''))?->toIso8601String(),
+            'end_time' => $this->date((string) ($programme['end_time'] ?? ''))?->toIso8601String(),
+            'fixture_id' => $programme['fixture_id'] ?? null,
+            'confidence' => (float) ($programme['confidence'] ?? 0),
+            'source_url' => (string) ($programme['source_url'] ?? ''),
+            'source_urls' => array_values((array) ($programme['source_urls'] ?? [])),
+            'source_count' => (int) ($programme['source_count'] ?? 1),
+        ];
+    }
+
+    private function dateString(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private function date(string $value): ?Carbon
+    {
+        if (trim($value) === '') {
+            return null;
+        }
+
+        return Carbon::parse($value);
+    }
+
+    private function openWriteHandle(string $path)
+    {
+        $handle = fopen($path, 'wb');
+        if (! $handle) {
+            throw new \RuntimeException('Unable to write EPG export file: ' . $path);
+        }
+
+        return $handle;
+    }
+
+    private function json(mixed $value): string
+    {
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES);
+
+        return $json !== false ? $json : 'null';
     }
 
     private function xml(string $value): string

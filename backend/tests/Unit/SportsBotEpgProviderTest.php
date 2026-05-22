@@ -10,6 +10,7 @@ use App\Plugins\SportsBot\Models\SportsBotFixtureQueue;
 use App\Plugins\SportsBot\Models\SportsBotXmltvProgramme;
 use App\Plugins\SportsBot\Services\SportsBotEpgChannelNormalizer;
 use App\Plugins\SportsBot\Services\SportsBotEpgExporter;
+use App\Plugins\SportsBot\Services\SportsBotEpgGuideService;
 use App\Plugins\SportsBot\Services\SportsBotEpgGrabberRuntime;
 use App\Plugins\SportsBot\Services\SportsBotEpgMaintenance;
 use App\Plugins\SportsBot\Services\SportsBotEpgMatcher;
@@ -158,18 +159,84 @@ class SportsBotEpgProviderTest extends TestCase
         $this->assertSame(1, substr_count($xml, '<programme '));
     }
 
+    public function test_tv_guide_filters_uk_sports_and_dedupes_programmes_with_alias_metadata(): void
+    {
+        $normalizer = new SportsBotEpgChannelNormalizer();
+        $normalizer->rememberAlias(
+            'Sky Sports Main Event',
+            'sky_sports_main_event',
+            'UK',
+            'manual',
+            'Sky Sports Main Event',
+            1,
+            'https://assets.example.test/sky.png',
+        );
+
+        $mirror = $this->source('https://mirror.test/uk.xml.gz', 90);
+        $primary = $this->source('https://primary.test/uk.xml.gz', 10);
+        $us = $this->source('https://example.test/us.xml.gz', 10);
+        $us->fill(['region' => 'US'])->save();
+
+        $this->programme($mirror, 'SkySpMainEvent.uk', 'Arsenal v Chelsea Coverage', 'Mirror description', '19:45');
+        $this->programme($primary, 'Sky Sports Main Event', 'Arsenal vs Chelsea Live', 'Primary description', '19:45');
+        $this->programme($primary, 'Movie Channel', 'Late Film', 'Not sport', '20:00');
+        $this->programme($us, 'Sky Sports Main Event', 'US sports window', 'Wrong region', '20:15');
+
+        $guide = (new SportsBotEpgGuideService())->day(now()->toDateString(), [
+            'region' => 'UK',
+            'uk_sports' => true,
+        ]);
+
+        $this->assertSame(1, $guide['channel_count']);
+        $this->assertSame(1, $guide['programme_count']);
+        $this->assertSame(2, $guide['raw_programme_count']);
+        $this->assertSame('sky_sports_main_event', $guide['channels'][0]['canonical_channel_id']);
+        $this->assertSame('Sky Sports Main Event', $guide['channels'][0]['name']);
+        $this->assertSame('https://assets.example.test/sky.png', $guide['channels'][0]['logo_url']);
+        $this->assertSame($primary->url, $guide['channels'][0]['programmes'][0]['source_url']);
+        $this->assertSame(2, $guide['channels'][0]['programmes'][0]['source_count']);
+    }
+
+    public function test_tv_guide_search_limits_programmes_to_matching_team_text(): void
+    {
+        $source = $this->source('https://example.test/uk.xml.gz', 10);
+        $this->programme($source, 'Sky Sports Main Event', 'Arsenal vs Chelsea Live', 'Premier League coverage', '19:45');
+        $this->programme($source, 'TNT Sports 1', 'Liverpool vs Spurs', 'Match coverage', '20:00');
+
+        $guide = (new SportsBotEpgGuideService())->day(now()->toDateString(), [
+            'region' => 'UK',
+            'uk_sports' => true,
+            'search' => 'Liverpool',
+        ]);
+
+        $this->assertSame(1, $guide['channel_count']);
+        $this->assertSame(1, $guide['programme_count']);
+        $this->assertSame('Liverpool vs Spurs', $guide['channels'][0]['programmes'][0]['title']);
+    }
+
     public function test_uk_sports_policy_disables_non_uk_epgshare_sources(): void
     {
         $uk = $this->source('https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz', 50);
         $us = $this->source('https://epgshare01.online/epgshare01/epg_ripper_US1.xml.gz', 60);
         $us->fill(['region' => 'US'])->save();
+        $usGrabber = SportsBotEpgGrabber::query()->create([
+            'name' => 'US epgshare',
+            'type' => 'public_xmltv_feed',
+            'region' => 'US',
+            'command' => $us->url,
+            'enabled' => true,
+            'installed' => true,
+            'status' => 'available',
+        ]);
 
-        $result = (new SportsBotEpgSourceImporter())->applyUkSportsPolicy();
+        $result = (new SportsBotEpgGrabberRuntime())->applyUkSportsPolicy();
 
         $this->assertSame(1, $result['enabled_uk_sources']);
         $this->assertSame(1, $result['disabled_non_uk_epgshare_sources']);
+        $this->assertSame(1, $result['disabled_public_feed_grabbers']);
         $this->assertTrue($uk->fresh()->enabled);
         $this->assertFalse($us->fresh()->enabled);
+        $this->assertFalse($usGrabber->fresh()->enabled);
     }
 
     public function test_streaming_import_reads_local_xmltv_and_skips_unchanged_output(): void
@@ -484,6 +551,7 @@ class SportsBotEpgProviderTest extends TestCase
             $table->string('alias');
             $table->string('normalized_alias');
             $table->string('display_name')->nullable();
+            $table->string('logo_url')->nullable();
             $table->string('region')->nullable();
             $table->string('source')->default('system');
             $table->decimal('confidence', 5, 2)->default(1);

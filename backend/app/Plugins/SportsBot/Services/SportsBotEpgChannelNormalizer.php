@@ -117,23 +117,36 @@ class SportsBotEpgChannelNormalizer
         return ucwords(str_replace('_', ' ', $canonicalChannelId));
     }
 
-    public function rememberAlias(string $alias, string $canonicalChannelId, ?string $region = null, string $source = 'system', ?string $displayName = null, float $confidence = 1.0): SportsBotEpgChannelAlias
+    public function rememberAlias(
+        string $alias,
+        string $canonicalChannelId,
+        ?string $region = null,
+        string $source = 'system',
+        ?string $displayName = null,
+        float $confidence = 1.0,
+        ?string $logoUrl = null,
+    ): SportsBotEpgChannelAlias
     {
         $normalized = $this->normalizeChannel($alias);
+        $values = [
+            'canonical_channel_id' => $canonicalChannelId,
+            'alias' => $alias,
+            'display_name' => $displayName ?: $alias,
+            'source' => $source,
+            'confidence' => max(0, min(1, $confidence)),
+            'accepted' => true,
+        ];
+
+        if (trim((string) $logoUrl) !== '') {
+            $values['logo_url'] = trim((string) $logoUrl);
+        }
 
         return SportsBotEpgChannelAlias::query()->updateOrCreate(
             [
                 'normalized_alias' => $normalized,
                 'region' => $region,
             ],
-            [
-                'canonical_channel_id' => $canonicalChannelId,
-                'alias' => $alias,
-                'display_name' => $displayName ?: $alias,
-                'source' => $source,
-                'confidence' => max(0, min(1, $confidence)),
-                'accepted' => true,
-            ]
+            $values
         );
     }
 }
